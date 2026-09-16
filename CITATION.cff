@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "SO33 Activation: Parallel Transport in Pseudo-Euclidean Space R^{3,3}"
+abstract: "A library for neural network activation based on parallel transport in the pseudo-Euclidean space R^{3,3} (signature +,+,+,-,-,-) with a trainable so(3,3) connection. Implements a layer that integrates a quadratic ODE and includes a full set of tests."
+authors:
+  - family-names: "Панченко"
+    given-names: "Александр Алексеевич"
+    email: "sascha.panchenko2018@yandex.ru"
+    orcid: "https://orcid.org/0009-0009-9104-1214"
+version: "1.0.0-beta.3"
+date-released: "2026-04-25"
+url: "https://github.com/Nervni-Sanya/so33"
+repository-code: "https://github.com/Nervni-Sanya/so33"
+license: "MIT"
+keywords:
+  - "so33"
+  - "pseudo-Euclidean"
+  - "parallel transport"
+  - "neural activation"
+  - "Lie algebra"
+  - "geometric deep learning"
+  - "Python"
+type: software
+doi: "10.5281/zenodo.19763339"

@@ -1,0 +1,242 @@
+"""
+benchmarks.run_top_tagging
+--------------------------
+Top Tagging Reference (arXiv:1902.09914) benchmark.
+
+Tier-1 *headline* anchor: per-jet 4-momentum aggregated to a 6-D
+representation that aligns directly with the (3,3) signature
+(see ``aggregate_jet_to_6d`` in benchmarks.datasets). This is the
+experiment where SO33's geometric prior should pay off most, since
+the data has explicit Lorentzian structure.
+
+Reports matched-bottleneck and natural-width tables. Note: with only
+6 features the natural-width MLP also has ~6 -> 256 -> 2 = much
+larger param count than matched, but this matches the "engineering"
+interpretation (let baselines use what dimensionality they want).
+
+Run:
+    # Smoke (synthetic 6-D stand-in):
+    python -m benchmarks.run_top_tagging --quick
+
+    # Real data — convert Zenodo HDF5 to npz and place in data/:
+    #   data/top_tagging_train.npz, top_tagging_val.npz, top_tagging_test.npz
+    python -m benchmarks.run_top_tagging --cache-dir data --max-samples 100000
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+
+import torch
+
+from .datasets import (
+    load_top_tagging, load_top_tagging_constituents, synthetic_tabular,
+)
+from .tabular_runner import run_tabular_experiment
+
+
+def main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--quick",       action="store_true",
+                   help="Smoke run: 6-D Gaussian stand-in (1k samples, 5 epochs).")
+    p.add_argument("--cache-dir",   type=str, default="data",
+                   help="Directory containing top_tagging_*.npz.")
+    p.add_argument("--max-samples", type=int, default=100_000)
+    p.add_argument("--seed",        type=int, default=0)
+    p.add_argument("--epochs",      type=int, default=30)
+    p.add_argument("--results-dir", type=str, default="results")
+    p.add_argument("--models",      type=str, default=None)
+    p.add_argument("--natural-hidden", type=int, default=256,
+                   help="Hidden width of the natural-width baselines (*_mlp). "
+                        "Set it to build a PARAMETER-MATCHED generic baseline "
+                        "against the so3c set models (e.g. 1293 ~ 9.05k params, "
+                        "matching so3c_equivariant_set) so the comparison "
+                        "isolates the geometric prior from raw capacity.")
+    p.add_argument("--representation", choices=["aggregated", "constituents"],
+                   default="aggregated",
+                   help="aggregated: jet-level 6-D summary (secondary baseline; "
+                        "saturates because it hands every model the jet mass). "
+                        "constituents: per-particle Deep Sets (headline experiment "
+                        "where the geometric prior can use substructure).")
+    p.add_argument("--n-constituents", type=int, default=32,
+                   help="Leading constituents per jet (constituents mode only).")
+    p.add_argument("--normalize", choices=["global", "per_component", "none"],
+                   default="global",
+                   help="Constituent normalisation. 'global' (default) preserves "
+                        "the Lorentz invariant E^2-p^2 (best for SO33); "
+                        "'per_component' z-scores each component (destroys it).")
+    p.add_argument("--pool", choices=["mean", "sum"], default="mean",
+                   help="Deep Sets pooling over constituents.")
+    p.add_argument("--canonical-splits", action="store_true",
+                   help="Use the published Kasieczka train/val/test split "
+                        "(reads top_tagging_{train,val,test}.npz separately) "
+                        "instead of a random 70/15/15 re-split. Makes the "
+                        "test AUC directly comparable to published numbers. "
+                        "constituents mode only.")
+    p.add_argument("--max-train-samples", type=int, default=None,
+                   help="Cap the number of canonical-train jets (memory/time); "
+                        "val and test are always loaded in full. Only used "
+                        "with --canonical-splits.")
+    p.add_argument("--device", type=str, default="cpu",
+                   help="cpu | cuda | cuda:0 ...")
+    p.add_argument("--dtype", choices=["float32", "float64"], default="float64",
+                   help="float32 is ~32x faster on a T4 (no fp64 tensor cores) "
+                        "and keeps Lorentz invariance of the logits to 2e-7.")
+    p.add_argument("--batch-size", type=int, default=128)
+    p.add_argument("--channels", type=int, default=None,
+                   help="so3c set models: complex channels (the geometry axis "
+                        "of the scaling study).")
+    p.add_argument("--hidden", type=int, default=None,
+                   help="so3c set models: readout MLP width (the generic-"
+                        "capacity axis of the scaling study).")
+    p.add_argument("--act-hidden", type=int, default=None,
+                   help="so3c set models: width of the connection MLP.")
+    p.add_argument("--rounds", type=int, default=None,
+                   help="so3c_message_set: covariant message-passing rounds.")
+    p.add_argument("--scalar-dim", type=int, default=None,
+                   help="so3c_message_set: width of the per-particle scalar "
+                        "channel that runs alongside the vector state.")
+    p.add_argument("--msg-dim", type=int, default=None,
+                   help="so3c_message_set: width of the edge message.")
+    p.add_argument("--neighbors", type=int, default=None,
+                   help="so3c_message_set: restrict messages to each "
+                        "particle's k strongest partners, ranked by the "
+                        "INVARIANT |Re z_a.z_b|. Cuts the per-round cost "
+                        "from K^2 to K*k and keeps equivariance, because "
+                        "the ranking key does not move under a boost.")
+    p.add_argument("--flow-T", type=float, default=None,
+                   help="so3c set models: geodesic flow time.")
+    p.add_argument("--lr", type=float, default=3e-3,
+                   help="Adam learning rate (inherited default 3e-3).")
+    p.add_argument("--weight-decay", type=float, default=0.0)
+    p.add_argument("--optimizer", choices=["adam", "adamw"], default="adam")
+    p.add_argument("--schedule", choices=["cosine", "lorentznet"],
+                   default="cosine",
+                   help="lorentznet: 4 warm-up epochs, cosine with warm "
+                        "restarts, 3 decaying epochs -- the recipe LorentzNet "
+                        "and PELICAN train with over 35 epochs.")
+    p.add_argument("--warmup-epochs", type=int, default=4)
+    p.add_argument("--beams", action="store_true",
+                   help="so3c_message_set: add the two beam particles "
+                        "(1, 0, 0, +-1) LorentzNet and PELICAN use, so the "
+                        "network can see lab-frame energies and momenta.")
+    p.add_argument("--dropout", type=float, default=None,
+                   help="so3c_message_set: dropout in the readout MLP.")
+    p.add_argument("--no-mass-input", action="store_true",
+                   help="so3c_message_set: drop the per-constituent m^2, which "
+                        "is rounding noise on this dataset.")
+    p.add_argument("--no-self-edges", action="store_true",
+                   help="so3c_message_set: exclude a = b from the dense graph.")
+    p.add_argument("--relnorm-edge", action="store_true",
+                   help="so3c_message_set: add d_ab = s_aa + s_bb - 2 s_ab to "
+                        "the edge features.")
+    p.add_argument("--falpha", type=int, default=None,
+                   help="so3c_message_set: number of learnable signed Box-Cox "
+                        "compressions for the pair invariants (0 = asinh).")
+    p.add_argument("--vector-channel", action="store_true",
+                   help="so3c_message_set: carry a covariant 4-vector per node "
+                        "beside the bivector, which discards each constituent's "
+                        "component along the jet axis.")
+    p.add_argument("--pair-latent", type=int, default=None,
+                   help="so3c_message_set: channels of a rank-2 pair state "
+                        "carried through the rounds with 7 of PELICAN's 15 "
+                        "equivariant aggregators (0 = off).")
+    p.add_argument("--ckpt-dir", type=str, default=None,
+                   help="Directory for training checkpoints; --resume needs it.")
+    p.add_argument("--resume", action="store_true",
+                   help="Resume interrupted training and skip models whose "
+                        "result JSON already exists.")
+    p.add_argument("--eval-chunk-size", type=int, default=4096,
+                   help="Jets per forward pass at eval time. The pairwise "
+                        "readout holds a (chunk, K, K, hidden) tensor, which "
+                        "grows as K^2: 4096 costs 268 MB at K=32 but 4.3 GB "
+                        "at K=128. Scale it down as K goes up.")
+    p.add_argument("--max-seconds", type=float, default=None,
+                   help="Checkpoint and stop before a session cap (Kaggle "
+                        "kills a notebook at 12h).")
+    args = p.parse_args(argv)
+
+    if args.quick:
+        split = synthetic_tabular(n_samples=1_000, n_features=6,
+                                  n_classes=2, name="top_tagging_synthetic",
+                                  seed=args.seed)
+        epochs = 5
+        experiment = "top_tagging_quick"
+        rep = "flat"
+    elif args.representation == "constituents":
+        split = load_top_tagging_constituents(
+            cache_dir=args.cache_dir, max_samples=args.max_samples,
+            n_constituents=args.n_constituents, seed=args.seed, standardise=True,
+            normalize=args.normalize,
+            use_canonical_splits=args.canonical_splits,
+            max_train_samples=args.max_train_samples,
+        )
+        epochs = args.epochs
+        experiment = ("top_tagging_canonical" if args.canonical_splits
+                      else "top_tagging_constituents")
+        rep = "constituents"
+    else:
+        split = load_top_tagging(cache_dir=args.cache_dir,
+                                 max_samples=args.max_samples,
+                                 seed=args.seed, standardise=True)
+        epochs = args.epochs
+        experiment = "top_tagging"
+        rep = "flat"
+
+    models = (
+        [m.strip() for m in args.models.split(",")] if args.models
+        else None
+    )
+
+    so3c_kwargs = {k: v for k, v in (
+        ("channels", args.channels),
+        ("hidden", args.hidden),
+        ("act_hidden", args.act_hidden),
+        ("rounds", args.rounds),
+        ("scalar_dim", args.scalar_dim),
+        ("msg_dim", args.msg_dim),
+        ("neighbors", args.neighbors),
+        ("T", args.flow_T),
+        ("beams", True if args.beams else None),
+        ("dropout", args.dropout),
+        ("mass_input", False if args.no_mass_input else None),
+        ("self_edges", False if args.no_self_edges else None),
+        ("relnorm_edge", True if args.relnorm_edge else None),
+        ("falpha", args.falpha),
+        ("vector_channel", True if args.vector_channel else None),
+        ("pair_latent", args.pair_latent),
+    ) if v is not None} or None
+
+    kwargs = dict(
+        experiment=experiment,
+        split=split,
+        seed=args.seed,
+        epochs=epochs,
+        representation=rep,
+        pool=args.pool,
+        natural_hidden=args.natural_hidden,
+        results_dir=args.results_dir,
+        device=args.device,
+        dtype=torch.float32 if args.dtype == "float32" else torch.float64,
+        batch_size=args.batch_size,
+        lr=args.lr,
+        weight_decay=args.weight_decay,
+        optimizer=args.optimizer,
+        schedule=args.schedule,
+        warmup_epochs=args.warmup_epochs,
+        so3c_kwargs=so3c_kwargs,
+        ckpt_dir=args.ckpt_dir,
+        resume=args.resume,
+        max_seconds=args.max_seconds,
+        eval_chunk_size=args.eval_chunk_size,
+    )
+    if models is not None:
+        kwargs["models"] = models
+
+    run_tabular_experiment(**kwargs)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
