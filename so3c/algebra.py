@@ -68,7 +68,8 @@ DIM_C = 3   # complex dimension
 DIM_R = 6   # real dimension of the realification C^3 ~= R^6
 N_GEN = 6   # dim so(3, C) as a real Lie algebra (3 rotations + 3 boosts)
 
-# Same metric as so33.basis.ETA — Re(z . z) = v^T eta v (tested for equality).
+# Metric of R^{3,3}: Re(z . z) = v^T eta v. This is the so(3,3) metric;
+# tests/test_so3c_algebra.py pins the value.
 ETA = torch.tensor([1., 1., 1., -1., -1., -1.], dtype=torch.float64)
 
 # Taylor-series switchover for the Rodrigues coefficients.

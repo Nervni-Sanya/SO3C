@@ -5,7 +5,8 @@ Verifies:
   • Lorentz commutation relations [R,R]=eps R, [R,B]=eps B, [B,B]=-eps R.
   • Every generator satisfies A^T eta + eta A = 0  (so(3,C) ⊂ so(3,3))
     and commutes with the complex structure Jc.
-  • ETA matches so33.basis.ETA (shared invariant Re(z.z) = v^T eta v).
+  • ETA is diag(+1,+1,+1,-1,-1,-1), the so(3,3) metric of the shared
+    invariant Re(z.z) = v^T eta v.
   • expm_so3c agrees with torch.matrix_exp, including the small-theta
     series branch; results lie in SO(3,C): Q^T Q = I, det Q = 1.
   • The real 6x6 representation is consistent with complex 3x3 action.
@@ -34,9 +35,9 @@ from so3c.algebra import (
     real_to_complex,
     so3c_generator_stack,
 )
-from so33.basis import ETA as ETA_SO33
-
 TOL = 1e-12
+# The so(3,3) metric, written out so the test pins the value itself.
+ETA_REF = torch.tensor([1., 1., 1., -1., -1., -1.], dtype=torch.float64)
 EPS = torch.zeros(3, 3, 3, dtype=torch.float64)
 for _i, _j, _k in ((0, 1, 2), (1, 2, 0), (2, 0, 1)):
     EPS[_i, _j, _k] = 1.0
@@ -62,7 +63,7 @@ def test_commutation_relations() -> None:
 
 
 def test_embedding_into_so33() -> None:
-    assert torch.equal(ETA, ETA_SO33), "so3c ETA must equal so33 ETA"
+    assert torch.equal(ETA, ETA_REF), "so3c ETA must be diag(+,+,+,-,-,-)"
 
     G = so3c_generator_stack()
     Jc = complex_structure()
