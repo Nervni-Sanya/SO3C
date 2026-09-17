@@ -769,7 +769,7 @@ def build_message_sweep(blob: str) -> None:
     """How steep is this architecture's capacity slope?
 
     That number decides the paper. PELICAN's own size sweep (its table 2,
-    now in paper/figures/pelican_scaling.csv) reaches AUC 0.9850 and
+    now in figures/pelican_scaling.csv) reaches AUC 0.9850 and
     rejection 1494 at 3k parameters and only 0.9870 / 2250 at 208k -- a
     +0.0020 slope over 70x the size. If our slope is comparably flat we are
     saturated near 14k parameters and should say so; if it is steep, there

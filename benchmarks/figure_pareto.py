@@ -6,10 +6,10 @@ Headline figure: performance versus model size on canonical top tagging.
 Two panels share a log-scaled parameter axis: AUC on the left, background
 rejection 1/eps_B at eps_S = 0.3 on the right. Our models (measured on one
 machine, mean +- std over seeds) use filled markers; published numbers use
-open stars and are read from ``paper/figures/literature_reference.csv``.
+open stars and are read from ``figures/literature_reference.csv``.
 
-The published values are transcribed and NOT independently verified (the
-same caveat is flagged in paper/main.tex); the CSV carries a ``verified``
+The published values are transcribed and NOT independently verified; the
+CSV carries a ``verified``
 column and the figure labels them explicitly so the distinction survives
 into the paper.
 

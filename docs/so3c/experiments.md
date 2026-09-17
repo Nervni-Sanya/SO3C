@@ -534,7 +534,7 @@ below the SO(3,3) and pointwise bottlenecks.
 
 Measured by `benchmarks/measure_throughput.py` on one CPU (torch 2.11, 6
 threads, $K=32$, training batch 128); committed in
-`paper/figures/throughput.csv`. The covariant and message-passing models are not in
+`figures/throughput.csv`. The covariant and message-passing models are not in
 this table.
 
 | Model | Params | ms / training step | Inference jets/s at batch 128 / 512 / 2048 |
@@ -547,7 +547,7 @@ this table.
 ### K. Published taggers
 
 Values checked against the source tables, from
-`paper/figures/literature_reference.csv` and `paper/figures/pelican_scaling.csv`.
+`figures/literature_reference.csv` and `figures/pelican_scaling.csv`.
 
 | Model | Params | AUC | $1/\varepsilon_B$ @ 0.3 |
 |---|---:|---:|---|
@@ -569,7 +569,7 @@ every SO3C set model but higher rejection than the $K=32$ SO3C models.
 ## 7. Figures
 
 Figure scripts write a PDF, a CSV twin and (except `figure_scaling`) a PNG to
-`paper/figures/`.
+`figures/`.
 
 | Script | Command | Shows |
 |---|---|---|

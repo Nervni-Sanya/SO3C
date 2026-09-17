@@ -37,8 +37,8 @@ The gap to PELICAN is 0.0037 AUC and a factor of 2.0 in background rejection.
 PELICAN's 1,000-parameter model already matches the 22,834-parameter SO3C
 model, so what is missing is architecture, not size. The published values were
 checked against the source tables
-([`paper/figures/literature_reference.csv`](paper/figures/literature_reference.csv),
-[`paper/figures/pelican_scaling.csv`](paper/figures/pelican_scaling.csv)). The
+([`figures/literature_reference.csv`](figures/literature_reference.csv),
+[`figures/pelican_scaling.csv`](figures/pelican_scaling.csv)). The
 working status — candidates under test, questions closed by measurement, the
 GPU budget — is in [`SO3C_STATUS.md`](SO3C_STATUS.md).
 

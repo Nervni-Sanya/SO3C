@@ -7,7 +7,7 @@ Raw agent output from the `so3c-gap-to-sota` workflow (run `wf_4b9f21c4-439`), w
 - **Unverified agent output.** Nothing below has been checked by a second agent or re-derived, except where a claim matches something already verified in this repo (noted inline).
 - **Incomplete.** Three of six agents failed on the account usage limit: `our-error-profile` (where our model loses, binned by jet mass / pT / multiplicity), `synthesise` (the ranked plan) and `critique` (the adversarial pass). So there is **no ranked plan and no critique** here; the findings are unranked.
 - **Completed angles:** `pelican-internals`, `lorentznet-and-data`, `beyond-pelican` -- 26 findings in total.
-- **Independently verified:** the PELICAN size-sweep numbers quoted below (Table 2, arXiv:2307.16506) match the pypdf extraction of 2026-09-11 in `paper/figures/pelican_scaling.csv`: 326 par 0.9801 / 669, 605 par 0.9823 / 901, 1k 0.9835 / 1145, 11k 0.9858 / 1879, 208k 0.9870 / 2250.
+- **Independently verified:** the PELICAN size-sweep numbers quoted below (Table 2, arXiv:2307.16506) match the pypdf extraction of 2026-09-11 in `figures/pelican_scaling.csv`: 326 par 0.9801 / 669, 605 par 0.9823 / 901, 1k 0.9835 / 1145, 11k 0.9858 / 1879, 208k 0.9870 / 2250.
 
 Context the agents were given: current best `so3c_message_set` with beams + channels 8, K=64, canonical, 30 epochs, 22834 parameters: AUC 0.98333 +- 0.00010, 1/eps_B at eps_S=0.3 of 1131 +- 22; two-seed ensemble 0.98373 / 1174. PELICAN 0.9870 / 2250 at 208k.
 

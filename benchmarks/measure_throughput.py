@@ -102,7 +102,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--n-train-epoch", type=int, default=1_211_000,
                    help="Jets per epoch used to scale the per-step time into "
                         "a per-epoch estimate (default: canonical train size).")
-    p.add_argument("--out-dir", type=str, default="paper/figures")
+    p.add_argument("--out-dir", type=str, default="figures")
     args = p.parse_args(argv)
 
     # A small slice is enough: we time per-batch cost, not convergence.

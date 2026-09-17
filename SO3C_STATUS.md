@@ -6,7 +6,7 @@ Last updated 2026-09-13. This is the single place to start from. Commit hashes p
 
 - **Scope.** This repository holds two separate papers. `paper/main.tex` is the SO(3,3) preprint and is **out of scope** here. SO3C — the complexified-SO(3) construction in `so3c/` and `benchmarks/so3c_models.py` — is a different paper with no draft yet. Work only on SO3C.
 - **Goal.** State of the art on the Kasieczka top-tagging reference dataset, canonical splits (1.211M train / 403k val / 404k test). Not a repositioning to "construction plus methodology": that was proposed after the capacity sweep saturated and was overridden on 2026-09-12.
-- **Targets**, verified against the source tables (`paper/figures/literature_reference.csv`):
+- **Targets**, verified against the source tables (`figures/literature_reference.csv`):
 
   | model | params | AUC | 1/ε_B at ε_S=0.3 |
   |---|---|---|---|

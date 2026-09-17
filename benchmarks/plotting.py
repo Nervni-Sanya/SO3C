@@ -19,7 +19,7 @@ import pathlib
 import statistics as st
 from typing import Any, Iterable, Sequence
 
-DEFAULT_OUT_DIR = pathlib.Path("paper/figures")
+DEFAULT_OUT_DIR = pathlib.Path("figures")
 FIGSIZE = (4.6, 3.2)
 FIGSIZE_WIDE = (7.2, 3.2)
 
