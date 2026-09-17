@@ -9,7 +9,7 @@ Verifies:
   • Closed form agrees with the adaptive solver.
   • Invariants of the output are exactly invariant under SO(3,C) input
     transformations with bound_input="bilinear" — and are NOT with
-    "euclidean" (the complexified analogue of the so33 eta-bound result).
+    "euclidean" (the complexified analogue of the SO(3,3) eta-bound result).
   • Gradients reach the connection parameters in both modes.
 
 Run:

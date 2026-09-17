@@ -3,12 +3,11 @@
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-> **Scope.** This branch, `feature/so3c-complexification`, is the SO3C project,
-> and this README covers SO3C only. The SO(3,3) activation (`so33/`), its
-> preprint (`paper/main.tex`), `REPORT.md`, `examples/` and `CITATION.cff` belong
-> to a separate project, whose README is on the
-> [`main` branch](https://github.com/Nervni-Sanya/so33/tree/main). The two still
-> share this repository and will move to separate ones.
+> **Scope.** This repository is SO3C only. The SO(3,3) activation it grew out
+> of — the `so33` package, its preprint and its own benchmarks — lives in a
+> separate repository, [Nervni-Sanya/so33](https://github.com/Nervni-Sanya/so33).
+> What was removed here on 2026-09-18, and where each piece went, is listed in
+> [`REMOVED.md`](REMOVED.md).
 
 SO3C builds jet taggers on the complexified rotation algebra
 so(3) ⊕ i·so(3) = so(3,ℂ) ≅ so(3,1), which is the Lorentz algebra. Each
@@ -109,16 +108,16 @@ its source directory and the known limitations are in
 ## Quick start
 
 ```bash
-git clone https://github.com/Nervni-Sanya/so33.git
-cd so33
-git checkout feature/so3c-complexification
+git clone https://github.com/Nervni-Sanya/SO3C.git
+cd SO3C
 pip install -r requirements.txt
 pip install -e .
 pip install scikit-learn
 ```
 
-`pip install -e .` installs the `so3c` and `benchmarks` packages (and, until the
-split, `so33`); scikit-learn computes AUC and background rejection.
+`pip install -e .` installs the `so3c` and `benchmarks` packages; scikit-learn
+computes AUC and background rejection. The so33 repository ships a top-level
+`benchmarks` package of its own, so do not install both into one environment.
 
 ```python
 import torch
@@ -192,17 +191,17 @@ in the infrastructure table of [`SO3C_STATUS.md`](SO3C_STATUS.md).
 
 ## Repository layout
 
-| Path | Belongs to | Contents |
-|---|---|---|
-| [`so3c/`](so3c/) | SO3C | Algebra and closed-form exponential, `HermitianMetric`, `SO3CActivation`, `SO3CInteraction`, the bivector lift |
-| [`benchmarks/so3c_models.py`](benchmarks/so3c_models.py) | SO3C | Taggers, flat models and synthetic-task heads |
-| [`benchmarks/`](benchmarks/), the other files | shared harness | Data loaders, `build_model`, training loop, runners, `ensemble_scores`, figure scripts, Kaggle tooling; `benchmarks/models.py` imports `so33` for the SO(3,3) models it also registers |
-| [`tests/`](tests/) | both | `test_so3c_*.py` (47 tests) and `test_harness.py` (17) for SO3C and the harness; the other files (14 tests) test `so33` |
-| [`notebooks/`](notebooks/) | SO3C | Generated Kaggle notebooks with the code embedded |
-| `results_message/`, `results_kappa/`, `results_fixed/`, `results_boost/`, `results_scaling/`, `results_init/`, `results_sweep/`, `results_60ep/`, `results_cleanup/`, `results_matched/`, `results_matched_canonical/` | SO3C | Committed results with per-jet test scores |
-| `results_higgs_ablation/` | both | HIGGS feature-set ablation with SO3C and SO(3,3) rows |
-| [`paper/figures/`](paper/figures/) | SO3C | Figures, their CSV twins and the published reference values, inside the SO(3,3) paper's directory for now |
-| `so33/`, `paper/main.tex`, `REPORT.md`, `examples/`, `CITATION.cff` | SO(3,3) | Not described here |
+| Path | Contents |
+|---|---|
+| [`so3c/`](so3c/) | Algebra and closed-form exponential, `HermitianMetric`, `SO3CActivation`, `SO3CInteraction`, the bivector lift |
+| [`benchmarks/so3c_models.py`](benchmarks/so3c_models.py) | Taggers, flat models and synthetic-task heads |
+| [`benchmarks/`](benchmarks/), the other files | Data loaders, `build_model`, training loop, runners, `ensemble_scores`, figure scripts, Kaggle tooling |
+| [`tests/`](tests/) | `test_so3c_*.py` (47 tests) and `test_harness.py` (17) |
+| [`notebooks/`](notebooks/) | Generated Kaggle notebooks with the code embedded |
+| [`figures/`](figures/) | Figures, their CSV twins and the published reference values |
+| [`so3c_notes/`](so3c_notes/) | Research notes and the related-work survey |
+| `results_message/`, `results_kappa/`, `results_fixed/`, `results_boost/`, `results_scaling/`, `results_init/`, `results_sweep/`, `results_60ep/`, `results_cleanup/`, `results_matched/`, `results_matched_canonical/` | Committed results with per-jet test scores |
+| `results_higgs_ablation/` | HIGGS feature-set ablation (matched bottleneck, three feature sets) |
 
 `results/` and `data/` (the datasets, about 11 GB) are in `.gitignore`.
 
@@ -212,21 +211,31 @@ in the infrastructure table of [`SO3C_STATUS.md`](SO3C_STATUS.md).
 python -m pytest tests/ -q
 ```
 
-The suite has 78 tests. The 47 SO3C tests cover the algebra (5), the activation
+The suite has 64 tests. The 47 SO3C tests cover the algebra (5), the activation
 (7), the interaction layer (5), the lift (4), the models (20) and float32
 behaviour (6); the 17 harness tests cover checkpointing and resume,
-reproducibility, the training schedules and the figure scripts; 14 test the
-`so33` package. On a CPU-only machine 76 pass and two CUDA-only harness tests
-are skipped. Tests of the flow models' equivariance set the zero-initialised
+reproducibility, the training schedules and the figure scripts. On a CPU-only
+machine 62 pass and two CUDA-only harness tests are skipped. Tests of the flow models' equivariance set the zero-initialised
 weight heads to random values first: on a freshly built model the flow is the
 identity, and an invariance check would pass without testing the flow.
 
 ## License and citation
 
-MIT, see [LICENSE](LICENSE). There is no SO3C paper or DOI yet; `CITATION.cff`
-and the Zenodo DOI describe the SO(3,3) software.
+MIT, see [LICENSE](LICENSE). There is no SO3C paper, release or DOI yet;
+[`CITATION.cff`](CITATION.cff) describes this software without one. The Zenodo
+DOI 10.5281/zenodo.19763339 belongs to the SO(3,3) software in the
+[so33 repository](https://github.com/Nervni-Sanya/so33), not to SO3C.
 
 ## Acknowledgements
+
+Every GPU result in this repository was trained on **Kaggle**'s free notebook
+sessions (P100 and T4), within their quota of 30 GPU-hours per week. The
+headline configuration spends 10.6 of those hours per seed, so this work would
+not exist without that free compute; the notebooks that ran there, with the
+code embedded, are in [`notebooks/`](notebooks/).
+
+The data is the top-tagging reference set of Kasieczka et al.
+([arXiv:1902.09914](https://arxiv.org/abs/1902.09914), Zenodo 2603256).
 
 The SO3C construction, benchmark harness and experiments were developed with
 the assistance of **Claude (Anthropic)**.

@@ -32,10 +32,10 @@ The complex bilinear form  z . z = sum_i z_i^2  (NO conjugation) splits as
     Re(z . z) = |x|^2 - |y|^2 = v^T eta v ,   eta = diag(+1,+1,+1,-1,-1,-1)
     Im(z . z) = 2 x . y
 
-so the realified SO(3, C) sits inside the SO(3, 3) of the parent `so33`
-package as the subgroup commuting with Jc, and Re(z . z) is precisely the
-eta-invariant already used throughout `so33`. SO(3, C) preserves BOTH real
-invariants; the larger SO(3, 3) preserves only the first.
+so the realified SO(3, C) sits inside SO(3, 3), the group of the parent
+architecture, as the subgroup commuting with Jc, and Re(z . z) is precisely
+that architecture's eta-invariant. SO(3, C) preserves BOTH real invariants;
+the larger SO(3, 3) preserves only the first.
 
 Basis convention
 ----------------
@@ -110,7 +110,7 @@ def complex_bilinear(z: torch.Tensor, w: torch.Tensor) -> torch.Tensor:
 def bilinear_invariant(v: torch.Tensor) -> torch.Tensor:
     """(…, 6) real -> (…,) complex :  the conserved quadratic invariant z . z.
 
-    Re(z . z) = v^T eta v  (the so33 eta-invariant);  Im(z . z) = 2 x . y.
+    Re(z . z) = v^T eta v  (the SO(3,3) eta-invariant);  Im(z . z) = 2 x . y.
     """
     z = real_to_complex(v)
     return complex_bilinear(z, z)

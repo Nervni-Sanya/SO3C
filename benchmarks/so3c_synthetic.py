@@ -14,7 +14,7 @@ The complex bilinear invariant of z = E + i B is
 whose real and imaginary parts are exactly the two classical invariants of
 the electromagnetic field. Under the realification C^3 ~= R^6:
 
-    Re(z . z) = v^T eta v      -- the SO(3,3) eta-invariant of `so33`
+    Re(z . z) = v^T eta v      -- the SO(3,3) eta-invariant
     Im(z . z) = 2 x . y        -- invariant ONLY under the SO(3,C) subgroup
 
 So a label carried by Im(z . z) (mode="im", default) is structurally

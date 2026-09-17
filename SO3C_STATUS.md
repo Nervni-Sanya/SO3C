@@ -1,10 +1,10 @@
 # SO3C status
 
-Last updated 2026-09-13. This is the single place to start from. Commit hashes point at the evidence for every number.
+Last updated 2026-09-18. This is the single place to start from. Commit hashes point at the evidence for every number; unless stated otherwise they are commits in the **so33** repository this one was split from (see [Provenance](#provenance)).
 
 ## Scope and goal
 
-- **Scope.** This repository holds two separate papers. `paper/main.tex` is the SO(3,3) preprint and is **out of scope** here. SO3C — the complexified-SO(3) construction in `so3c/` and `benchmarks/so3c_models.py` — is a different paper with no draft yet. Work only on SO3C.
+- **Scope.** This repository is SO3C only: the complexified-SO(3) construction in `so3c/` and `benchmarks/so3c_models.py`, plus the harness that measures it. The SO(3,3) preprint and package are a different paper and live in the separate so33 repository; [`REMOVED.md`](REMOVED.md) lists what was taken out of this one. SO3C has no draft yet.
 - **Goal.** State of the art on the Kasieczka top-tagging reference dataset, canonical splits (1.211M train / 403k val / 404k test). Not a repositioning to "construction plus methodology": that was proposed after the capacity sweep saturated and was overridden on 2026-09-12.
 - **Targets**, verified against the source tables (`figures/literature_reference.csv`):
 
@@ -148,3 +148,11 @@ One seed per row, so a gain near +0.0004 AUC is at the edge of noise; confirm an
 
 - The K=32 probe protocol (400k train jets, 20 epochs) costs 0.6–1.2 h per row.
 - Quota is 30 GPU-h per week. The window ending 2026-09-19 is essentially spent (~29 h); the next opens Saturday 2026-09-19.
+
+## Provenance
+
+- This repository is a **snapshot** of the so33 repository's branch `feature/so3c-complexification`, taken at its tip `d360acc` (2026-09-13) and pushed as a single root commit, `6f79e70`, tagged `pre-so33-removal`. It shares no history with so33.
+- **Every commit hash in this document refers to the so33 repository**, not to a commit reachable from here. The same holds for the hashes in the Closed table and in the commit messages inherited from before the snapshot.
+- Before the bench is deleted from so33, **tag `d360acc` there** (for example `so3c-snapshot-2026-09-13`), so those hashes stay reachable after that repository is pruned.
+- SO(3,3)-only content was removed here on 2026-09-18 in four commits: `e322d9e`, `f3f1568`, `09aa178` and the packaging/documentation commit. [`REMOVED.md`](REMOVED.md) lists what went, what was kept on purpose and what changed as a result.
+- so33 keeps its copy of this bench for now; it remains the home of the SO(3,3) paper, its Zenodo DOI and its `CITATION.cff`.

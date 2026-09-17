@@ -10,7 +10,7 @@ Forward map
 where the connection a in C^3 ~= so(3, C) is either
 
     mode="static"  : 6 learnable scalars  a = rho + i beta      (the direct
-                     complexified analogue of SO33Activation's 15 coefficients)
+                     complexified analogue of the SO(3,3) activation's 15)
     mode="dynamic" : a = a(s(z)) predicted by HermitianMetric from the
                      SO(3, C) invariants s = (Re z.z, Im z.z)
 
@@ -29,7 +29,7 @@ flow with torchdiffeq (recomputing a(s(z)) at every step in dynamic mode) —
 used for cross-validation and as the template for the multi-particle case
 (interaction.py), where no closed form exists.
 
-Input bounding (carries over the central so33 lesson)
+Input bounding (carries over the central SO(3,3) lesson)
 -----------------------------------------------------
     "none"      -- identity.
     "euclidean" -- x / (1 + ||x||_2). NOT invariant: breaks the group

@@ -4,13 +4,13 @@ benchmarks.so3c_models
 Classifier heads for the SO(3, C) (complexified-SO(3)) benchmark battery.
 
 Three roles, mirroring the Arch-A / control / Arch-B split of the parent
-so33 benchmarks:
+SO(3,3) benchmarks, which live in the so33 repository (see REMOVED.md):
 
 - SO3CInvariantsClassifier : reads BOTH real invariants (Re z.z, Im z.z) —
   SO(3, C)-invariant by construction. The complexified analogue of
   EtaInvariantsClassifier.
 - EtaOnlyClassifier        : reads only Re(z.z) = v^T eta v — what an
-  eta-based (so33-style) invariant readout sees on complexified data.
+  eta-based (SO(3,3)-style) invariant readout sees on complexified data.
   Structurally blind to labels carried by Im(z.z).
 - SO3CFlowClassifier       : complex channel lift, per-channel SO3CActivation
   geodesic flow, cross-channel readout z_c(T) . z_d(T). Invariant only while
@@ -34,7 +34,7 @@ from so3c.lift import bivector_lift, jet_bivectors, minkowski_inner
 
 # ─────────────────────────────────────────────────────────────────────────
 # Shared pooled-invariant readouts for set (per-constituent) models.
-# Design informed by the so33 Arch-B failure (readout omitted the pairwise
+# Design informed by the SO(3,3) Arch-B failure (readout omitted the pairwise
 # term -> chance level): every readout here includes pairwise statistics.
 # ─────────────────────────────────────────────────────────────────────────
 
@@ -142,16 +142,16 @@ def _minkowski_stats(p4: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
 class SO3CBottleneck(nn.Module):
     """Linear(in -> 6) -> SO3CActivation -> Linear(6 -> out).
 
-    The direct so3c analogue of SO33Network's matched-bottleneck wiring for
+    The direct so3c analogue of the SO(3,3) matched-bottleneck wiring for
     flat tabular data (HIGGS, Adult). Uses the closed-form "exact" flow — no
-    ODE solver, so unlike the so33 counterpart it cannot diverge on
+    ODE solver, so unlike the SO(3,3) counterpart it cannot diverge on
     heavy-tailed real-data inputs (the connection is soft-normalised and the
     flow is a bounded group element), and needs neither input bounding nor a
     norm cap on the flat path.
 
     mode="dynamic": connection from the invariant-fed HermitianMetric MLP.
-    mode="static" : 6 learnable scalars — the closest analogue of so33's
-                    15-coefficient activation (matched parameter class).
+    mode="static" : 6 learnable scalars — the closest analogue of the
+                    SO(3,3) 15-coefficient activation (matched parameter class).
     """
 
     def __init__(
@@ -1068,7 +1068,7 @@ class SO3CInvariantsClassifier(nn.Module):
 
 
 class EtaOnlyClassifier(nn.Module):
-    """Control: sees only Re(z.z) — the eta-invariant of the parent so33.
+    """Control: sees only Re(z.z) — the eta-invariant of the SO(3,3) prior.
 
     On labels carried by Im(z.z) this model is structurally at chance; it
     quantifies exactly what the complexification adds over the SO(3,3) prior.

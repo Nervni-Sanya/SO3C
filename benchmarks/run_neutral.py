@@ -4,7 +4,7 @@ benchmarks.run_neutral
 Neutral tabular sanity check (UCI Adult or breast-cancer fallback).
 
 Tier-2 sanity check: data with no Lorentz structure. The expectation
-is that SO33 lands close to ReLU/GELU baselines — neither obviously
+is that the geometric models land close to ReLU/GELU baselines — neither obviously
 better nor worse. A large win OR a collapse would both be flags
 worth investigating before reporting headline numbers.
 

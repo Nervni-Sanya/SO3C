@@ -11,8 +11,8 @@ Reports two tables side-by-side:
   activation -> Linear. Apples-to-apples comparison; isolates whether
   the geometry helps at equal compression.
 - ``natural_width``: MLPs use a wide hidden layer (default 256) while
-  SO33 stays at 6. Apples-to-oranges; tests whether SO33 is competitive
-  in practice given its hard 6-dim bottleneck.
+  the geometric models stay at 6. Apples-to-oranges; tests whether they
+  are competitive in practice given their hard 6-dim bottleneck.
 
 Used by the per-dataset runners (run_higgs, run_top_tagging, run_neutral)
 which only differ in their dataset loader.

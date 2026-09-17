@@ -1,7 +1,7 @@
 """
 benchmarks.train
 ----------------
-Reusable training loop and metrics for the SO33 benchmark harness.
+Reusable training loop and metrics for the SO3C benchmark harness.
 
 Single function ``train_classifier`` covers both the synthetic battery
 and (eventually) the real-data experiments. It logs walltime and peak
@@ -119,7 +119,7 @@ def train_classifier(
 
     The model is expected to expose ``forward(x) -> logits`` and
     ``regularization_loss() -> tensor`` (BottleneckClassifier and the
-    SO33 variants both do; NaturalWidthMLP returns 0). Cross-entropy
+    SO3C variants both do; NaturalWidthMLP returns 0). Cross-entropy
     is the only loss; pass an extra regulariser via the model.
 
     Returns

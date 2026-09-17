@@ -6,7 +6,7 @@ Generate the Kaggle notebooks from source, with the repo's code embedded.
 Two reasons the notebooks are generated rather than hand-written:
 
 1. The Kasieczka top-tagging set is not on Kaggle and the GitHub branch
-   lags local work, so each notebook carries so3c/, benchmarks/ and so33/
+   lags local work, so each notebook carries so3c/, benchmarks/ and tests/
    as an embedded tar.gz. Regenerating keeps that copy in step with the
    working tree instead of silently going stale.
 2. Notebook ``source`` must be a list of lines that KEEP their trailing

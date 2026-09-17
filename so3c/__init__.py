@@ -8,9 +8,9 @@ Complexifying so(3) yields the Lorentz algebra as a real Lie algebra:
 
 so this package is simultaneously (a) the complexification of the rotation
 group and (b) an exactly-Lorentz-structured flow layer. The realification
-C^3 ~= R^6 embeds SO(3, C) into the SO(3, 3) of the parent `so33` package as
-the subgroup commuting with the complex structure, and the eta-invariant of
-`so33` reappears as Re(z . z).
+C^3 ~= R^6 embeds SO(3, C) into SO(3, 3) -- the group of the parent
+architecture -- as the subgroup commuting with the complex structure, and
+that eta-invariant reappears as Re(z . z).
 
 Public API
 ----------

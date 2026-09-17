@@ -35,8 +35,8 @@ complex structure $J_c=\begin{pmatrix}0&-I\\I&0\end{pmatrix}$
 
 $$\operatorname{Re}(z\cdot z)=|x|^2-|y|^2=v^T\eta v,\qquad \operatorname{Im}(z\cdot z)=2\,x\cdot y,\qquad \eta=\operatorname{diag}(1,1,1,-1,-1,-1).$$
 
-`so3c.ETA` is the same tensor as `so33.basis.ETA`, so $\operatorname{Re}(z\cdot z)$
-is exactly the $\eta$-invariant of the parent SO33 architecture. The realified
+`so3c.ETA` is that metric written as a vector, so $\operatorname{Re}(z\cdot z)$
+is exactly the $\eta$-invariant of the parent SO(3,3) architecture. The realified
 generators (`so3c_generator_stack`) are $R_i=\operatorname{blockdiag}(L_i,L_i)$
 and $B_i=J_cR_i$. Each satisfies the $\mathfrak{so}(3,3)$ condition
 $A^T\eta+\eta A=0$ and commutes with $J_c$: $SO(3,\mathbb C)$ is the subgroup of

@@ -57,7 +57,7 @@ MAX_SCATTER_SERIES = 3
 #       -> PASS, CVD 9.2, normal 27.6
 #   "#1baf7a,#4a3aa7,#eb6834" --pairs all  pareto with eta included
 #       -> PASS, CVD 9.2, normal 27.6
-#   "#4a3aa7,#e34948" --pairs all          the two SO(3,3) baselines
+#   "#4a3aa7,#e34948" --pairs all          eta-invariants with relu_bottleneck
 #       -> PASS, CVD 22.7, normal 33.6
 #
 # so3c_equivariant_set left orange #eb6834 on 2026-09-11: four figures draw it

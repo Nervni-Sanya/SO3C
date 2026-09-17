@@ -21,7 +21,7 @@ Datasets
   jets, each with up to 200 constituents (E, px, py, pz). Binary:
   top-vs-QCD. We aggregate per-jet to a fixed 6-D feature vector
   (total 4-momentum + leading-particle 4-momentum projected onto
-  selected axes) so SO33 can consume the 6-D rep directly while
+  selected axes) so the geometric models consume the 6-D rep directly while
   natural-width MLPs see a richer per-particle representation.
   URL: https://zenodo.org/record/2603256
 
@@ -228,7 +228,7 @@ TOP_TAGGING_URL = "https://zenodo.org/record/2603256"
 def aggregate_jet_to_6d(constituents: np.ndarray) -> np.ndarray:
     """Reduce a (n_particles, 4) array of (E, px, py, pz) to a 6-D vector.
 
-    The 6-D rep is laid out so SO33 sees a Lorentzian structure:
+    The 6-D rep is laid out so the geometric models see a Lorentzian structure:
         [E_total, px_total, py_total, pz_total,
          m_jet,                                    # invariant mass
          pT_total]                                  # transverse momentum
@@ -460,11 +460,11 @@ def load_top_tagging_constituents(
     while the Deep Sets model recovers the mask for correct pooling.
 
     ``normalize`` controls the input scaling, which matters a great deal
-    for SO33: the (3,3) signature only carries meaning if the Lorentz
+    for the geometric models: the (3,3) signature only carries meaning if the
     invariant m^2 = E^2 - px^2 - py^2 - pz^2 survives normalisation.
       - "global"        : divide all components by one scalar (the train
                           RMS over real constituents). Preserves the metric
-                          structure; recommended for SO33. (default)
+                          structure; recommended for the geometric models. (default)
       - "per_component" : independent z-score per (E,px,py,pz). Destroys
                           the invariant — fine for generic baselines, bad
                           for the geometric prior. Kept for ablation.

@@ -1,24 +1,25 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
-title: "SO33 Activation: Parallel Transport in Pseudo-Euclidean Space R^{3,3}"
-abstract: "A library for neural network activation based on parallel transport in the pseudo-Euclidean space R^{3,3} (signature +,+,+,-,-,-) with a trainable so(3,3) connection. Implements a layer that integrates a quadratic ODE and includes a full set of tests."
+title: "SO3C: Lorentz-covariant jet tagging with complexified-SO(3) geodesic flows"
+abstract: "Jet taggers built on the complexified rotation algebra so(3) + i so(3) = so(3,C), which is isomorphic to the Lorentz algebra so(3,1). Each particle carries a complex 3-vector moved along the closed-form flow z' = -[a] x z by a learned covariant connection; the flow conserves the bilinear invariant z.z and is evaluated with a complex Rodrigues formula, so no ODE solver is involved. Includes the benchmark harness used to measure the taggers on the Kasieczka top-tagging reference dataset."
 authors:
   - family-names: "Панченко"
     given-names: "Александр Алексеевич"
     email: "sascha.panchenko2018@yandex.ru"
     orcid: "https://orcid.org/0009-0009-9104-1214"
-version: "1.0.0-beta.3"
-date-released: "2026-04-25"
-url: "https://github.com/Nervni-Sanya/so33"
-repository-code: "https://github.com/Nervni-Sanya/so33"
+url: "https://github.com/Nervni-Sanya/SO3C"
+repository-code: "https://github.com/Nervni-Sanya/SO3C"
 license: "MIT"
 keywords:
-  - "so33"
-  - "pseudo-Euclidean"
-  - "parallel transport"
-  - "neural activation"
-  - "Lie algebra"
+  - "SO3C"
+  - "Lorentz covariance"
+  - "jet tagging"
+  - "top tagging"
+  - "complexified rotation algebra"
   - "geometric deep learning"
+  - "particle physics"
   - "Python"
 type: software
-doi: "10.5281/zenodo.19763339"
+# No version, release date or DOI: SO3C has no release and no paper yet.
+# The Zenodo DOI 10.5281/zenodo.19763339 belongs to the separate SO(3,3)
+# software (github.com/Nervni-Sanya/so33) and must not be used for SO3C.

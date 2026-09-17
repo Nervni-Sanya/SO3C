@@ -18,7 +18,7 @@ Shapes use `…` for leading batch dimensions. Real tensors default to
 | `DIM_C` | 3 — complex dimension |
 | `DIM_R` | 6 — real dimension of $\mathbb C^3\cong\mathbb R^6$ |
 | `N_GEN` | 6 — real dimension of $\mathfrak{so}(3,\mathbb C)$ |
-| `ETA` | `tensor([1, 1, 1, -1, -1, -1], float64)`, equal to `so33.basis.ETA` |
+| `ETA` | `tensor([1, 1, 1, -1, -1, -1], float64)`, the so(3,3) metric |
 
 | Function | Shapes | Description |
 |---|---|---|
@@ -148,7 +148,7 @@ Transforming it in place (`model.beam_p4.copy_(...)`) is how the tests and
 
 ## Harness entry points
 
-**`benchmarks.models.build_model(name, in_features, out_features, *, T=0.3, natural_hidden=256, dtype=float64, adjoint=True, so33_method="rk4", so33_step_size=None, representation="flat", bound_input=None, max_input_norm=8.0, pool="mean", so3c_kwargs=None)`**
+**`benchmarks.models.build_model(name, in_features, out_features, *, natural_hidden=256, dtype=float64, representation="flat", pool="mean", so3c_kwargs=None)`**
 
 - Set models need `representation="constituents"` and `in_features=4`.
   `so3c_kwargs` is passed to their constructors after filtering: the
@@ -162,7 +162,7 @@ Transforming it in place (`model.beam_p4.copy_(...)`) is how the tests and
   `so3c_kwargs`; `so3c_multi` does not.
 - `benchmarks.models.count_parameters(model)` counts trainable parameters.
 
-**`benchmarks.tabular_runner.run_tabular_experiment(experiment, split, *, models=None, seed=0, epochs=30, batch_size=128, lr=3e-3, weight_decay=0.0, optimizer="adam", schedule="cosine", warmup_epochs=4, natural_hidden=256, T=0.3, representation="flat", pool="mean", results_dir="results", device="cpu", dtype=float64, so3c_kwargs=None, eval_chunk_size=4096, ckpt_dir=None, resume=False, max_seconds=None)`**
+**`benchmarks.tabular_runner.run_tabular_experiment(experiment, split, *, models=None, seed=0, epochs=30, batch_size=128, lr=3e-3, weight_decay=0.0, optimizer="adam", schedule="cosine", warmup_epochs=4, natural_hidden=256, representation="flat", pool="mean", results_dir="results", device="cpu", dtype=float64, so3c_kwargs=None, eval_chunk_size=4096, ckpt_dir=None, resume=False, max_seconds=None)`**
 trains each model, evaluates it on the test split and writes
 `<results_dir>/<experiment>__<model>__seed<seed>.json` plus a
 `…__scores.npz` with per-example test scores. The record includes

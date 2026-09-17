@@ -17,8 +17,8 @@ pip install scikit-learn
 ```
 
 `requirements.txt` lists torch, torchdiffeq, numpy, matplotlib and jupyter;
-`pip install -e .` installs the `so33`, `so3c` and `benchmarks` packages
-(distribution name `so33-activation`). scikit-learn computes AUC and
+`pip install -e .` installs the `so3c` and `benchmarks` packages
+(distribution name `so3c`). scikit-learn computes AUC and
 background rejection: without it the runner prints a warning and the result
 JSON has no `test_auc`. Converting the top-tagging data needs
 `huggingface_hub pandas pyarrow tables`; the Adult data set needs pandas.
@@ -240,7 +240,7 @@ python -m benchmarks.run_so3c_boost_ood --n 20000 --epochs 40 --train-boost 0.6 
 ```bash
 python -m benchmarks.run_higgs --cache-dir data --max-samples 200000 --epochs 30 \
     --feature-set low --seed 0 \
-    --models so3c,so3c_static,so33,relu_bottleneck,tanh_bottleneck,gelu_bottleneck \
+    --models so3c,so3c_static,relu_bottleneck,tanh_bottleneck,gelu_bottleneck \
     --results-dir results_higgs_ablation
 python -m benchmarks.run_neutral --epochs 30 --seed 0
 ```
@@ -454,7 +454,9 @@ One seed, 40 epochs, sizes as in §4; `results/` (not committed).
 When the label is carried by $\operatorname{Im}z\cdot z$, a readout of the
 SO(3,3) invariant alone is at chance; the invariant SO3C head is perfect in and
 out of distribution. The flow head loses 0.0038 OOD, consistent with it not
-being invariant once trained.
+being invariant once trained. The `so33` row is the parent SO(3,3) model,
+removed from this repository with the split; its code is in the so33
+repository ([`REMOVED.md`](../../REMOVED.md)).
 
 ### G. Internal protocol and the $K$ sweep (earlier experiments)
 
@@ -483,7 +485,9 @@ $K$ sweep, internal protocol, 1 seed each, committed in `results_sweep/`:
 `Linear(F→6) → activation → Linear(6→2)`, and the dynamic SO3C flow adds a
 150-parameter metric MLP. The flat SO3C model has no Lorentz symmetry (its
 6-D embedding is learned), so this compares the flow with pointwise
-activations. Committed in `results_higgs_ablation/`.
+activations. Committed in `results_higgs_ablation/`. The `so33` row was
+measured before the SO(3,3) split and its per-seed files went with it
+([`REMOVED.md`](../../REMOVED.md)).
 
 | Model | All 28 features | Params | Low-level (21) | Params | High-level (7) | Params | Seeds |
 |---|---|---:|---|---:|---|---:|---:|
@@ -528,7 +532,9 @@ carries the result.
 
 On HIGGS the wide MLPs lead and `so3c_multi` comes within 0.004 AUC with 5.9×
 fewer parameters. On Adult, which has no Lorentz structure, SO3C is slightly
-below the SO(3,3) and pointwise bottlenecks.
+below the SO(3,3) and pointwise bottlenecks. The `so33` and `so33_multi`
+rows are the parent SO(3,3) models and cannot be rebuilt in this repository
+([`REMOVED.md`](../../REMOVED.md)).
 
 ### J. CPU cost
 

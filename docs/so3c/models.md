@@ -13,8 +13,8 @@ real constituent, 0 for padding). `benchmarks.datasets.load_top_tagging_constitu
 produces it: the $K$ leading constituents by $p_T$, zero-padded, divided by one
 global scale (the RMS over real training constituents, which keeps
 $E^2-\vec p^{\,2}$ up to a constant factor). Each model builds its own lift
-internally, so the SO(3,3) arguments of `build_model` (`T`, `bound_input`,
-solver settings) do not apply to them.
+internally, so `build_model` passes them no lift or solver arguments; their
+capacity knobs arrive through `so3c_kwargs`.
 
 Flat models take `(B, F)` feature vectors (HIGGS, Adult).
 

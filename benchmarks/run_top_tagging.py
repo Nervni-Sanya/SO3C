@@ -6,7 +6,7 @@ Top Tagging Reference (arXiv:1902.09914) benchmark.
 Tier-1 *headline* anchor: per-jet 4-momentum aggregated to a 6-D
 representation that aligns directly with the (3,3) signature
 (see ``aggregate_jet_to_6d`` in benchmarks.datasets). This is the
-experiment where SO33's geometric prior should pay off most, since
+experiment where the geometric prior should pay off most, since
 the data has explicit Lorentzian structure.
 
 Reports matched-bottleneck and natural-width tables. Note: with only
@@ -64,7 +64,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--normalize", choices=["global", "per_component", "none"],
                    default="global",
                    help="Constituent normalisation. 'global' (default) preserves "
-                        "the Lorentz invariant E^2-p^2 (best for SO33); "
+                        "the Lorentz invariant E^2-p^2 (best for the geometric models); "
                         "'per_component' z-scores each component (destroys it).")
     p.add_argument("--pool", choices=["mean", "sum"], default="mean",
                    help="Deep Sets pooling over constituents.")
