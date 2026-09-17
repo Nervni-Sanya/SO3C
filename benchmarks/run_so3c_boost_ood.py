@@ -77,9 +77,8 @@ def _build(name: str):
     if name == "eta_only":
         return EtaOnlyClassifier(out_features=2)
     # Fall back to the shared factory for baselines (flat (B, 6) models).
-    bound = True if name.startswith("so33") else None
     return build_model(name, in_features=6, out_features=2,
-                       T=0.3, bound_input=bound, representation="flat")
+                       representation="flat")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -87,7 +86,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--quick", action="store_true",
                    help="Smoke run: 1k samples, 5 epochs.")
     p.add_argument("--models", type=str,
-                   default="so3c_invariants,so3c_flow,eta_only,relu_mlp,so33")
+                   default="so3c_invariants,so3c_flow,eta_only,relu_mlp")
     p.add_argument("--n", type=int, default=20_000)
     p.add_argument("--epochs", type=int, default=40)
     p.add_argument("--seed", type=int, default=0)

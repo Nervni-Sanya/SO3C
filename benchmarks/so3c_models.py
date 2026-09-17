@@ -1003,7 +1003,8 @@ class SO3CMessageSetClassifier(nn.Module):
 
 class MultiChannelSO3C(nn.Module):
     """Multi-channel so3c block: C parallel Linear(in -> 6) + SO3CActivation,
-    concatenated to 6*C, then Linear(6*C -> out). Mirror of MultiChannelSO33.
+    concatenated to 6*C, then Linear(6*C -> out). Capacity control for the
+    single-channel so3c bottleneck.
     """
 
     def __init__(

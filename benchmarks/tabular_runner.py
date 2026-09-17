@@ -83,8 +83,8 @@ def evaluate_test(
                 out[key] = float("inf") if eps_b <= 0.0 else 1.0 / eps_b
         except Exception as e:
             # Do NOT swallow silently: a missing test_auc in the results
-            # JSON has historically hidden real failures (NaN logits in the
-            # so33_equivariant runs went unnoticed for weeks).
+            # JSON has historically hidden real failures (NaN logits in an
+            # early equivariant-model run went unnoticed for weeks).
             print(f"[evaluate_test] WARNING: AUC/rejection failed: {e!r}")
     return out
 
@@ -103,7 +103,6 @@ def run_tabular_experiment(
     schedule: str = "cosine",
     warmup_epochs: int = 4,
     natural_hidden: int = 256,
-    T: float = 0.3,
     representation: str = "flat",
     pool: str = "mean",
     results_dir: pathlib.Path | str = "results",
@@ -168,7 +167,6 @@ def run_tabular_experiment(
             name,
             in_features  = split.n_features,
             out_features = split.n_classes,
-            T = T,
             natural_hidden = natural_hidden,
             representation = representation,
             pool = pool,
