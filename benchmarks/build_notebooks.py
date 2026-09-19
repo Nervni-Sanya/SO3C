@@ -1543,6 +1543,56 @@ print("confirm any winner at K=64 before believing it.")
     _finalise(cells, NB_DIR / "kaggle_gap_screen.ipynb")
 
 
+def build_gpu_profile(blob: str) -> None:
+    """Where the GPU time goes, measured on the card.
+
+    Beams + channels 8 at K=64 costs 1272 s per epoch on a P100, about
+    0.24 s per training step of 256 jets. A bandwidth estimate from the
+    tensor sizes puts a step several times lower, and CPU profiles cannot
+    settle it (complex batched matmuls run as per-matrix loops there). This
+    kernel times the training step and the eval pass and ranks the CUDA
+    kernels, for the headline configuration and the two costliest screen
+    candidates, on synthetic jets: cost depends only on shapes. No dataset
+    is attached. About 10 minutes of GPU including the torch reinstall.
+    """
+    cells = [
+        md("""
+# GPU profile of so3c_message_set
+
+Times the training step and eval forward pass at K=64 / batch 256 and ranks
+the CUDA kernels for beams + channels 8, with the vector channel, and with the
+pair latent. Synthetic jets; the cost depends only on shapes.
+"""),
+        code("""
+import subprocess
+print(subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total",
+                      "--format=csv,noheader"], capture_output=True,
+                     text=True).stdout.strip())
+"""),
+        code(UNPACK.format(blob=blob)),
+        code(RUNNER),
+        code(GPU_SETUP),
+        code("""
+OUT = "/kaggle/working/profile_out"
+ok = run(["benchmarks.profile_gpu", "--out", OUT, "--k", "64",
+          "--batch-size", "256", "--eval-chunk-size", "1024",
+          "--config", "base", "--config", "vector", "--config", "pair8"])
+assert ok, "profile failed"
+ok = run(["benchmarks.profile_gpu", "--out", OUT + "_k32", "--k", "32",
+          "--batch-size", "256", "--eval-chunk-size", "2048",
+          "--config", "base", "--no-profile"])
+"""),
+        code("""
+import pathlib
+for f in ["base_by_kernel.txt", "base_by_shape.txt", "base_by_line.txt"]:
+    p = pathlib.Path(OUT) / f
+    print("=====", f)
+    print("\n".join(p.read_text().splitlines()[:45]))
+"""),
+    ]
+    _finalise(cells, NB_DIR / "kaggle_gpu_profile.ipynb")
+
+
 def build_message(blob: str, seed: int = 0, k: int = 64) -> None:
     """Tier-2 item 5: covariant message passing on the canonical protocol.
 
@@ -1778,6 +1828,7 @@ def main() -> int:
     build_beams_k64_finish(blob)
     build_capacity_cost(blob)
     build_gap_screen(blob)
+    build_gpu_profile(blob)
     for k in (32, 64):
         for seed in (0, 1):
             build_message(blob, seed=seed, k=k)
