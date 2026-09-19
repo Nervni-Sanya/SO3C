@@ -799,27 +799,55 @@ def test_message_set_pair_latent_trains() -> None:
                     so3c_kwargs={"pair_latent": 4, "neighbors": 4})
 
 
+def _case_outputs(name: str, device: str, cls=None):
+    """(logits, gradient fingerprint) as numpy for one golden case, float64
+    on ``device``; ``cls`` swaps in another implementation, same weights."""
+    from tests.message_golden import CONFIGS, build_case, gradient_fingerprint
+    model, x, y = build_case(name)
+    if cls is not None:
+        other = cls(dtype=torch.float64, **CONFIGS[name])
+        other.load_state_dict(model.state_dict())
+        model = other
+    model, x, y = model.to(device), x.to(device), y.to(device)
+    logits = model(x)
+    loss = torch.nn.functional.cross_entropy(logits, y)
+    grads = torch.autograd.grad(loss, list(model.parameters()))
+    grad = gradient_fingerprint(torch.cat([g.reshape(-1) for g in grads]).cpu())
+    return logits.detach().cpu().numpy(), grad.numpy()
+
+
+def _rel(a, b) -> float:
+    import numpy as np
+    return float(np.abs(a - b).max() / np.abs(b).max())
+
+
 def _golden_errors(device: str) -> dict:
     """{case: (logit error, gradient error)} against the golden fixture,
     both relative to the largest reference entry, float64 on ``device``."""
     import numpy as np
-    from tests.message_golden import CONFIGS, build_case, gradient_fingerprint
+    from tests.message_golden import CONFIGS
 
     golden = np.load(pathlib.Path(__file__).resolve().parent / "data"
                      / "so3c_message_golden.npz")
     errors = {}
     for name in CONFIGS:
-        model, x, y = build_case(name)
-        model, x, y = model.to(device), x.to(device), y.to(device)
-        logits = model(x)
-        loss = torch.nn.functional.cross_entropy(logits, y)
-        grads = torch.autograd.grad(loss, list(model.parameters()))
-        grad = gradient_fingerprint(
-            torch.cat([g.reshape(-1) for g in grads]).cpu()).numpy()
-        ref_l, ref_g = golden[name + "/logits"], golden[name + "/grad"]
-        errors[name] = (
-            np.abs(logits.detach().cpu().numpy() - ref_l).max() / np.abs(ref_l).max(),
-            np.abs(grad - ref_g).max() / np.abs(ref_g).max())
+        logits, grad = _case_outputs(name, device)
+        errors[name] = (_rel(logits, golden[name + "/logits"]),
+                        _rel(grad, golden[name + "/grad"]))
+    return errors
+
+
+def _reference_errors(device: str) -> dict:
+    """{case: (logit error, gradient error)} of the current implementation
+    against the pre-rewrite one (16302b1) on the same device and weights.
+    Independent of any stored fixture, so no platform difference enters."""
+    from tests.message_golden import CONFIGS, load_reference_module
+    ref_cls = load_reference_module().SO3CMessageSetClassifier
+    errors = {}
+    for name in CONFIGS:
+        new_l, new_g = _case_outputs(name, device)
+        old_l, old_g = _case_outputs(name, device, ref_cls)
+        errors[name] = (_rel(new_l, old_l), _rel(new_g, old_g))
     return errors
 
 
@@ -840,6 +868,13 @@ def test_message_set_matches_golden() -> None:
         assert err_l < 1e-10 and err_g < 1e-9, (name, err_l, err_g)
 
 
+def test_message_set_matches_reference() -> None:
+    """The same claim without a stored fixture: the current forward pass
+    against the pre-rewrite implementation, same weights, same device."""
+    for name, (err_l, err_g) in _reference_errors("cpu").items():
+        assert err_l < 1e-10 and err_g < 1e-9, (name, err_l, err_g)
+
+
 def test_message_set_matches_golden_cuda() -> None:
     """The same function on the card: CUDA kernels for the cross products,
     complex arithmetic and broadcasts must reproduce the CPU fixture.
@@ -851,8 +886,10 @@ def test_message_set_matches_golden_cuda() -> None:
     import pytest
     if not torch.cuda.is_available():
         pytest.skip("no CUDA here")
+    for name, (err_l, err_g) in _reference_errors("cuda").items():
+        assert err_l < 1e-10 and err_g < 1e-9, ("vs reference", name, err_l, err_g)
     for name, (err_l, err_g) in _golden_errors("cuda").items():
-        assert err_l < 1e-10 and err_g < 1e-9, (name, err_l, err_g)
+        assert err_l < 1e-10 and err_g < 1e-9, ("vs fixture", name, err_l, err_g)
 
 
 if __name__ == "__main__":
@@ -878,5 +915,6 @@ if __name__ == "__main__":
     test_message_set_pair_latent_symmetries()
     test_message_set_pair_latent_trains()
     test_message_set_matches_golden()
+    test_message_set_matches_reference()
     test_message_set_matches_golden_cuda()
     print("All so3c model tests passed.\n")

@@ -8,10 +8,19 @@ reproduce them in float64; see test_message_set_matches_golden.
 Every zero-initialised head is excited, so the flow, the vector update and
 the pair latent all act: with the heads at zero the flow is the identity
 and a rewrite of it would be tested vacuously.
+
+Every parameter and input is drawn from numpy's legacy RandomState, whose
+stream is guaranteed stable across versions and platforms, straight into
+float64. Letting torch initialise the layers made the cases differ at the
+float32 ulp level (~4e-8) between torch 2.11 on Windows and torch 2.10 on
+Kaggle, because nn.Linear initialises in float32 before .to(float64); the
+on-card guard then failed on the platform, not on the code
+(benchmarks/diag_cuda_golden.py).
 """
 
 from __future__ import annotations
 
+import numpy as np
 import torch
 
 from benchmarks.so3c_models import SO3CMessageSetClassifier
@@ -42,25 +51,43 @@ CONFIGS = {
 }
 
 
-def build_case(name: str, B: int = 6, K: int = 10):
-    """(model, x, y) for one configuration, float64, fully deterministic."""
-    torch.manual_seed(1234)
-    model = SO3CMessageSetClassifier(dtype=torch.float64, **CONFIGS[name])
-    g = torch.Generator().manual_seed(99)
+def _stable_parameters(model, rs: np.random.RandomState) -> None:
+    """Overwrite every parameter with platform-stable float64 values at
+    initialisation-like scales; zero-initialised heads get non-zero values."""
     with torch.no_grad():
-        for head in list(model.w_head) + list(model.v_head):
-            head.weight.copy_(0.4 * torch.randn(head.weight.shape,
-                                                dtype=torch.float64, generator=g))
-            head.bias.copy_(0.1 * torch.randn(head.bias.shape,
-                                              dtype=torch.float64, generator=g))
-    n = torch.tensor([K, K - 3, 4, K - 1, 7, K][:B])
-    mask = (torch.arange(K)[None, :] < n[:, None]).to(torch.float64)
-    pv = (torch.randn(B, K, 3, dtype=torch.float64, generator=g) * 0.4
-          + torch.tensor([2.0, 0.5, 1.0], dtype=torch.float64))
-    E = pv.norm(dim=-1, keepdim=True)
-    x = torch.cat([torch.cat([E, pv], -1) * mask[..., None], mask[..., None]], -1)
+        for name, p in model.named_parameters():
+            n = rs.standard_normal(tuple(p.shape))
+            if name == "channel_weights":                    # (C, 2)
+                n[:, 0] = 1.0 + 0.1 * n[:, 0]
+                n[:, 1] = 0.1 * n[:, 1]
+            elif name == "mix":                              # (R, C, C, 2)
+                n = 0.1 * n
+                n[..., 0] += np.eye(p.shape[1])
+            elif name.startswith("falpha_embed"):            # exponents
+                n = 0.1 + 0.3 * np.abs(n)
+            elif p.dim() >= 2:
+                n = n / np.sqrt(p.shape[-1])
+                if name.startswith(("w_head", "v_head")):
+                    n = n * 1.6                              # excite the flow
+            else:
+                n = 0.1 * n
+            p.copy_(torch.from_numpy(np.ascontiguousarray(n)).to(p.dtype))
+
+
+def build_case(name: str, B: int = 6, K: int = 10):
+    """(model, x, y) for one configuration, float64, fully deterministic and
+    identical on every platform."""
+    model = SO3CMessageSetClassifier(dtype=torch.float64, **CONFIGS[name])
+    rs = np.random.RandomState(1234)
+    _stable_parameters(model, rs)
+    n = np.array([K, K - 3, 4, K - 1, 7, K][:B])
+    mask = (np.arange(K)[None, :] < n[:, None]).astype(np.float64)
+    pv = rs.standard_normal((B, K, 3)) * 0.4 + np.array([2.0, 0.5, 1.0])
+    E = np.sqrt((pv * pv).sum(-1, keepdims=True))
+    x = np.concatenate([np.concatenate([E, pv], -1) * mask[..., None],
+                        mask[..., None]], -1)
     y = torch.tensor([0, 1, 1, 0, 1, 0][:B])
-    return model, x, y
+    return model, torch.from_numpy(x), y
 
 
 def gradient_fingerprint(grad: torch.Tensor, k: int = 32) -> torch.Tensor:
@@ -73,4 +100,16 @@ def gradient_fingerprint(grad: torch.Tensor, k: int = 32) -> torch.Tensor:
     g = torch.Generator().manual_seed(7 + grad.numel())
     R = torch.randn(grad.numel(), k, dtype=torch.float64, generator=g)
     return grad.to(torch.float64) @ R
+
+
+def load_reference_module():
+    """The pre-rewrite implementation (16302b1), shipped as
+    tests/data/ref_so3c_models_16302b1.py, for same-device comparisons."""
+    import importlib.util
+    import pathlib
+    path = pathlib.Path(__file__).resolve().parent / "data" / "ref_so3c_models_16302b1.py"
+    spec = importlib.util.spec_from_file_location("ref_so3c_models_16302b1", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 

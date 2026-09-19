@@ -1,0 +1,62 @@
+torch 2.10.0+cu128 | cuda True Tesla T4
+
+1-3. per case, relative max error (logits / gradient fingerprint)
+case            old cpu vs fixture    new cpu vs fixture    new cuda vs fixture   new vs old, cuda      cuda vs cpu, old     
+base            3.6e-08 / 5.0e-08     3.6e-08 / 5.0e-08     3.6e-08 / 5.0e-08     3.0e-15 / 6.8e-15     1.1e-14 / 1.4e-14    
+nobeams         3.4e-08 / 8.4e-08     3.4e-08 / 8.4e-08     3.4e-08 / 8.4e-08     4.1e-15 / 7.2e-15     4.6e-15 / 5.8e-15    
+fixes           3.8e-08 / 8.0e-08     3.8e-08 / 8.0e-08     3.8e-08 / 8.0e-08     3.0e-15 / 8.4e-15     1.5e-14 / 2.0e-14    
+vector          3.7e-08 / 5.0e-08     3.7e-08 / 5.0e-08     3.7e-08 / 5.0e-08     3.1e-15 / 1.2e-14     5.6e-15 / 7.4e-15    
+pair8           4.1e-08 / 3.0e-08     4.1e-08 / 3.0e-08     4.1e-08 / 3.0e-08     4.1e-15 / 4.1e-15     3.6e-15 / 8.9e-15    
+relnorm         6.2e-08 / 4.7e-08     6.2e-08 / 4.7e-08     6.2e-08 / 4.7e-08     1.1e-14 / 7.5e-15     1.2e-14 / 1.2e-14    
+falpha3         8.5e-08 / 9.7e-08     8.5e-08 / 9.7e-08     8.5e-08 / 9.7e-08     1.4e-14 / 6.9e-15     1.7e-14 / 1.6e-14    
+combo           7.9e-08 / 3.0e-07     7.9e-08 / 3.0e-07     7.9e-08 / 3.0e-07     3.7e-15 / 2.0e-14     3.3e-15 / 1.2e-14    
+knn             3.5e-08 / 7.6e-08     3.5e-08 / 7.6e-08     3.5e-08 / 7.6e-08     1.3e-14 / 1.8e-14     2.8e-14 / 5.0e-14    
+noscalar        7.2e-08 / 8.4e-08     7.2e-08 / 8.4e-08     7.2e-08 / 8.4e-08     3.1e-15 / 9.7e-15     1.1e-14 / 5.4e-14    
+rounds1         5.7e-08 / 6.4e-08     5.7e-08 / 6.4e-08     5.7e-08 / 6.4e-08     2.3e-15 / 6.9e-15     2.6e-15 / 1.4e-14    
+nomix           1.3e-08 / 5.3e-08     1.3e-08 / 5.3e-08     1.3e-08 / 5.3e-08     1.7e-15 / 6.6e-15     5.5e-15 / 5.3e-14    
+vector_nobeams  2.7e-08 / 5.6e-08     2.7e-08 / 5.6e-08     2.7e-08 / 5.6e-08     1.8e-15 / 4.1e-15     1.7e-15 / 7.8e-15    
+pair_noscalar   2.5e-08 / 6.1e-08     2.5e-08 / 6.1e-08     2.5e-08 / 6.1e-08     6.8e-15 / 9.8e-15     2.3e-14 / 5.2e-14    
+combo_nobeams   4.2e-08 / 6.1e-08     4.2e-08 / 6.1e-08     4.2e-08 / 6.1e-08     2.2e-15 / 8.2e-15     2.2e-15 / 1.1e-14    
+wide            6.8e-08 / 1.2e-07     6.8e-08 / 1.2e-07     6.8e-08 / 1.2e-07     1.2e-15 / 2.3e-15     5.4e-15 / 6.2e-15    
+
+4. primitives, float64, relative max CPU-vs-CUDA difference
+  asinh (real)       2.0e-16
+  sqrt (complex)     2.2e-16
+  sin (complex)      2.7e-18
+  cos (complex)      1.3e-16
+  rodrigues c1       1.4e-15
+  rodrigues c2       6.8e-11
+  cross (complex)    0.0e+00
+  expm_so3c_apply    1.3e-15
+  expm_so3c @ z      1.5e-15
+  matmul (real)      0.0e+00
+
+5. submodule outputs for case 'base', CPU vs CUDA, in call order
+  h_init                 2.1e-15
+  w_head.0               7.5e-15
+  msg_head.0             6.2e-15
+  node.0.0               2.4e-15
+  node.0.1               2.4e-15
+  node.0.2               2.9e-15
+  node.0                 2.9e-15
+  w_head.1               7.7e-15
+  msg_head.1             6.2e-15
+  node.1.0               2.1e-15
+  node.1.1               1.9e-15
+  node.1.2               1.1e-15
+  node.1                 1.1e-15
+  w_head.2               9.2e-15
+  msg_head.2             7.6e-15
+  node.2.0               2.2e-15
+  node.2.1               2.5e-15
+  node.2.2               1.9e-15
+  node.2                 1.9e-15
+  mlp.0                  1.6e-14
+  mlp.1                  1.6e-14
+  mlp.2                  2.0e-14
+  mlp.3                  2.0e-14
+  mlp.4                  5.9e-15
+  mlp                    5.9e-15
+
+/kaggle/working/repo/benchmarks/diag_cuda_golden.py:63: UserWarning: Casting complex values to real discards the imaginary part (Triggered internally at /pytorch/aten/src/ATen/native/Copy.cpp:308.)
+  a, b = torch.as_tensor(a).double(), torch.as_tensor(b).double()
