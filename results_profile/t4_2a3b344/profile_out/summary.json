@@ -1,0 +1,50 @@
+{
+ "device": "Tesla T4",
+ "k": 64,
+ "batch_size": 256,
+ "dtype": "float32",
+ "torch": "2.10.0+cu128",
+ "rows": [
+  {
+   "config": "base",
+   "kwargs": {
+    "channels": 8,
+    "rounds": 3,
+    "beams": true
+   },
+   "n_params": 22834,
+   "train_step_s": 0.1125762828500001,
+   "eval_chunk_s": 0.15417082539997864,
+   "peak_train_gib": 1.340850830078125,
+   "epoch_estimate_s": 593.213239024992
+  },
+  {
+   "config": "vector",
+   "kwargs": {
+    "channels": 8,
+    "rounds": 3,
+    "beams": true,
+    "vector_channel": true
+   },
+   "n_params": 23365,
+   "train_step_s": 0.14071675060000643,
+   "eval_chunk_s": 0.1943666542000301,
+   "peak_train_gib": 1.3922219276428223,
+   "epoch_estimate_s": 742.1500991689876
+  },
+  {
+   "config": "pair8",
+   "kwargs": {
+    "channels": 8,
+    "rounds": 3,
+    "beams": true,
+    "pair_latent": 8
+   },
+   "n_params": 26514,
+   "train_step_s": 0.21726477825000073,
+   "eval_chunk_s": 0.3828144243999759,
+   "peak_train_gib": 2.743577003479004,
+   "epoch_estimate_s": 1178.422655152533
+  }
+ ]
+}

@@ -1,0 +1,46 @@
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg     Self CUDA   Self CUDA %    CUDA total  CUDA time avg    # of Calls  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                              aten::mul         4.38%      11.112ms         9.67%      24.539ms      28.533us      44.748ms        16.07%      46.529ms      54.104us           860  
+                                              aten::add         1.48%       3.763ms         2.88%       7.308ms      26.101us      37.420ms        13.44%      37.420ms     133.643us           280  
+void at::native::elementwise_kernel<128, 2, at::nati...         0.00%       0.000us         0.00%       0.000us       0.000us      26.372ms         9.47%      26.372ms      79.674us           331  
+                                               aten::mm         1.96%       4.978ms         2.84%       7.197ms      37.096us      26.292ms         9.44%      26.292ms     135.524us           194  
+                                            aten::copy_         2.35%       5.977ms         5.91%      15.005ms      19.487us      25.631ms         9.21%      25.631ms      33.287us           770  
+                                            aten::addmm         0.70%       1.776ms         0.91%       2.315ms      52.618us      24.726ms         8.88%      24.726ms     561.963us            44  
+                                              aten::bmm         1.83%       4.648ms         2.64%       6.709ms      42.462us      24.697ms         8.87%      24.767ms     156.752us           158  
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us      23.579ms         8.47%      23.579ms      89.313us           264  
+                                              aten::sum         2.86%       7.261ms         4.73%      12.015ms      29.594us      22.899ms         8.23%      24.344ms      59.961us           406  
+                                  volta_sgemm_32x128_tn         0.00%       0.000us         0.00%       0.000us       0.000us      22.821ms         8.20%      22.821ms     335.607us            68  
+void at::native::elementwise_kernel<128, 2, at::nati...         0.00%       0.000us         0.00%       0.000us       0.000us      20.801ms         7.47%      20.801ms      44.830us           464  
+                                             aten::add_         1.42%       3.595ms         3.15%       7.999ms      14.704us      18.945ms         6.81%      18.945ms      34.825us           544  
+void at::native::elementwise_kernel<128, 2, at::nati...         0.00%       0.000us         0.00%       0.000us       0.000us      14.843ms         5.33%      14.843ms     218.285us            68  
+void at::native::vectorized_elementwise_kernel<2, at...         0.00%       0.000us         0.00%       0.000us       0.000us      12.562ms         4.51%      12.562ms      41.051us           306  
+void at::native::reduce_kernel<128, 4, at::native::R...         0.00%       0.000us         0.00%       0.000us       0.000us      11.715ms         4.21%      11.715ms     154.144us            76  
+                         volta_sgemm_32x32_sliced1x4_nt         0.00%       0.000us         0.00%       0.000us       0.000us      10.699ms         3.84%      10.699ms     445.791us            24  
+                                  volta_sgemm_32x128_nn         0.00%       0.000us         0.00%       0.000us       0.000us      10.095ms         3.63%      10.095ms     120.175us            84  
+void at::native::reduce_kernel<512, 1, at::native::R...         0.00%       0.000us         0.00%       0.000us       0.000us       8.893ms         3.19%       8.893ms      40.423us           220  
+                                   volta_sgemm_64x64_nn         0.00%       0.000us         0.00%       0.000us       0.000us       8.766ms         3.15%       8.766ms     313.082us            28  
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       8.327ms         2.99%       8.327ms     112.533us            74  
+                                              aten::cat         0.44%       1.109ms         0.69%       1.739ms      24.842us       8.255ms         2.97%       8.255ms     117.935us            70  
+void at::native::(anonymous namespace)::CatArrayBatc...         0.00%       0.000us         0.00%       0.000us       0.000us       8.040ms         2.89%       8.040ms     268.001us            30  
+                                            aten::fill_         1.17%       2.978ms         2.97%       7.551ms      15.162us       7.068ms         2.54%       7.068ms      14.192us           498  
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       6.266ms         2.25%       6.266ms      15.433us           406  
+                                              aten::pow         0.92%       2.330ms         1.78%       4.506ms      31.295us       5.973ms         2.15%       7.704ms      53.497us           144  
+                                  volta_sgemm_128x32_tn         0.00%       0.000us         0.00%       0.000us       0.000us       5.603ms         2.01%       5.603ms     186.777us            30  
+                                    aten::tanh_backward         0.03%      74.686us         0.05%     122.098us      20.350us       5.353ms         1.92%       5.353ms     892.189us             6  
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       5.353ms         1.92%       5.353ms     892.189us             6  
+                                            aten::asinh         0.28%     712.735us         0.44%       1.122ms      19.347us       4.849ms         1.74%       4.849ms      83.607us            58  
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       4.193ms         1.51%       4.193ms      99.824us            42  
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       4.114ms         1.48%       4.114ms      64.282us            64  
+                                            aten::rsqrt         0.21%     528.446us         0.32%     817.922us      17.040us       4.061ms         1.46%       4.061ms      84.598us            48  
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       4.061ms         1.46%       4.061ms      84.598us            48  
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       4.026ms         1.45%       4.026ms     111.821us            36  
+                                  volta_sgemm_128x32_nt         0.00%       0.000us         0.00%       0.000us       0.000us       3.876ms         1.39%       3.876ms     242.251us            16  
+                                             aten::tanh         0.03%      81.380us         0.05%     123.279us      20.546us       3.684ms         1.32%       3.684ms     613.961us             6  
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       3.684ms         1.32%       3.684ms     613.961us             6  
+                                              aten::div         2.15%       5.453ms         4.04%      10.257ms      22.395us       3.220ms         1.16%       3.325ms       7.259us           458  
+void at::native::vectorized_elementwise_kernel<2, at...         0.00%       0.000us         0.00%       0.000us       0.000us       2.899ms         1.04%       2.899ms      14.210us           204  
+void at::native::unrolled_elementwise_kernel<at::nat...         0.00%       0.000us         0.00%       0.000us       0.000us       2.856ms         1.03%       2.856ms      89.251us            32  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 253.818ms
+Self CUDA time total: 278.381ms

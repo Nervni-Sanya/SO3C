@@ -803,6 +803,33 @@ class SO3CMessageSetClassifier(nn.Module):
             pre = pre + F.linear(E, W[:, o:o + E.shape[-1]])
         return pre
 
+    def _pair_mix_pre(self, lin: nn.Linear, T, M, hid):
+        """lin(cat([_eq2to2(T, M), hid])) on the real pairs, without the
+        (B, K, K, 7 C_p) concatenation.
+
+        Of the seven maps, identity and transpose are pairwise; the row mean
+        and the diagonal broadcast along rows depend on a only, the column
+        mean and the diagonal broadcast along columns on b only, and the
+        global mean on neither. Each share of lin is computed at the size it
+        lives at and broadcast. _eq2to2 also multiplies by the pair mask;
+        that is skipped here because the caller multiplies the updated state
+        by the same mask, so entries outside it are discarded either way.
+        """
+        W, Cp = lin.weight, T.shape[-1]
+        Mm = M.unsqueeze(-1)
+        Tm = T * Mm
+        row = Tm.sum(dim=2) / Mm.sum(dim=2).clamp_min(1.0)          # (B, K, Cp) by a
+        col = Tm.sum(dim=1) / Mm.sum(dim=1).clamp_min(1.0)          # (B, K, Cp) by b
+        diag = torch.diagonal(T, dim1=1, dim2=2).permute(0, 2, 1)    # (B, K, Cp)
+        tot = Tm.sum(dim=(1, 2)) / Mm.sum(dim=(1, 2)).clamp_min(1.0)  # (B, Cp)
+        blk = [W[:, i * Cp:(i + 1) * Cp] for i in range(7)]
+        pre = (F.linear(hid, W[:, 7 * Cp:], lin.bias)
+               + F.linear(T, blk[0]) + F.linear(T.transpose(1, 2), blk[1]))
+        node_a = F.linear(row, blk[2]) + F.linear(diag, blk[4])
+        node_b = F.linear(col, blk[3]) + F.linear(diag, blk[5])
+        glob = F.linear(tot, blk[6])
+        return pre + node_a.unsqueeze(2) + node_b.unsqueeze(1) + glob[:, None, None, :]
+
     @staticmethod
     def _invariant_scale(v: torch.Tensor) -> torch.Tensor:
         """1 + |v.v|^(1/2), an invariant soft bound. (..., 3) -> (...)."""
@@ -983,8 +1010,8 @@ class SO3CMessageSetClassifier(nn.Module):
             zc = zc * mask_all[:, None, :, None]
 
             if self.pair_latent:
-                agg = self._eq2to2(E, full_pair)
-                E = (E + self.pair_mix[r](torch.cat([agg, hid], dim=-1))) \
+                E = (E + torch.tanh(self._pair_mix_pre(
+                    self.pair_mix[r][0], E, full_pair, hid))) \
                     * full_pair.unsqueeze(-1)
 
             if self.mix is not None:
@@ -994,9 +1021,12 @@ class SO3CMessageSetClassifier(nn.Module):
         # Readouts pool the real constituents only; the beams have done their
         # work through the messages and are added back explicitly below.
         zr = zc[:, :, :K_real]
-        per_ch = torch.stack(
-            [_pooled_bivector_invariants(zr[:, c], mask) for c in range(C)],
-            dim=1).reshape(B, C * 11)
+        # all channels in one call: (B*C, K, 3) with the mask repeated per
+        # channel, reshaped back to channel-major (B, C*11)
+        per_ch = _pooled_bivector_invariants(
+            zr.reshape(B * C, K_real, 3),
+            mask.unsqueeze(1).expand(B, C, K_real).reshape(B * C, K_real),
+        ).reshape(B, C * 11)
         z_tot = (zr * mask[:, None, :, None]).sum(dim=2)         # (B, C, 3)
         T_cc = z_tot @ z_tot.transpose(-1, -2)
         T_pairs = T_cc[:, self.pair_rows, self.pair_cols]
