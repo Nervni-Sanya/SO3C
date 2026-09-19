@@ -120,7 +120,11 @@ Peak memory −38% (headline). Profiles: `results_profile/t4_16302b1`, `t4_2a3b3
 ### Running
 
 - **`nsanya/so3c-gap-screen`**, pushed 2026-09-19 22:12. Its bundle was rebuilt from this repository (`fc1d6d8`) but predates the speedup, so it runs the **old** forward pass (~10 GPU-h); Kaggle's API has no cancel endpoint. Seven rows on the K=32 probe protocol (400k train jets, 20 epochs, seed 0) against beams + channels 8 (0.98128 / 834.4, `c325950`): `fixes` (no m², no self-edges), `vector`, `relnorm`, `pair8`, `combo` (vector + pair8 + fixes), `rounds6`, `falpha3`. A one-epoch smoke run with every switch at once runs first. Replayed locally before the push: every row builds and trains one CPU epoch from the bundle, with parameter counts 22634 / 23365 / 23602 / 26514 / 26861 / 28378 / 24373.
-- **`nsanya/so3c-k64-headline-seed2`** (`de42242`), pushed 22:46, running alongside: the headline configuration, seed 2, on the new forward pass. It checks that the rewrite reproduces the headline on real data, measures the real epoch time, and adds a third ensemble member. Expected ~5 h.
+- **`nsanya/so3c-k64-headline-seed2`** (`4f397f4`; the first attempt from `de42242` stopped at the on-card guard on an import error, see traps), running alongside: the headline configuration, seed 2, on the new forward pass. It checks that the rewrite reproduces the headline on real data, measures the real epoch time, and adds a third ensemble member. Expected ~5 h.
+
+### Queued for a free slot
+
+- `nsanya/so3c-gpu-profile` with `--compile` (`05f18fb`): the same three configurations eager and under `torch.compile` on one card. The whole model captures as a single graph with no breaks (checked locally with aot_eager, identical output); Triton needs sm_70+, so it can only help on a T4. Push when the screen or seed 2 finishes.
 
 ### After the screen
 
@@ -157,7 +161,8 @@ One seed per row, so a gain near +0.0004 AUC is at the edge of noise; confirm an
 | Kaggle's API has **no cancel** (the status enum has CANCEL_REQUESTED, set only from the web UI) | the gap screen was already running on the old, 2× slower forward pass when the speedup landed | push expensive kernels only once the code they depend on is final; a cancel needs the user in the web UI |
 | Bash collapses backslashes inside notebook-builder cells too | an escaped newline in a generated `print` became a real line break, and the profile kernel's last cell died with a SyntaxError (its data was already saved) | write builder fragments with the Write tool or use `chr(10)`; `ast.parse` every generated code cell before pushing |
 | A root-level ignore written as `data/` also matches `tests/data/` | the golden fixture could not be added | anchor root-only ignores: `/data/` (SO3C `2a3b344`) |
-| At least two Kaggle GPU sessions run concurrently | the screen, the profiles and seed 2 ran side by side | use the second slot; quota, not wall clock, is the limit |
+| **Exactly two** Kaggle GPU sessions at once | a third push returns HTTP 200 with "Maximum batch GPU session count of 2 reached." and is refused, not queued; the client printed it as "pushed" | use both slots, push the next kernel when one frees; `kaggle_client push` exits 2 on a refusal (SO3C `8d7dff7`) |
+| Kaggle's image has a regular top-level `tests` package in site-packages | while our `tests/` was a namespace package, `tests.message_golden` failed to import on the card and the golden guard stopped headline seed 2 after ~5 min (log in `results_k64/headline/`) | `tests/__init__.py` (SO3C `4f397f4`); replay bundles with a fake shadowing `tests` package on PYTHONPATH |
 
 ## Compute and quota facts
 
