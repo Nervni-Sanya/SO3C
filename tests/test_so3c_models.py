@@ -799,6 +799,30 @@ def test_message_set_pair_latent_trains() -> None:
                     so3c_kwargs={"pair_latent": 4, "neighbors": 4})
 
 
+def _golden_errors(device: str) -> dict:
+    """{case: (logit error, gradient error)} against the golden fixture,
+    both relative to the largest reference entry, float64 on ``device``."""
+    import numpy as np
+    from tests.message_golden import CONFIGS, build_case, gradient_fingerprint
+
+    golden = np.load(pathlib.Path(__file__).resolve().parent / "data"
+                     / "so3c_message_golden.npz")
+    errors = {}
+    for name in CONFIGS:
+        model, x, y = build_case(name)
+        model, x, y = model.to(device), x.to(device), y.to(device)
+        logits = model(x)
+        loss = torch.nn.functional.cross_entropy(logits, y)
+        grads = torch.autograd.grad(loss, list(model.parameters()))
+        grad = gradient_fingerprint(
+            torch.cat([g.reshape(-1) for g in grads]).cpu()).numpy()
+        ref_l, ref_g = golden[name + "/logits"], golden[name + "/grad"]
+        errors[name] = (
+            np.abs(logits.detach().cpu().numpy() - ref_l).max() / np.abs(ref_l).max(),
+            np.abs(grad - ref_g).max() / np.abs(ref_g).max())
+    return errors
+
+
 def test_message_set_matches_golden() -> None:
     """Logits and parameter gradients equal those of the implementation the
     published numbers were measured with, for every switch combination.
@@ -806,24 +830,28 @@ def test_message_set_matches_golden() -> None:
     tests/data/so3c_message_golden.npz was written from that implementation
     (SO3C repo at 16302b1) before the forward pass was rewritten for speed,
     so a rewrite has to be the same function, not merely a covariant one.
+    Gradients are stored as 32 fixed random projections
+    (gradient_fingerprint), which keeps the fixture small enough to ship in
+    a notebook bundle.
     Every zero-init head is excited (tests/message_golden.py), so the flow,
     the vector update and the pair latent are all live.
     """
-    import numpy as np
-    from tests.message_golden import CONFIGS, build_case
+    for name, (err_l, err_g) in _golden_errors("cpu").items():
+        assert err_l < 1e-10 and err_g < 1e-9, (name, err_l, err_g)
 
-    golden = np.load(pathlib.Path(__file__).resolve().parent / "data"
-                     / "so3c_message_golden.npz")
-    for name in CONFIGS:
-        model, x, y = build_case(name)
-        logits = model(x)
-        loss = torch.nn.functional.cross_entropy(logits, y)
-        grads = torch.autograd.grad(loss, list(model.parameters()))
-        grad = torch.cat([g.reshape(-1) for g in grads]).numpy()
-        ref_l, ref_g = golden[name + "/logits"], golden[name + "/grad"]
-        assert grad.shape == ref_g.shape, (name, grad.shape, ref_g.shape)
-        err_l = np.abs(logits.detach().numpy() - ref_l).max() / np.abs(ref_l).max()
-        err_g = np.abs(grad - ref_g).max() / np.abs(ref_g).max()
+
+def test_message_set_matches_golden_cuda() -> None:
+    """The same function on the card: CUDA kernels for the cross products,
+    complex arithmetic and broadcasts must reproduce the CPU fixture.
+
+    CPU tests cannot see device-specific behaviour (the resume bug that
+    lost two seeds was GPU-only), so the K=64 notebooks run this on the card
+    before training and require it to pass, not skip.
+    """
+    import pytest
+    if not torch.cuda.is_available():
+        pytest.skip("no CUDA here")
+    for name, (err_l, err_g) in _golden_errors("cuda").items():
         assert err_l < 1e-10 and err_g < 1e-9, (name, err_l, err_g)
 
 
@@ -850,4 +878,5 @@ if __name__ == "__main__":
     test_message_set_pair_latent_symmetries()
     test_message_set_pair_latent_trains()
     test_message_set_matches_golden()
+    test_message_set_matches_golden_cuda()
     print("All so3c model tests passed.\n")

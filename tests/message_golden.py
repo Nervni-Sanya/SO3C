@@ -53,3 +53,16 @@ def build_case(name: str, B: int = 6, K: int = 10):
     x = torch.cat([torch.cat([E, pv], -1) * mask[..., None], mask[..., None]], -1)
     y = torch.tensor([0, 1, 1, 0, 1, 0][:B])
     return model, x, y
+
+
+def gradient_fingerprint(grad: torch.Tensor, k: int = 32) -> torch.Tensor:
+    """(n,) float64 gradient -> (k,) fixed random projections.
+
+    Keeps the fixture small enough to ship inside a notebook, while any
+    change to the gradient moves the projections: they are k independent
+    Gaussian directions, drawn from a fixed seed for each gradient length.
+    """
+    g = torch.Generator().manual_seed(7 + grad.numel())
+    R = torch.randn(grad.numel(), k, dtype=torch.float64, generator=g)
+    return grad.to(torch.float64) @ R
+

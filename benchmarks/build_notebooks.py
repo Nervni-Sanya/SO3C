@@ -58,6 +58,10 @@ def embed_code() -> str:
                 if "__pycache__" in f.parts:
                     continue
                 tar.add(f, arcname=str(f.relative_to(ROOT)))
+        # small test fixtures (the golden outputs the on-card guard compares
+        # against); without them the shipped test fails on a missing file
+        for f in sorted((ROOT / "tests" / "data").glob("*.npz")):
+            tar.add(f, arcname=str(f.relative_to(ROOT)))
     return base64.b64encode(buf.getvalue()).decode()
 
 
@@ -1593,6 +1597,118 @@ for f in ["base_by_kernel.txt", "base_by_shape.txt", "base_by_line.txt"]:
     _finalise(cells, NB_DIR / "kaggle_gpu_profile.ipynb")
 
 
+# Canonical K=64 runs built with build_k64_run: (tag, extra flags, seed).
+K64_RUNS = [
+    # third headline seed, on the 2x faster forward pass (47ec4ad): checks
+    # that the rewrite reproduces the headline on real data and measures the
+    # real epoch time before any winner is confirmed with it
+    ("headline", [], 2),
+]
+
+
+def build_k64_run(blob: str, tag: str, flags: list[str], seed: int,
+                  epochs: int = 30, max_seconds: int = 40000) -> str:
+    """One canonical K=64 run of so3c_message_set: beams + channels 8 plus
+    ``flags``, one seed. Returns the notebook file name.
+
+    The generic form of build_beams_k64, for confirming screen winners and
+    for extra headline seeds. Since 2a3b344/47ec4ad the headline
+    configuration costs ~593 s per epoch on a T4 (1219 s before), so 30
+    epochs fit one session; --max-seconds still stops cleanly with a
+    checkpoint if a heavier variant does not, and the finish-kernel pattern
+    resumes it.
+
+    Provenance: results land in results_k64/<tag>, and the notebook records
+    the sha256 of its code bundle, so a result can be tied to the exact code
+    that produced it.
+    """
+    import hashlib
+    bundle_sha = hashlib.sha256(blob.encode()).hexdigest()[:12]
+    base = ["--cache-dir", "DATA", "--representation", "constituents",
+            "--canonical-splits", "--normalize", "global",
+            "--device", "cuda", "--dtype", "float32",
+            "--batch-size", "256", "--n-constituents", "64",
+            "--eval-chunk-size", "1024", "--models", "so3c_message_set",
+            "--rounds", "3", "--beams", "--channels", "8"] + list(flags)
+    cells = [
+        md("""
+# K=64 canonical run: %s, seed %d
+
+so3c_message_set with beams + channels 8%s, %d epochs. Reference on the same
+protocol: beams + channels 8, seeds 0 and 1, 0.98333 +- 0.00010 AUC and
+1131 +- 22 rejection at 30%% signal efficiency. PELICAN: 0.9870 / 2250.
+""" % (tag, seed, (" + " + " ".join(flags)) if flags else "", epochs)),
+        code("""
+import subprocess
+print(subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total",
+                      "--format=csv,noheader"], capture_output=True,
+                     text=True).stdout.strip())
+"""),
+        code(UNPACK.format(blob=blob)),
+        code(RUNNER),
+        code(GPU_SETUP),
+        code("""
+import glob, pathlib
+cands = glob.glob("/kaggle/input/**/top_tagging_train.npz", recursive=True)
+assert cands, "attach the K=128 data-prep kernel output"
+DATA = str(pathlib.Path(cands[0]).parent)
+TAG, SEED, EPOCHS = %r, %d, %d
+OUT = "/kaggle/working/results_k64/" + TAG
+CKPT = "/kaggle/working/checkpoints/" + TAG
+BASE = %r
+BASE[BASE.index("DATA")] = DATA
+pathlib.Path(OUT).mkdir(parents=True, exist_ok=True)
+pathlib.Path(OUT, "bundle_sha256.txt").write_text(%r + chr(10))
+print("data:", DATA, "| bundle", %r)
+""" % (tag, seed, epochs, base, bundle_sha, bundle_sha)),
+        code("""
+# On-card guard: the forward pass must be the published function on this
+# GPU too, in float64. "1 passed" is required; a skip means no CUDA.
+import subprocess, sys
+g = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
+                    "tests/test_so3c_models.py", "-k", "golden_cuda"],
+                   cwd="/kaggle/working/repo", capture_output=True, text=True)
+print(g.stdout[-1500:], g.stderr[-1500:])
+assert "1 passed" in g.stdout, "golden guard did not pass on the card"
+"""),
+        code("""
+# Smoke: one epoch on 20k jets with the real configuration. It must write a
+# result before the session commits hours.
+import glob
+run(["benchmarks.run_top_tagging"] + BASE +
+    ["--epochs", "1", "--max-train-samples", "20000", "--seed", "0",
+     "--results-dir", "/kaggle/working/smoke"])
+assert glob.glob("/kaggle/working/smoke/*.json"), "smoke run wrote no result"
+"""),
+        code("""
+ok = run(["benchmarks.run_top_tagging"] + BASE +
+         ["--epochs", str(EPOCHS), "--seed", str(SEED),
+          "--results-dir", OUT, "--ckpt-dir", CKPT,
+          "--resume", "--max-seconds", "%d"])
+assert ok, "training run failed"
+""" % max_seconds),
+        code("""
+import json, glob
+print("%-30s%9s%8s%9s%10s%10s%8s%10s"
+      % ("run", "params", "epochs", "AUC", "rej@0.3", "rej@0.5", "hours", "s/epoch"))
+print("%-30s%9d%8d%9.5f%10.1f%10.1f%8.2f%10s"
+      % ("beams + c8, 2 seeds (ref)", 22834, 30, 0.98333, 1131.0, 292.0, 10.6, "1272"))
+for f in sorted(glob.glob(OUT + "/*.json")):
+    r = json.load(open(f)); t = r["test_metrics"]
+    print("%-30s%9d%8d%9.5f%10.1f%10.1f%8.2f%10.0f"
+          % ("%s seed %d" % (TAG, r["seed"]), r["n_params"], r["epochs_run"],
+             t["test_auc"], t["bg_rej_30"], t.get("bg_rej_50", float("nan")),
+             r["walltime_sec"] / 3600, r["walltime_sec"] / max(r["epochs_run"], 1)))
+    if r["epochs_run"] < EPOCHS:
+        print("  stopped at epoch %d on the time cap: finish before reporting"
+              % r["epochs_run"])
+"""),
+    ]
+    name = "kaggle_k64_%s_seed%d.ipynb" % (tag, seed)
+    _finalise(cells, NB_DIR / name)
+    return name
+
+
 def build_message(blob: str, seed: int = 0, k: int = 64) -> None:
     """Tier-2 item 5: covariant message passing on the canonical protocol.
 
@@ -1829,6 +1945,8 @@ def main() -> int:
     build_capacity_cost(blob)
     build_gap_screen(blob)
     build_gpu_profile(blob)
+    for tag, flags, seed in K64_RUNS:
+        build_k64_run(blob, tag, flags, seed)
     for k in (32, 64):
         for seed in (0, 1):
             build_message(blob, seed=seed, k=k)
