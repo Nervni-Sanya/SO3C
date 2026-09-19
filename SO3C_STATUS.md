@@ -1,6 +1,6 @@
 # SO3C status
 
-Last updated 2026-09-18. This is the single place to start from. Commit hashes point at the evidence for every number; unless stated otherwise they are commits in the **so33** repository this one was split from (see [Provenance](#provenance)).
+Last updated 2026-09-19. This is the single place to start from. Commit hashes point at the evidence for every number; unless marked **(SO3C)** they are commits in the **so33** repository this one was split from (see [Provenance](#provenance)).
 
 ## Scope and goal
 
@@ -64,6 +64,8 @@ Last updated 2026-09-18. This is the single place to start from. Commit hashes p
 | Time-axis reference particle (1,0,0,0), gap-analysis finding 23 | redundant with beams: b+ + b- = 2 (1,0,0,0), so <p, t> = (<p,b+> + <p,b->)/2 is already available from inputs the model has. Closed by argument, not run | 2026-09-13 |
 | Two-seed ensemble | +0.0004 AUC; member scores correlate at 0.994 | `49e0c61`, `b72437f` |
 | Epochs 25–30 vs 24 (session cap) | +0.00022 AUC | `b72437f` |
+| **Jet multiplicity as an input** (true count, count clipped at 64, energy fraction in the leading 64) | Stacked on the two-seed ensemble's test scores, fit on one half of the test set and scored on the other: **+0.00002 AUC**; rejection +65, inside the ±60 spread between the two halves. The model already carries it. Diagnostic only (fits on test jets) | (SO3C) `benchmarks/diag_multiplicity_stacking.py`, `results_message/beams_k64/multiplicity_stacking.json` |
+| Best-validation checkpoint | Validation loss is lowest at the **final** epoch in both headline seeds and both beamless K=64 seeds (cosine schedule), so the best-validation checkpoint is the last one | (SO3C) 2026-09-19, from the stored histories |
 
 **Lesson worth keeping:** a closed question can re-open when the inputs change. Capacity was flat without beams and paid once beams supplied the information. kNN was useless at K=32 and 3.15× faster at K=128.
 
@@ -87,26 +89,42 @@ Both are now switchable and default to the old behaviour: `--no-mass-input --no-
 
 | candidate | mechanism | note |
 |---|---|---|
-| True multiplicity as a jet scalar | multiplicity separates classes (signal mean 54.7, background 43.4 constituents) and is clipped at 64 for 17.8% of jets | Lorentz invariant; count from the K=128 data before slicing |
 | Relative-norm edge feature d_ab = s_aa + s_bb − 2 s_ab | LorentzNet Eq 3.2 feeds ‖x_i − x_j‖²; not recoverable after asinh | implemented, `--relnorm-edge` (`6771158`); CPU cost 1.30x the headline |
 | f_α multi-resolution embedding, learnable exponents | PELICAN Sec 3.1: ((1+x)^(α²) − 1)/α², α initialised over [0.05, 0.5] | implemented, `--falpha n` (`6771158`). **Not** zero-runtime as the agent claimed: at n=3 on beams + channels 8, K=64, CPU cost is **3.54x the headline** (~37.5 h per 30-epoch seed). CPU ratios misled before (kNN), so measure on GPU before any full run |
 | N^α / N̄^α aggregation rescaling | sum-vs-mean semantics; our flow angle scales with Σ_b w_b z_b | ~0 runtime |
 | Time-axis reference particle (1,0,0,0) | a third symmetry-breaking reference, as in L-GATr -- **redundant with beams** (b+ + b- = 2t; see Closed) | 1.03× cost |
 | Softmax attention over w_b | normalised aggregation; needed for depth | ~1.05× |
 | Depth over width (rounds 6 re-asked with beams in the gap screen) | ~10 blocks with fewer channels at small budgets (slim L-GATr) | our rounds 6 was −0.0006, but **without** beams |
-| Best-validation checkpoint | LorentzNet reports the best-val checkpoint | protocol match; +0.0002–0.0005 claimed |
 | Lion optimiser, lr 3e-4, wd 0.2 | a different optimiser, not the ruled-out AdamW bundle | a training-limit control |
 | JetClass pretraining | the only published result above PELICAN (L-GATr 2894, arXiv:2411.00446) | ≥ 25 GPU-h truncated; changes the comparison class |
 
 Full agent text: `so3c_notes/gap_to_sota_2026-09-13.md`. Three of the workflow's six agents failed on the usage limit, so the findings there are unranked.
 
-## Next GPU window (opens 2026-09-19)
+## GPU window 2026-09-19 → 2026-09-26 (in progress)
 
-`notebooks/kaggle_gap_screen.ipynb` (kernel `nsanya/so3c-gap-screen`) is built and verified but **not pushed**: the current window is spent. It screens every implemented candidate on the K=32 probe protocol (400k train jets, 20 epochs, seed 0) against beams + channels 8 (0.98128 / 834.4, `c325950`): the two defect fixes, the vector channel, the relative-norm edge, the pair latent, the three architectural changes combined, depth re-asked with beams (rounds 6), and f_alpha last because of its CPU cost. A one-epoch smoke run with every switch at once must write a result before any row starts. Estimated ~10 GPU-h.
+### Forward pass is 2× faster (SO3C `2a3b344`, `47ec4ad`)
 
-Before it was committed: the config lines were parsed and checked (six rows in order, base configuration, protocol, every switch in the smoke run), and the embedded code bundle was decoded into an empty directory, where it shipped the tests and the provenance fix and built and ran the all-switches model.
+A profile on the card (`benchmarks/profile_gpu.py`, notebook `kaggle_gpu_profile.ipynb`) showed a third of the step was bookkeeping, not model: the concatenation of the (B, K, K, 64) edge input from broadcast node features (13%), batched 3×3 complex matmuls forming and applying exp(−T[a]×) (11%; cuBLAS pads each to a 32×32 tile), and permute copies and fills of complex pair tensors. Rewritten as the **same function**: Rodrigues applied to the vector (`so3c.algebra.expm_so3c_apply`), the first edge layer and `pair_mix` evaluated block by block with per-node shares broadcast, pair invariants in real arithmetic, readout batched over channels.
 
-One seed per row, so a gain near +0.0004 AUC is at the edge of noise; confirm any winner at K=64 before believing it. Estimated K=64 cost per 30-epoch seed, from CPU ratios that have misled before: base 10.6 h, vector channel 11.6 h, pair latent 16.5 h, all three architectural changes 17.4 h. After the screen, a 30 GPU-h window leaves room for one or two confirmation seeds.
+| K=64, batch 256, Tesla T4, per-epoch estimate | before | after | |
+|---|---|---|---|
+| beams + channels 8 (headline) | 1219 s | **589 s** | 2.07× |
+| + vector channel | 1457 s | 738 s | 1.97× |
+| + pair latent 8 | 1894 s | 918 s | 2.06× |
+| headline at K=32 | 389 s | 208 s | 1.87× |
+
+Peak memory −38% (headline). Profiles: `results_profile/t4_16302b1`, `t4_2a3b344`, `t4_47ec4ad`.
+
+**Guard.** `tests/data/so3c_message_golden.npz` holds logits and gradient fingerprints written by the pre-rewrite implementation (16302b1, extracted with `git show`) for 11 switch combinations with every zero-init head excited. The rewrite matches to ~1e-14 in float64 (`test_message_set_matches_golden`), and mutation checks (transposed edge pre-activation, transposed pair state, misaligned readout batch) fail it. On the trained headline checkpoint and 4000 real test jets, old and new agree to 2e-10 in float64; in float32 the new path is closer to float64 than the old one (max logit error 0.019 vs 0.128). K=64 notebooks now run `test_message_set_matches_golden_cuda` on the card first and require "1 passed".
+
+### Running
+
+- **`nsanya/so3c-gap-screen`**, pushed 2026-09-19 22:12. Its bundle was rebuilt from this repository (`fc1d6d8`) but predates the speedup, so it runs the **old** forward pass (~10 GPU-h); Kaggle's API has no cancel endpoint. Seven rows on the K=32 probe protocol (400k train jets, 20 epochs, seed 0) against beams + channels 8 (0.98128 / 834.4, `c325950`): `fixes` (no m², no self-edges), `vector`, `relnorm`, `pair8`, `combo` (vector + pair8 + fixes), `rounds6`, `falpha3`. A one-epoch smoke run with every switch at once runs first. Replayed locally before the push: every row builds and trains one CPU epoch from the bundle, with parameter counts 22634 / 23365 / 23602 / 26514 / 26861 / 28378 / 24373.
+- **`nsanya/so3c-k64-headline-seed2`** (`de42242`), pushed 22:46, running alongside: the headline configuration, seed 2, on the new forward pass. It checks that the rewrite reproduces the headline on real data, measures the real epoch time, and adds a third ensemble member. Expected ~5 h.
+
+### After the screen
+
+One seed per row, so a gain near +0.0004 AUC is at the edge of noise; confirm any winner at K=64 before believing it, against the three headline seeds. Add the winner to `K64_RUNS` in `benchmarks/build_notebooks.py` (`build_k64_run(tag, flags, seed)`), write its metadata file, replay, push. Estimated cost per 30-epoch K=64 seed on the new forward pass: headline ~4.9 h, vector ~6.2 h, pair latent ~7.7 h. GPU used so far this window: ~10.5 h (screen, three profiles) plus ~5 h (seed 2), leaving ~14 h: two confirmation seeds of one winner, or one seed each of two.
 
 ## Infrastructure traps
 
@@ -135,6 +153,11 @@ One seed per row, so a gain near +0.0004 AUC is at the edge of noise; confirm an
 | Unverified agent output | a findings file said "zero runtime" for f_α and cited abstracts that do not make the claim | verify before building on it; record the verification |
 | Separate commands in a Bash script keep running after one fails | a status-doc edit raised and exited non-zero, and the `git commit` on the next line ran anyway (`6771158` has the code but not the doc update it was meant to carry) | chain every dependent step with `&&`, or `set -e` |
 | Kaggle replaces a kernel's output when it is pushed again | trained weights and full logs of ~40 GPU-h of runs existed only in kernel outputs until `a76d837` | fetch checkpoints and logs into the results directory as soon as a run finishes |
+| Kaggle may hand out a **Tesla T4** (Python 3.12, torch 2.10 preinstalled) instead of the P100 | all three profile kernels on 2026-09-19 got a T4; timings do not transfer between cards blindly | record the device with every timing (the nvidia-smi cell, `summary.json`) |
+| Kaggle's API has **no cancel** (the status enum has CANCEL_REQUESTED, set only from the web UI) | the gap screen was already running on the old, 2× slower forward pass when the speedup landed | push expensive kernels only once the code they depend on is final; a cancel needs the user in the web UI |
+| Bash collapses backslashes inside notebook-builder cells too | an escaped newline in a generated `print` became a real line break, and the profile kernel's last cell died with a SyntaxError (its data was already saved) | write builder fragments with the Write tool or use `chr(10)`; `ast.parse` every generated code cell before pushing |
+| A root-level ignore written as `data/` also matches `tests/data/` | the golden fixture could not be added | anchor root-only ignores: `/data/` (SO3C `2a3b344`) |
+| At least two Kaggle GPU sessions run concurrently | the screen, the profiles and seed 2 ran side by side | use the second slot; quota, not wall clock, is the limit |
 
 ## Compute and quota facts
 
@@ -147,7 +170,8 @@ One seed per row, so a gain near +0.0004 AUC is at the edge of noise; confirm an
 | K=128 kNN(16) (from 100k jets) | ~2313 | 19.3 h |
 
 - The K=32 probe protocol (400k train jets, 20 epochs) costs 0.6–1.2 h per row.
-- Quota is 30 GPU-h per week. The window ending 2026-09-19 is essentially spent (~29 h); the next opens Saturday 2026-09-19.
+- Quota is 30 GPU-h per week, resetting on Saturday. The window that opened 2026-09-19 is in use; see [GPU window](#gpu-window-2026-09-19--2026-09-26-in-progress).
+- The table above is P100 wall clock on the old forward pass. Since `47ec4ad` the per-epoch cost is about half; the T4 estimates are in the GPU-window section, and headline seed 2 will give the measured figure.
 
 ## Provenance
 
