@@ -21,8 +21,12 @@ Measured on K=64 message passing (2026-09-12): seeds 0 and 1 score AUC
 two-seed ensemble scores 0.98109 and 901.4. Their scores correlate at
 0.9953, which is why averaging buys so little.
 
+Seeds may live in several directories (runs from different kernels);
+pass them all to --results-dir. A seed number appearing twice is an error.
+
 Run:
     python -m benchmarks.ensemble_scores --results-dir results_message/k64
+    python -m benchmarks.ensemble_scores --results-dir results_message/beams_k64 results_k64/headline
 """
 
 from __future__ import annotations
@@ -52,7 +56,7 @@ def metrics(y: np.ndarray, s: np.ndarray) -> dict[str, float]:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--results-dir", type=str, required=True)
+    p.add_argument("--results-dir", type=str, nargs="+", required=True)
     p.add_argument("--model", type=str, default="so3c_message_set")
     p.add_argument("--experiment", type=str, default="top_tagging_canonical")
     p.add_argument("--tolerance", type=float, default=1e-4,
@@ -62,11 +66,16 @@ def main(argv: list[str] | None = None) -> int:
                    help="Also write the summary as JSON to this path.")
     args = p.parse_args(argv)
 
-    folder = pathlib.Path(args.results_dir)
-    files = sorted(folder.glob(f"{args.experiment}__{args.model}__seed*__scores.npz"))
+    folders = [pathlib.Path(d) for d in args.results_dir]
+    files = sorted((f for d in folders for f in
+                    d.glob(f"{args.experiment}__{args.model}__seed*__scores.npz")),
+                   key=lambda f: int(re.search(r"seed(\d+)__scores", f.name).group(1)))
+    seeds = [int(re.search(r"seed(\d+)__scores", f.name).group(1)) for f in files]
+    if len(set(seeds)) != len(seeds):
+        raise SystemExit(f"[ensemble] a seed appears twice across {args.results_dir}: {seeds}")
     if len(files) < 2:
-        print(f"[ensemble] need at least two scored seeds in {folder}, found "
-              f"{len(files)}", file=sys.stderr)
+        print(f"[ensemble] need at least two scored seeds in {args.results_dir}, "
+              f"found {len(files)}", file=sys.stderr)
         return 1
 
     labels = None
@@ -114,7 +123,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.out:
         pathlib.Path(args.out).write_text(json.dumps({
-            "results_dir": str(folder), "model": args.model,
+            "results_dir": [str(d) for d in folders], "model": args.model,
             "experiment": args.experiment, "members": members,
             "ensemble": ensemble, "mean_score_correlation": mean_corr,
         }, indent=2), encoding="utf-8")
