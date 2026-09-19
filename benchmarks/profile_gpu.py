@@ -139,6 +139,9 @@ def main(argv=None) -> int:
     p.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     p.add_argument("--dtype", default="float32", choices=["float32", "float64"])
     p.add_argument("--no-profile", action="store_true")
+    p.add_argument("--compile", action="store_true",
+                   help="torch.compile the model (inductor); also checks the "
+                        "compiled forward against eager on the timing batch")
     p.add_argument("--out", default="profile_out")
     args = p.parse_args(argv)
 
@@ -157,6 +160,20 @@ def main(argv=None) -> int:
         model, kw = build(cfg, args.channels, dtype, device)
         n_params = sum(q.numel() for q in model.parameters())
         x, y = synthetic_batch(args.batch_size, args.k, device, dtype)
+        compile_note = ""
+        if args.compile:
+            t0 = time.perf_counter()
+            eager_out = model(x).detach()
+            compiled = torch.compile(model)
+            try:
+                diff = (compiled(x).detach() - eager_out).abs().max().item()
+            except Exception as exc:          # report, keep profiling the rest
+                print("%-8s compile FAILED: %s" % (cfg, str(exc)[:300]), flush=True)
+                summary["rows"].append({"config": cfg, "compile_error": str(exc)[:2000]})
+                continue
+            compile_note = " | compiled (first call %.0f s, max |d logit| vs eager %.1e)" % (
+                time.perf_counter() - t0, diff)
+            model = compiled
         if device.type == "cuda":
             torch.cuda.reset_peak_memory_stats(device)
         t_step, step = time_steps(model, x, y, args.steps, device)
@@ -165,6 +182,7 @@ def main(argv=None) -> int:
         xe, _ = synthetic_batch(args.eval_chunk_size, args.k, device, dtype, seed=1)
         t_eval = time_eval(model, xe, max(2, args.steps // 4), device)
         row = {"config": cfg, "kwargs": kw, "n_params": n_params,
+               "compiled": bool(args.compile), "compile_note": compile_note,
                "train_step_s": t_step, "eval_chunk_s": t_eval,
                "peak_train_gib": peak,
                # one epoch of the canonical protocol: 1.211M train jets and
@@ -173,8 +191,8 @@ def main(argv=None) -> int:
                                    + (403_000 / args.eval_chunk_size) * t_eval}
         summary["rows"].append(row)
         print("%-8s %6d par | step %.4f s | eval chunk %.4f s | peak %.2f GiB | "
-              "epoch ~%.0f s" % (cfg, n_params, t_step, t_eval, peak,
-                                 row["epoch_estimate_s"]), flush=True)
+              "epoch ~%.0f s%s" % (cfg, n_params, t_step, t_eval, peak,
+                                   row["epoch_estimate_s"], compile_note), flush=True)
         if not args.no_profile:
             tables = profile_step(step, device, args.top)
             for name, table in zip(("by_kernel", "by_line", "by_shape"), tables):

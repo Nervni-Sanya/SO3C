@@ -1587,6 +1587,14 @@ ok = run(["benchmarks.profile_gpu", "--out", OUT + "_k32", "--k", "32",
           "--config", "base", "--no-profile"])
 """),
         code("""
+# torch.compile on the same card, same shapes. Triton needs sm_70+, so on a
+# P100 this reports the failure and the eager numbers above stand alone.
+ok = run(["benchmarks.profile_gpu", "--out", OUT + "_compiled", "--k", "64",
+          "--batch-size", "256", "--eval-chunk-size", "1024", "--compile",
+          "--config", "base", "--config", "vector", "--config", "pair8",
+          "--no-profile"])
+"""),
+        code("""
 import pathlib
 for f in ["base_by_kernel.txt", "base_by_shape.txt", "base_by_line.txt"]:
     p = pathlib.Path(OUT) / f
