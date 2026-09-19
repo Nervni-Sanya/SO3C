@@ -31,6 +31,14 @@ CONFIGS = {
     "knn": dict(channels=4, rounds=2, neighbors=4),
     "noscalar": dict(channels=4, rounds=2, scalar_dim=0),
     "rounds1": dict(channels=4, rounds=1, beams=True),
+    "nomix": dict(channels=4, rounds=2, beams=True, channel_mixing=False),
+    "vector_nobeams": dict(channels=4, rounds=2, vector_channel=True),
+    "pair_noscalar": dict(channels=4, rounds=2, pair_latent=4, scalar_dim=0),
+    "combo_nobeams": dict(channels=4, rounds=3, vector_channel=True,
+                          pair_latent=4, relnorm_edge=True, falpha=2,
+                          self_edges=False, mass_input=False),
+    "wide": dict(channels=3, rounds=2, beams=True, act_hidden=7, msg_dim=5,
+                 scalar_dim=6, hidden=11, T=0.7),
 }
 
 
