@@ -811,9 +811,10 @@ class SO3CMessageSetClassifier(nn.Module):
         and the diagonal broadcast along rows depend on a only, the column
         mean and the diagonal broadcast along columns on b only, and the
         global mean on neither. Each share of lin is computed at the size it
-        lives at and broadcast. _eq2to2 also multiplies by the pair mask;
-        that is skipped here because the caller multiplies the updated state
-        by the same mask, so entries outside it are discarded either way.
+        lives at and broadcast. _eq2to2 multiplies the seven maps by the pair
+        mask; lin is linear, so the same mask is applied to their summed
+        share, which keeps the function identical for any mask values, not
+        only 0/1 (and so the gradient with respect to the mask column too).
         """
         W, Cp = lin.weight, T.shape[-1]
         Mm = M.unsqueeze(-1)
@@ -823,12 +824,12 @@ class SO3CMessageSetClassifier(nn.Module):
         diag = torch.diagonal(T, dim1=1, dim2=2).permute(0, 2, 1)    # (B, K, Cp)
         tot = Tm.sum(dim=(1, 2)) / Mm.sum(dim=(1, 2)).clamp_min(1.0)  # (B, Cp)
         blk = [W[:, i * Cp:(i + 1) * Cp] for i in range(7)]
-        pre = (F.linear(hid, W[:, 7 * Cp:], lin.bias)
-               + F.linear(T, blk[0]) + F.linear(T.transpose(1, 2), blk[1]))
         node_a = F.linear(row, blk[2]) + F.linear(diag, blk[4])
         node_b = F.linear(col, blk[3]) + F.linear(diag, blk[5])
         glob = F.linear(tot, blk[6])
-        return pre + node_a.unsqueeze(2) + node_b.unsqueeze(1) + glob[:, None, None, :]
+        agg = (F.linear(T, blk[0]) + F.linear(T.transpose(1, 2), blk[1])
+               + node_a.unsqueeze(2) + node_b.unsqueeze(1) + glob[:, None, None, :])
+        return F.linear(hid, W[:, 7 * Cp:], lin.bias) + agg * Mm
 
     @staticmethod
     def _invariant_scale(v: torch.Tensor) -> torch.Tensor:

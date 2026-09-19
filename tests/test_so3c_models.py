@@ -875,6 +875,40 @@ def test_message_set_matches_reference() -> None:
         assert err_l < 1e-10 and err_g < 1e-9, (name, err_l, err_g)
 
 
+def test_message_set_soft_mask_matches_reference() -> None:
+    """Equivalence beyond 0/1 masks: with a fractional mask the current and
+    the pre-rewrite implementation give the same logits and the same
+    gradient with respect to every input column, including the mask.
+    (A review found the first version of _pair_mix_pre matched only on 0/1
+    masks, having dropped a mask multiply that is a no-op there.)"""
+    from tests.message_golden import load_reference_module
+    from benchmarks.so3c_models import SO3CMessageSetClassifier as New
+    Old = load_reference_module().SO3CMessageSetClassifier
+    kw = dict(channels=3, rounds=2, vector_channel=True, pair_latent=3,
+              falpha=2, self_edges=False, beams=True)
+    torch.manual_seed(0)
+    new = New(dtype=torch.float64, **kw)
+    g = torch.Generator().manual_seed(99)
+    with torch.no_grad():
+        for p in new.parameters():
+            p.add_(0.3 * torch.randn(p.shape, dtype=torch.float64, generator=g))
+    old = Old(dtype=torch.float64, **kw)
+    old.load_state_dict(new.state_dict())
+    pv = torch.tensor([[[2.0, 0.5, 1.0], [1.8, 0.7, 1.2], [1.1, 0.2, 0.9]]],
+                      dtype=torch.float64)
+    E = pv.norm(dim=-1, keepdim=True) * 1.05
+    mask = torch.tensor([[[0.7], [1.0], [0.3]]], dtype=torch.float64)
+    outs = []
+    for m in (old, new):
+        x = torch.cat([E, pv, mask], -1).requires_grad_(True)
+        y = m(x)
+        y.sum().backward()
+        outs.append((y.detach(), x.grad))
+    (yo, go), (yn, gn) = outs
+    assert (yo - yn).abs().max() / yo.abs().max() < 1e-12
+    assert (go - gn).abs().max() / go.abs().max() < 1e-12
+
+
 def test_message_set_matches_golden_cuda() -> None:
     """The same function on the card: CUDA kernels for the cross products,
     complex arithmetic and broadcasts must reproduce the CPU fixture.
@@ -916,5 +950,6 @@ if __name__ == "__main__":
     test_message_set_pair_latent_trains()
     test_message_set_matches_golden()
     test_message_set_matches_reference()
+    test_message_set_soft_mask_matches_reference()
     test_message_set_matches_golden_cuda()
     print("All so3c model tests passed.\n")
