@@ -25,9 +25,11 @@ from __future__ import annotations
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from so3c.activation import SO3CActivation
-from so3c.algebra import expm_so3c, invariant_features, real_to_complex
+from so3c.algebra import (expm_so3c, expm_so3c_apply, invariant_features,
+                          real_to_complex)
 from so3c.interaction import SO3CInteraction
 from so3c.lift import bivector_lift, jet_bivectors, minkowski_inner
 
@@ -679,6 +681,11 @@ class SO3CMessageSetClassifier(nn.Module):
         self.falpha_embed = _SignedFAlpha(falpha, dtype) if falpha else None
         edge_in = (n_pair * (falpha if falpha else 1) + 4 * channels
                    + 2 * scalar_dim + (2 if vector_channel else 0))
+        # Column layout of the edge input, in concatenation order: pair
+        # invariants | Re, Im of z_a.z_a and z_b.z_b (C each) | h_a, h_b |
+        # vector features | pair latent. _edge_pre uses it to apply the first
+        # edge layer block by block instead of building the concatenation.
+        self._n_pair_in = n_pair * (falpha if falpha else 1)
         self.edge = nn.ModuleList()
         self.w_head = nn.ModuleList()
         self.msg_head = nn.ModuleList()
@@ -762,6 +769,39 @@ class SO3CMessageSetClassifier(nn.Module):
             tot[:, None, None, :].expand(B, K, K, C),
         ]
         return torch.cat(out, dim=-1) * Mm
+
+    def _edge_pre(self, lin: nn.Linear, pair, ar, ai, h, vfeat, E=None):
+        """lin applied to the dense edge input, without concatenating it.
+
+        The edge input is [pair | asinh Re, Im z_a.z_a | asinh Re, Im z_b.z_b
+        | h_a | h_b | vector features | E]. Every block but the pair
+        invariants, the vector features and E depends on one endpoint only,
+        so its share of lin is computed per node, (B, K, H), and broadcast
+        over the other endpoint. Mathematically identical to
+        lin(torch.cat([...], -1)); on a T4 the concatenation of broadcast
+        views alone was 13% of a training step.
+
+        pair (B, K, K, P); ar, ai = asinh Re/Im of z_a.z_a, (B, K, C); h
+        (B, K, D) or None; vfeat a list of (B, K, K, 1); E (B, K, K, C_p) or
+        None. Returns the pre-activation, (B, K, K, H).
+        """
+        W, C, D = lin.weight, self.channels, self.scalar_dim
+        o = self._n_pair_in
+        pre = F.linear(pair, W[:, :o], lin.bias)
+        node_a = ar @ W[:, o:o + C].t() + ai @ W[:, o + C:o + 2 * C].t()
+        node_b = ar @ W[:, o + 2 * C:o + 3 * C].t() + ai @ W[:, o + 3 * C:o + 4 * C].t()
+        o += 4 * C
+        if D:
+            node_a = node_a + h @ W[:, o:o + D].t()
+            node_b = node_b + h @ W[:, o + D:o + 2 * D].t()
+            o += 2 * D
+        pre = pre + node_a.unsqueeze(2) + node_b.unsqueeze(1)
+        for f in vfeat:
+            pre = pre + f * W[:, o]
+            o += 1
+        if E is not None:
+            pre = pre + F.linear(E, W[:, o:o + E.shape[-1]])
+        return pre
 
     @staticmethod
     def _invariant_scale(v: torch.Tensor) -> torch.Tensor:
@@ -860,14 +900,17 @@ class SO3CMessageSetClassifier(nn.Module):
                 emask = edge_mask.unsqueeze(-1)
                 vfeat = []
             else:
-                S = zc @ zc.transpose(-1, -2)                    # (B, C, K, K)
-                sd = torch.diagonal(S, dim1=-2, dim2=-1).permute(0, 2, 1)
-                s_ab = S.permute(0, 2, 3, 1)                     # (B, K, K, C)
-                row = sd.unsqueeze(2).expand(B, K, K, C)
-                col = sd.unsqueeze(1).expand(B, K, K, C)
-                scal = ([h.unsqueeze(2).expand(B, K, K, D),
-                         h.unsqueeze(1).expand(B, K, K, D)]
-                        if self.scalar_dim else [])
+                # z_a.z_b in real arithmetic: two real matmuls with inner
+                # dimension 6 instead of a complex one, and no complex
+                # (B, K, K, C) tensor whose backward has to be filled.
+                zr, zi = zc.real, zc.imag
+                A = torch.cat([zr, zi], dim=-1)                  # (B, C, K, 6)
+                Sr = A @ torch.cat([zr, -zi], dim=-1).transpose(-1, -2)
+                Si = A @ torch.cat([zi, zr], dim=-1).transpose(-1, -2)
+                sd_r = torch.diagonal(Sr, dim1=-2, dim2=-1).permute(0, 2, 1)
+                sd_i = torch.diagonal(Si, dim1=-2, dim2=-1).permute(0, 2, 1)
+                s_r = Sr.permute(0, 2, 3, 1)                     # (B, K, K, C)
+                s_i = Si.permute(0, 2, 3, 1)
                 emask = pair_mask.unsqueeze(-1)
                 if self.vector_channel:
                     Ev, pv = v[..., 0], v[..., 1:]
@@ -882,25 +925,35 @@ class SO3CMessageSetClassifier(nn.Module):
                 else:
                     vfeat = []
 
-            pair = [s_ab.real, s_ab.imag]
-            if self.relnorm_edge:
-                d_ab = row + col - 2.0 * s_ab
-                pair += [d_ab.real, d_ab.imag]
-            pair = torch.cat(pair, dim=-1)
-            pair = (self.falpha_embed(pair) if self.falpha_embed is not None
-                    else torch.asinh(pair))
-            e = torch.cat([
-                pair,
-                torch.asinh(row.real), torch.asinh(row.imag),
-                torch.asinh(col.real), torch.asinh(col.imag),
-            ] + scal + vfeat, dim=-1)                                    # (B,K,*,6C+2D)
-
-            if self.pair_latent:
-                if r == 0:
-                    E = self.pair_init(e) * full_pair.unsqueeze(-1)
-                hid = self.edge[r](torch.cat([e, E], dim=-1))
-            else:
+            if sparse:
+                pair = [s_ab.real, s_ab.imag]
+                if self.relnorm_edge:
+                    d_ab = row + col - 2.0 * s_ab
+                    pair += [d_ab.real, d_ab.imag]
+                pair = torch.cat(pair, dim=-1)
+                pair = (self.falpha_embed(pair) if self.falpha_embed is not None
+                        else torch.asinh(pair))
+                e = torch.cat([
+                    pair,
+                    torch.asinh(row.real), torch.asinh(row.imag),
+                    torch.asinh(col.real), torch.asinh(col.imag),
+                ] + scal + vfeat, dim=-1)                                # (B,K,k,6C+2D)
                 hid = self.edge[r](e)
+            else:
+                pair = [s_r, s_i]
+                if self.relnorm_edge:
+                    pair += [sd_r.unsqueeze(2) + sd_r.unsqueeze(1) - 2.0 * s_r,
+                             sd_i.unsqueeze(2) + sd_i.unsqueeze(1) - 2.0 * s_i]
+                pair = torch.cat(pair, dim=-1)
+                pair = (self.falpha_embed(pair) if self.falpha_embed is not None
+                        else torch.asinh(pair))
+                ar, ai = torch.asinh(sd_r), torch.asinh(sd_i)    # (B, K, C)
+                if self.pair_latent and r == 0:
+                    E = (self._edge_pre(self.pair_init, pair, ar, ai, h, vfeat)
+                         * full_pair.unsqueeze(-1))
+                hid = torch.tanh(self._edge_pre(
+                    self.edge[r][0], pair, ar, ai, h, vfeat,
+                    E if self.pair_latent else None))
             wts = self.w_head[r](hid) * emask                    # (B, K, *, C)
             if self.vector_channel:
                 u = self.v_head[r](hid).squeeze(-1) * pair_mask   # (B, K, K)
@@ -920,13 +973,13 @@ class SO3CMessageSetClassifier(nn.Module):
                 ).permute(0, 2, 1, 3)                            # (B, C, K, 3)
             else:
                 wc = wts.permute(0, 3, 1, 2)                     # (B, C, K, K)
-                ref = torch.complex(wc @ zc.real, wc @ zc.imag)
+                R = wc @ torch.cat([zc.real, zc.imag], dim=-1)   # (B, C, K, 6)
+                ref = torch.complex(R[..., :3], R[..., 3:])
             ref = ref / denom[:, None, :, None]
             a = torch.linalg.cross(zc, ref, dim=-1)              # covariant
             a = a / self._invariant_scale(a).unsqueeze(-1)
 
-            Q = expm_so3c(a.reshape(-1, 3), t=-self.T)           # (B*C*K, 3, 3)
-            zc = (Q @ zc.reshape(-1, 3, 1)).squeeze(-1).reshape(B, C, K, 3)
+            zc = expm_so3c_apply(a, zc, t=-self.T)               # (B, C, K, 3)
             zc = zc * mask_all[:, None, :, None]
 
             if self.pair_latent:

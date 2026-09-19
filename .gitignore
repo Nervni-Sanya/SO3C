@@ -12,6 +12,7 @@ dist/
 results/
 
 # Datasets and caches (11 GB): never committed; rebuilt from the sources
-# or fetched from Kaggle (nsanya/so3c-data-prep-k-128).
-data/
+# or fetched from Kaggle (nsanya/so3c-data-prep-k-128). Root only: tests/data
+# holds small committed fixtures.
+/data/
 checkpoints/**/*.npz

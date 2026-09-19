@@ -799,6 +799,34 @@ def test_message_set_pair_latent_trains() -> None:
                     so3c_kwargs={"pair_latent": 4, "neighbors": 4})
 
 
+def test_message_set_matches_golden() -> None:
+    """Logits and parameter gradients equal those of the implementation the
+    published numbers were measured with, for every switch combination.
+
+    tests/data/so3c_message_golden.npz was written from that implementation
+    (SO3C repo at 16302b1) before the forward pass was rewritten for speed,
+    so a rewrite has to be the same function, not merely a covariant one.
+    Every zero-init head is excited (tests/message_golden.py), so the flow,
+    the vector update and the pair latent are all live.
+    """
+    import numpy as np
+    from tests.message_golden import CONFIGS, build_case
+
+    golden = np.load(pathlib.Path(__file__).resolve().parent / "data"
+                     / "so3c_message_golden.npz")
+    for name in CONFIGS:
+        model, x, y = build_case(name)
+        logits = model(x)
+        loss = torch.nn.functional.cross_entropy(logits, y)
+        grads = torch.autograd.grad(loss, list(model.parameters()))
+        grad = torch.cat([g.reshape(-1) for g in grads]).numpy()
+        ref_l, ref_g = golden[name + "/logits"], golden[name + "/grad"]
+        assert grad.shape == ref_g.shape, (name, grad.shape, ref_g.shape)
+        err_l = np.abs(logits.detach().numpy() - ref_l).max() / np.abs(ref_l).max()
+        err_g = np.abs(grad - ref_g).max() / np.abs(ref_g).max()
+        assert err_l < 1e-10 and err_g < 1e-9, (name, err_l, err_g)
+
+
 if __name__ == "__main__":
     print("\n── so3c benchmark-model tests ──")
     test_generator_invariants()
@@ -821,4 +849,5 @@ if __name__ == "__main__":
     test_message_set_eq2to2_is_permutation_equivariant()
     test_message_set_pair_latent_symmetries()
     test_message_set_pair_latent_trains()
+    test_message_set_matches_golden()
     print("All so3c model tests passed.\n")

@@ -1,0 +1,49 @@
+[{"stream_name":"stderr","time":8.060738664,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":8.060791794,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":8.060796128,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":8.06079861,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stderr","time":8.691053137,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":8.691113292,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":8.691118659,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":8.691122993,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stdout","time":9.863574538,"data":"Tesla T4, 15360 MiB\n"}
+,{"stream_name":"stdout","time":9.863634973,"data":"Tesla T4, 15360 MiB\n"}
+,{"stream_name":"stdout","time":9.953413296,"data":"['benchmarks', 'so3c', 'tests']\n"}
+,{"stream_name":"stderr","time":9.954234106,"data":"/tmp/ipykernel_24/2553137261.py:3: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n"}
+,{"stream_name":"stderr","time":9.954254444,"data":"  tarfile.open(fileobj=io.BytesIO(base64.b64decode(CODE_B64)), mode=\"r:gz\").extractall(\"/kaggle/working/repo\")\n"}
+,{"stream_name":"stderr","time":9.954259984,"data":"\n"}
+,{"stream_name":"stderr","time":9.954263568,"data":"/tmp/ipykernel_24/2553137261.py:3: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n"}
+,{"stream_name":"stderr","time":9.954267733,"data":"  tarfile.open(fileobj=io.BytesIO(base64.b64decode(CODE_B64)), mode=\"r:gz\").extractall(\"/kaggle/working/repo\")\n"}
+,{"stream_name":"stdout","time":15.679042374,"data":"torch 2.10.0+cu128 already supports sm_75\n"}
+,{"stream_name":"stdout","time":80.695762116,"data":"device Tesla T4 | K=64 | batch 256 | float32\n"}
+,{"stream_name":"stdout","time":80.695815516,"data":"base      22834 par | step 0.2289 s | eval chunk 0.3461 s | peak 2.15 GiB | epoch ~1219 s\n"}
+,{"stream_name":"stdout","time":80.695821036,"data":"vector    23365 par | step 0.2709 s | eval chunk 0.4467 s | peak 2.21 GiB | epoch ~1457 s\n"}
+,{"stream_name":"stdout","time":80.695824607,"data":"pair8     26514 par | step 0.3490 s | eval chunk 0.6166 s | peak 4.08 GiB | epoch ~1894 s\n"}
+,{"stream_name":"stdout","time":80.695828246,"data":"\n"}
+,{"stream_name":"stdout","time":88.538733572,"data":"device Tesla T4 | K=32 | batch 256 | float32\n"}
+,{"stream_name":"stdout","time":88.538777983,"data":"base      22834 par | step 0.0733 s | eval chunk 0.2142 s | peak 0.63 GiB | epoch ~389 s\n"}
+,{"stream_name":"stdout","time":88.538784536,"data":"\n"}
+,{"stream_name":"stderr","time":89.282957451,"data":"Traceback (most recent call last):\n"}
+,{"stream_name":"stderr","time":89.283000555,"data":"  File \"\u003cstring\u003e\", line 1, in \u003cmodule\u003e\n"}
+,{"stream_name":"stderr","time":89.283031293,"data":"  File \"/usr/local/lib/python3.12/dist-packages/papermill/execute.py\", line 131, in execute_notebook\n"}
+,{"stream_name":"stderr","time":89.283153523,"data":"    raise_for_execution_errors(nb, output_path)\n"}
+,{"stream_name":"stderr","time":89.283247871,"data":"  File \"/usr/local/lib/python3.12/dist-packages/papermill/execute.py\", line 251, in raise_for_execution_errors\n"}
+,{"stream_name":"stderr","time":89.283405994,"data":"    raise error\n"}
+,{"stream_name":"stderr","time":89.283426019,"data":"papermill.exceptions.PapermillExecutionError: \n"}
+,{"stream_name":"stderr","time":89.283436007,"data":"---------------------------------------------------------------------------\n"}
+,{"stream_name":"stderr","time":89.283448677,"data":"Exception encountered at \"In [6]\":\n"}
+,{"stream_name":"stderr","time":89.283454802,"data":"  File \"/tmp/ipykernel_24/17014546.py\", line 5\n"}
+,{"stream_name":"stderr","time":89.283460258,"data":"    print(\"\n"}
+,{"stream_name":"stderr","time":89.283474741,"data":"          ^\n"}
+,{"stream_name":"stderr","time":89.28347845,"data":"SyntaxError: unterminated string literal (detected at line 5)\n"}
+,{"stream_name":"stderr","time":89.283489723,"data":"\n"}
+,{"stream_name":"stderr","time":89.283494283,"data":"\n"}
+,{"stream_name":"stderr","time":91.459170071,"data":"/usr/local/lib/python3.12/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\\|'\n"}
+,{"stream_name":"stderr","time":91.459227247,"data":"  cells[i][c] = re.sub('\\\\\\\\\\|', '|', cell)\n"}
+,{"stream_name":"stderr","time":91.616393622,"data":"/usr/local/lib/python3.12/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\\_'\n"}
+,{"stream_name":"stderr","time":91.616419772,"data":"  text = re.sub(r'_', '\\_', text) # Escape underscores in display text\n"}
+,{"stream_name":"stderr","time":92.224841759,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to notebook\n"}
+,{"stream_name":"stderr","time":92.526813632,"data":"[NbConvertApp] Writing 185298 bytes to __notebook__.ipynb\n"}
+,{"stream_name":"stderr","time":94.837245053,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to html\n"}
+,{"stream_name":"stderr","time":95.631115436,"data":"[NbConvertApp] Writing 466211 bytes to __results__.html\n"}
+]

@@ -1587,7 +1587,7 @@ import pathlib
 for f in ["base_by_kernel.txt", "base_by_shape.txt", "base_by_line.txt"]:
     p = pathlib.Path(OUT) / f
     print("=====", f)
-    print("\n".join(p.read_text().splitlines()[:45]))
+    print(chr(10).join(p.read_text().splitlines()[:45]))
 """),
     ]
     _finalise(cells, NB_DIR / "kaggle_gpu_profile.ipynb")

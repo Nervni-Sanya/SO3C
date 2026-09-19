@@ -191,6 +191,20 @@ def expm_so3c(a: torch.Tensor, t: float | torch.Tensor = 1.0) -> torch.Tensor:
     if not torch.is_complex(a):
         a = a.to(_complex_dtype(a.dtype))
     b = a * t
+    c1, c2 = _rodrigues_coefficients(b)
+    c1, c2 = c1[..., None, None], c2[..., None, None]
+
+    M = cross_matrix(b)
+    eye = torch.eye(DIM_C, dtype=M.dtype, device=M.device).expand_as(M)
+    return eye + c1 * M + c2 * (M @ M)
+
+
+def _rodrigues_coefficients(b: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    """c1 = sin(theta)/theta, c2 = (1 - cos(theta))/theta^2 with theta^2 = b.b.
+
+    (…, 3) complex -> two (…,) complex tensors. Near theta = 0 the even-power
+    Taylor series is used, so both are smooth through the origin.
+    """
     theta2 = complex_bilinear(b, b)                      # (…,) complex
     small = theta2.abs() < _SERIES_THRESHOLD
 
@@ -203,12 +217,31 @@ def expm_so3c(a: torch.Tensor, t: float | torch.Tensor = 1.0) -> torch.Tensor:
     c1_exact = torch.sin(theta) / theta
     c2_exact = (1.0 - torch.cos(theta)) / (theta * theta)
 
-    c1 = torch.where(small, c1_series, c1_exact)[..., None, None]
-    c2 = torch.where(small, c2_series, c2_exact)[..., None, None]
+    return (torch.where(small, c1_series, c1_exact),
+            torch.where(small, c2_series, c2_exact))
 
-    M = cross_matrix(b)
-    eye = torch.eye(DIM_C, dtype=M.dtype, device=M.device).expand_as(M)
-    return eye + c1 * M + c2 * (M @ M)
+
+def expm_so3c_apply(a: torch.Tensor, z: torch.Tensor,
+                    t: float | torch.Tensor = 1.0) -> torch.Tensor:
+    """exp(t [a]_x) z without forming the matrix: (…, 3), (…, 3) -> (…, 3).
+
+    Since [b]_x z = b x z, the Rodrigues formula acts on a vector as
+
+        exp([b]_x) z = z + c1 (b x z) + c2 (b x (b x z)),     b = t a,
+
+    with the same c1, c2 as expm_so3c. Equal to ``expm_so3c(a, t) @ z`` to
+    rounding, in value and gradient, but it replaces two batched 3x3 complex
+    matmuls per vector -- which cuBLAS runs on 32x32 tiles, so ~99% of each
+    tile is padding -- with elementwise products. On a T4 those matmuls were
+    11% of a so3c_message_set training step.
+    """
+    if not torch.is_complex(a):
+        a = a.to(_complex_dtype(a.dtype))
+    b = a * t
+    c1, c2 = _rodrigues_coefficients(b)
+    bz = torch.linalg.cross(b, z, dim=-1)
+    return (z + c1.unsqueeze(-1) * bz
+            + c2.unsqueeze(-1) * torch.linalg.cross(b, bz, dim=-1))
 
 
 def complex_matrix_to_real(Q: torch.Tensor) -> torch.Tensor:
