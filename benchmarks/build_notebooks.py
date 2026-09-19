@@ -1717,6 +1717,42 @@ for f in sorted(glob.glob(OUT + "/*.json")):
     return name
 
 
+def build_cuda_diag(blob: str) -> None:
+    """Why the on-card golden guard failed: float64 on CUDA differed from
+    the CPU fixture by ~4e-8 (case 'base'), where the CPU matches it to
+    1e-14 and the cases amplify a 1e-15 perturbation only tenfold.
+    benchmarks/diag_cuda_golden.py separates platform, device, old-vs-new
+    implementation, primitive ops and submodules. No dataset; minutes.
+    """
+    cells = [
+        md("""
+# CUDA float64 vs the golden fixture
+
+Separates platform (this container's CPU vs the fixture), device (CPU vs
+GPU here), implementation (pre-rewrite 16302b1 vs current, same device),
+primitive ops and submodules.
+"""),
+        code("""
+import subprocess
+print(subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total",
+                      "--format=csv,noheader"], capture_output=True,
+                     text=True).stdout.strip())
+"""),
+        code(UNPACK.format(blob=blob)),
+        code(RUNNER),
+        code(GPU_SETUP),
+        code("""
+import subprocess, sys
+r = subprocess.run([sys.executable, "-m", "benchmarks.diag_cuda_golden"],
+                   cwd="/kaggle/working/repo", capture_output=True, text=True)
+print(r.stdout)
+print(r.stderr[-3000:])
+open("/kaggle/working/diag_cuda_golden.txt", "w").write(r.stdout + chr(10) + r.stderr)
+"""),
+    ]
+    _finalise(cells, NB_DIR / "kaggle_cuda_diag.ipynb")
+
+
 def build_message(blob: str, seed: int = 0, k: int = 64) -> None:
     """Tier-2 item 5: covariant message passing on the canonical protocol.
 
@@ -1953,6 +1989,7 @@ def main() -> int:
     build_capacity_cost(blob)
     build_gap_screen(blob)
     build_gpu_profile(blob)
+    build_cuda_diag(blob)
     for tag, flags, seed in K64_RUNS:
         build_k64_run(blob, tag, flags, seed)
     for k in (32, 64):

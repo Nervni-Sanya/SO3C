@@ -1,0 +1,70 @@
+[{"stream_name":"stderr","time":5.648701794,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":5.6487455,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":5.64875095,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":5.648760096,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stderr","time":6.200714047,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":6.200757643,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":6.200763079,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":6.2007668240000005,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stdout","time":7.218016797,"data":"Tesla T4, 15360 MiB\n"}
+,{"stream_name":"stdout","time":7.218099854,"data":"Tesla T4, 15360 MiB\n"}
+,{"stream_name":"stdout","time":7.312658888,"data":"['benchmarks', 'so3c', 'tests']\n"}
+,{"stream_name":"stderr","time":7.313524454,"data":"/tmp/ipykernel_24/438877346.py:3: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n"}
+,{"stream_name":"stderr","time":7.313545002,"data":"  tarfile.open(fileobj=io.BytesIO(base64.b64decode(CODE_B64)), mode=\"r:gz\").extractall(\"/kaggle/working/repo\")\n"}
+,{"stream_name":"stderr","time":7.313550595,"data":"\n"}
+,{"stream_name":"stderr","time":7.313554475,"data":"/tmp/ipykernel_24/438877346.py:3: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n"}
+,{"stream_name":"stderr","time":7.313559255,"data":"  tarfile.open(fileobj=io.BytesIO(base64.b64decode(CODE_B64)), mode=\"r:gz\").extractall(\"/kaggle/working/repo\")\n"}
+,{"stream_name":"stdout","time":11.36771638,"data":"torch 2.10.0+cu128 already supports sm_75\n"}
+,{"stream_name":"stdout","time":15.525917306,"data":"data: /kaggle/input/notebooks/nsanya/so3c-data-prep-k-128/data | bundle 2710e7039155\n"}
+,{"stream_name":"stdout","time":24.700190101,"data":"F                                                                        [100%]\n"}
+,{"stream_name":"stdout","time":24.700231741,"data":"=================================== FAILURES ===================================\n"}
+,{"stream_name":"stdout","time":24.700237403,"data":"_____________________ test_message_set_matches_golden_cuda _____________________\n"}
+,{"stream_name":"stdout","time":24.700241972,"data":"\n"}
+,{"stream_name":"stdout","time":24.70024614,"data":"    def test_message_set_matches_golden_cuda() -\u003e None:\n"}
+,{"stream_name":"stdout","time":24.700250924,"data":"        \"\"\"The same function on the card: CUDA kernels for the cross products,\n"}
+,{"stream_name":"stdout","time":24.70025563,"data":"        complex arithmetic and broadcasts must reproduce the CPU fixture.\n"}
+,{"stream_name":"stdout","time":24.700260215,"data":"    \n"}
+,{"stream_name":"stdout","time":24.700268153,"data":"        CPU tests cannot see device-specific behaviour (the resume bug that\n"}
+,{"stream_name":"stdout","time":24.700271842,"data":"        lost two seeds was GPU-only), so the K=64 notebooks run this on the card\n"}
+,{"stream_name":"stdout","time":24.700287966,"data":"        before training and require it to pass, not skip.\n"}
+,{"stream_name":"stdout","time":24.700308495,"data":"        \"\"\"\n"}
+,{"stream_name":"stdout","time":24.70031236,"data":"        import pytest\n"}
+,{"stream_name":"stdout","time":24.700316119,"data":"        if not torch.cuda.is_available():\n"}
+,{"stream_name":"stdout","time":24.700319655,"data":"            pytest.skip(\"no CUDA here\")\n"}
+,{"stream_name":"stdout","time":24.700323159,"data":"        for name, (err_l, err_g) in _golden_errors(\"cuda\").items():\n"}
+,{"stream_name":"stdout","time":24.700326695,"data":"\u003e           assert err_l \u003c 1e-10 and err_g \u003c 1e-9, (name, err_l, err_g)\n"}
+,{"stream_name":"stdout","time":24.700330391,"data":"E           AssertionError: ('base', np.float64(3.596054152519746e-08), np.float64(4.959029424447829e-08))\n"}
+,{"stream_name":"stdout","time":24.700333985,"data":"E           assert (np.float64(3.596054152519746e-08) \u003c 1e-10)\n"}
+,{"stream_name":"stdout","time":24.700337513,"data":"\n"}
+,{"stream_name":"stdout","time":24.70034065,"data":"tests/test_so3c_models.py:855: AssertionError\n"}
+,{"stream_name":"stdout","time":24.700343984,"data":"=========================== short test summary info ============================\n"}
+,{"stream_name":"stdout","time":24.70034753,"data":"FAILED tests/test_so3c_models.py::test_message_set_matches_golden_cuda - Asse...\n"}
+,{"stream_name":"stdout","time":24.700350979,"data":"1 failed, 21 deselected in 6.07s\n"}
+,{"stream_name":"stdout","time":24.700354364,"data":" \n"}
+,{"stream_name":"stderr","time":25.434088928,"data":"Traceback (most recent call last):\n"}
+,{"stream_name":"stderr","time":25.434115161,"data":"  File \"\u003cstring\u003e\", line 1, in \u003cmodule\u003e\n"}
+,{"stream_name":"stderr","time":25.434121242,"data":"  File \"/usr/local/lib/python3.12/dist-packages/papermill/execute.py\", line 131, in execute_notebook\n"}
+,{"stream_name":"stderr","time":25.434313861,"data":"    raise_for_execution_errors(nb, output_path)\n"}
+,{"stream_name":"stderr","time":25.434332015,"data":"  File \"/usr/local/lib/python3.12/dist-packages/papermill/execute.py\", line 251, in raise_for_execution_errors\n"}
+,{"stream_name":"stderr","time":25.434486722,"data":"    raise error\n"}
+,{"stream_name":"stderr","time":25.434590278,"data":"papermill.exceptions.PapermillExecutionError: \n"}
+,{"stream_name":"stderr","time":25.434599675,"data":"---------------------------------------------------------------------------\n"}
+,{"stream_name":"stderr","time":25.434604265,"data":"Exception encountered at \"In [6]\":\n"}
+,{"stream_name":"stderr","time":25.43460802,"data":"---------------------------------------------------------------------------\n"}
+,{"stream_name":"stderr","time":25.434611549,"data":"AssertionError                            Traceback (most recent call last)\n"}
+,{"stream_name":"stderr","time":25.434615009,"data":"/tmp/ipykernel_24/2030889999.py in \u003ccell line: 0\u003e()\n"}
+,{"stream_name":"stderr","time":25.434618732,"data":"      6                    cwd=\"/kaggle/working/repo\", capture_output=True, text=True)\n"}
+,{"stream_name":"stderr","time":25.434623038,"data":"      7 print(g.stdout[-1500:], g.stderr[-1500:])\n"}
+,{"stream_name":"stderr","time":25.434627278,"data":"----\u003e 8 assert \"1 passed\" in g.stdout, \"golden guard did not pass on the card\"\n"}
+,{"stream_name":"stderr","time":25.434631839,"data":"\n"}
+,{"stream_name":"stderr","time":25.43463567,"data":"AssertionError: golden guard did not pass on the card\n"}
+,{"stream_name":"stderr","time":25.434639157,"data":"\n"}
+,{"stream_name":"stderr","time":27.439883587,"data":"/usr/local/lib/python3.12/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\\|'\n"}
+,{"stream_name":"stderr","time":27.439922403,"data":"  cells[i][c] = re.sub('\\\\\\\\\\|', '|', cell)\n"}
+,{"stream_name":"stderr","time":27.577657943,"data":"/usr/local/lib/python3.12/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\\_'\n"}
+,{"stream_name":"stderr","time":27.577684405,"data":"  text = re.sub(r'_', '\\_', text) # Escape underscores in display text\n"}
+,{"stream_name":"stderr","time":28.140266178,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to notebook\n"}
+,{"stream_name":"stderr","time":28.433415616,"data":"[NbConvertApp] Writing 211633 bytes to __notebook__.ipynb\n"}
+,{"stream_name":"stderr","time":30.713079871,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to html\n"}
+,{"stream_name":"stderr","time":31.49381057,"data":"[NbConvertApp] Writing 501592 bytes to __results__.html\n"}
+]
