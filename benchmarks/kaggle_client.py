@@ -209,6 +209,14 @@ def main(argv: list[str] | None = None) -> int:
                     print("aborted")
                     return 1
             resp = push_kernel(args.metadata, args.notebook)
+            # Kaggle answers HTTP 200 with an error field when it refuses a
+            # push, e.g. "Maximum batch GPU session count of 2 reached."
+            # (two GPU sessions at once is the limit; a third is refused,
+            # not queued). Printing that as "pushed" hid a refusal once.
+            if resp.get("hasError") or resp.get("error"):
+                print(f"push REFUSED by Kaggle: {resp.get('error') or resp}",
+                      file=sys.stderr)
+                return 2
             url = resp.get("url", "")
             print(f"pushed: {url or resp}")
             # Kaggle derives the slug from the TITLE and ignores the "id" we
