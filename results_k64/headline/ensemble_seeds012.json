@@ -1,0 +1,34 @@
+{
+  "results_dir": [
+    "results_message\\beams_k64",
+    "results_k64\\headline"
+  ],
+  "model": "so3c_message_set",
+  "experiment": "top_tagging_canonical",
+  "members": [
+    {
+      "seed": 0,
+      "auc": 0.9832551316698106,
+      "bg_rej_30": 1147.2386363636363,
+      "bg_rej_50": 287.6267806267806
+    },
+    {
+      "seed": 1,
+      "auc": 0.9834021000573947,
+      "bg_rej_30": 1115.546961325967,
+      "bg_rej_50": 297.36966126656847
+    },
+    {
+      "seed": 2,
+      "auc": 0.9831173649798066,
+      "bg_rej_30": 1004.5472636815921,
+      "bg_rej_50": 287.2176386913229
+    }
+  ],
+  "ensemble": {
+    "auc": 0.9837757687973138,
+    "bg_rej_30": 1160.4252873563219,
+    "bg_rej_50": 315.98435054773086
+  },
+  "mean_score_correlation": 0.9945993675712094
+}
