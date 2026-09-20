@@ -14,6 +14,9 @@ Last updated 2026-09-20. This is the single place to start from. Commit hashes p
   | LorentzNet (arXiv:2201.08187, tables 1, 5) | 224k | 0.9868 | 2195 ± 173 |
   | PELICAN, size sweep (table 2) | 1k | 0.9835 | 1145 ± 74 |
   | PELICAN, size sweep (table 2) | 11k | 0.9858 | 1879 ± 103 |
+  | L-GATr, trained from scratch (arXiv:2411.00446, table 2) | 1.1M | 0.9870 ± 0.0001 | 2240 ± 70 |
+
+  Above that band sits only L-GATr **fine-tuned after JetClass pretraining** (0.98793 / 2894 ± 84, same table): a different comparison class, not the target here.
 
 ## Current best
 
@@ -100,7 +103,7 @@ Both are now switchable and default to the old behaviour: `--no-mass-input --no-
 | Time-axis reference particle (1,0,0,0) | a third symmetry-breaking reference, as in L-GATr -- **redundant with beams** (b+ + b- = 2t; see Closed) | 1.03× cost |
 | Softmax attention over w_b | normalised aggregation; needed for depth | ~1.05× |
 | Lion optimiser, lr 3e-4, wd 0.2 | a different optimiser, not the ruled-out AdamW bundle | a training-limit control |
-| JetClass pretraining | the only published result above PELICAN (L-GATr 2894, arXiv:2411.00446) | ≥ 25 GPU-h truncated; changes the comparison class |
+| JetClass pretraining | the only published result above PELICAN is **L-GATr fine-tuned after JetClass pretraining**: AUC 0.98793 ± 0.00001, 1/ε_B 2894 ± 84 (arXiv:2411.00446 table 2, verified). That is a **different comparison class** and not our target — the same L-GATr *trained from scratch* on this dataset scores 0.9870 ± 0.0001 / 2240 ± 70 at 1.1M parameters, matching PELICAN rather than beating it | ≥ 25 GPU-h truncated; changes the comparison class |
 
 Full agent text: `so3c_notes/gap_to_sota_2026-09-13.md`. Three of the workflow's six agents failed on the usage limit, so the findings there are unranked.
 

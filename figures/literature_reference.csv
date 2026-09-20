@@ -14,3 +14,5 @@ ParT,2100000,0.9858,1602,81,0.940,Bogatskiy et al. 2023 (arXiv:2307.16506),table
 LorentzNet,224000,0.9868,2195,173,0.942,Gong et al. 2022 (arXiv:2201.08187),tables 1 and 5,yes,yes
 PELICAN,208000,0.9870,2250,75,0.9426,Bogatskiy et al. 2023 (arXiv:2307.16506),table 1,yes,yes
 PELICAN-IRC,208000,0.9844,1711,208,0.9406,Bogatskiy et al. 2023 (arXiv:2307.16506),table 1,yes,yes
+L-GATr,1100000,0.9870,2240,70,0.9423,Brehmer et al. 2024 (arXiv:2411.00446),table 2,yes,yes
+L-GATr-f.t.,1100000,0.98793,2894,84,0.9446,Brehmer et al. 2024 (arXiv:2411.00446),table 2,yes,no

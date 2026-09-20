@@ -1607,10 +1607,19 @@ for f in ["base_by_kernel.txt", "base_by_shape.txt", "base_by_line.txt"]:
 
 # Canonical K=64 runs built with build_k64_run: (tag, extra flags, seed).
 K64_RUNS = [
+    # (tag, extra flags, seed, epochs)
     # third headline seed, on the 2x faster forward pass (47ec4ad): checks
     # that the rewrite reproduces the headline on real data and measures the
     # real epoch time before any winner is confirmed with it
-    ("headline", [], 2),
+    ("headline", [], 2, 30),
+    # Is the headline converged at 30 epochs? Validation loss is lowest at
+    # the FINAL epoch in all four K=64 runs, and on the older 9k
+    # so3c_equivariant_set at K=32 the same doubling (results_60ep, one seed
+    # against three) bought +0.00024 AUC and +30 rejection, 6.4 and 5.2
+    # standard deviations of that model's seed spread. The "longer training
+    # is negative" verdict rests on a single probe-protocol row (35 vs 20
+    # epochs on 400k jets), a regime where nothing capacity-like can pay.
+    ("headline60", [], 0, 60),
 ]
 
 
@@ -1632,7 +1641,7 @@ def k64_metadata(tag: str, seed: int) -> pathlib.Path:
 
 
 def build_k64_run(blob: str, tag: str, flags: list[str], seed: int,
-                  epochs: int = 30, max_seconds: int = 40000) -> str:
+                  epochs: int = 30, max_seconds: int = 39000) -> str:
     """One canonical K=64 run of so3c_message_set: beams + channels 8 plus
     ``flags``, one seed. Returns the notebook file name.
 
@@ -1730,6 +1739,16 @@ for f in sorted(glob.glob(OUT + "/*.json")):
     if r["epochs_run"] < EPOCHS:
         print("  stopped at epoch %d on the time cap: finish before reporting"
               % r["epochs_run"])
+    print()
+    print("epoch-by-epoch (is it still improving at the end?)")
+    print("%6s%12s%11s%10s" % ("epoch", "train_loss", "val_loss", "val_acc"))
+    for e in r["history"]:
+        print("%6d%12.5f%11.5f%10.5f"
+              % (e["epoch"], e["train_loss"], e["val_loss"], e["val_acc"]))
+    vl = [e["val_loss"] for e in r["history"]]
+    best = min(range(len(vl)), key=vl.__getitem__)
+    print("best val_loss at epoch %d (%.5f); last %.5f; last 5 epochs moved %+.5f"
+          % (r["history"][best]["epoch"], vl[best], vl[-1], vl[-1] - vl[-6]))
 """),
     ]
     name = "kaggle_k64_%s_seed%d.ipynb" % (tag, seed)
@@ -2133,8 +2152,8 @@ def main() -> int:
     build_cuda_diag(blob)
     for tag, flags, seeds in PROBE_SEED_RUNS:
         build_probe_seeds(blob, tag, flags, seeds)
-    for tag, flags, seed in K64_RUNS:
-        build_k64_run(blob, tag, flags, seed)
+    for tag, flags, seed, epochs in K64_RUNS:
+        build_k64_run(blob, tag, flags, seed, epochs=epochs)
     for k in (32, 64):
         for seed in (0, 1):
             build_message(blob, seed=seed, k=k)
