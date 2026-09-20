@@ -158,17 +158,16 @@ Not one improves on the base, and the whole table spans 0.0004 AUC. Note that ev
 - A single-run difference has spread √2 × 0.00017 = 0.00024, so every candidate delta is inside noise: pair8 0.2 σ, combo 0.5 σ, vector 0.8 σ, f_α 1.0 σ, fixes 1.3 σ, rounds 6 1.5 σ, relnorm 1.8 σ. **The screen neither closes nor supports any candidate**; it only rules out a large, regime-independent win.
 - The rewrite and `--compile` do not shift results: base seed 0 scores 0.98125 against 0.98128 for the old eager code, a difference of 0.00003.
 
-**The pair latent's sign flips when it is measured properly** (`fb8d80a`). Three seeds each, paired, same code:
+**Three arms re-measured properly** (`fb8d80a`, `9d3a123`): three seeds each, paired seed by seed, same code.
 
-| seed | base | pair8 | diff |
-|---|---|---|---|
-| 0 | 0.98125 | 0.98120 | −0.00005 |
-| 1 | 0.98092 | 0.98113 | +0.00021 |
-| 2 | 0.98100 | 0.98121 | +0.00021 |
-| mean | 0.98106 ± 0.00017 | **0.98118 ± 0.00004** | **+0.00012** |
-| 1/ε_B@0.3 | 806 ± 58 | 835 ± 27 | +29 |
+| arm | AUC | 1/ε_B@0.3 | paired Δ AUC vs base | h/seed |
+|---|---|---|---|---|
+| base | 0.98106 ± 0.00017 | 806 ± 58 | — | 0.45 |
+| pair latent 8 | **0.98118 ± 0.00004** | 835 ± 27 | **+0.00012** (t = 1.42) | 0.59 |
+| vector channel | 0.98104 ± 0.00012 | 805 ± 24 | −0.00002 (t = −0.59) | 0.48 |
 
-Paired difference +0.00012 AUC (sd 0.00015, t = 1.42 on three seeds, p ≈ 0.14 one-sided) — not significant, but positive rather than the screen's −0.00004, and its run-to-run spread is four times smaller than the base's. The pair latent costs 0.59 h per seed against 0.45 h. It is the one candidate worth carrying into the long-schedule regime.
+- **Pair latent:** the screen's −0.00004 becomes +0.00012 once it is paired against three base seeds instead of one high one. Not significant (p ≈ 0.14 one-sided), but the sign is reversed and its run-to-run spread is four times smaller than the base's. The one candidate worth carrying into the long-schedule regime.
+- **Vector channel:** paired differences with sd 0.00006, so it is bounded to |Δ| < ~0.00015 at 95% — a real negative, and much sharper than the screen's single seed. Feeding ⟨p_a, p_b⟩ directly, which the bivector lift exposes only through combinations with ⟨p_a, P⟩ and ⟨P, P⟩, does not pay. The regime excuse is weak here: it adds information, not parameters.
 
 **Rule for future screens on this protocol:** one seed per row resolves nothing below about 0.0005 AUC. Compare against a multi-seed base, not a single row, and budget three seeds per arm (about 1.4 GPU-h at 0.45 h per row) — or screen where the effect is expected to be larger.
 
