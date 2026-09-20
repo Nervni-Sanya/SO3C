@@ -1614,6 +1614,23 @@ K64_RUNS = [
 ]
 
 
+def k64_metadata(tag: str, seed: int) -> pathlib.Path:
+    """Kernel metadata for a build_k64_run notebook; returns its path."""
+    name = "k64-%s-seed%d" % (tag.replace("_", "-"), seed)
+    meta = {
+        "id": "nsanya/so3c-" + name,
+        "title": "SO3C K64 %s seed%d" % (tag, seed),
+        "code_file": "kaggle_k64_%s_seed%d.ipynb" % (tag, seed),
+        "language": "python", "kernel_type": "notebook",
+        "is_private": True, "enable_gpu": True, "enable_internet": True,
+        "dataset_sources": [], "competition_sources": [],
+        "kernel_sources": ["nsanya/so3c-data-prep-k-128"],
+    }
+    path = NB_DIR / ("kernel-metadata-%s.json" % name)
+    path.write_text(json.dumps(meta, indent=2) + chr(10), encoding="utf-8")
+    return path
+
+
 def build_k64_run(blob: str, tag: str, flags: list[str], seed: int,
                   epochs: int = 30, max_seconds: int = 40000) -> str:
     """One canonical K=64 run of so3c_message_set: beams + channels 8 plus
@@ -1637,7 +1654,10 @@ def build_k64_run(blob: str, tag: str, flags: list[str], seed: int,
             "--device", "cuda", "--dtype", "float32",
             "--batch-size", "256", "--n-constituents", "64",
             "--eval-chunk-size", "1024", "--models", "so3c_message_set",
-            "--rounds", "3", "--beams", "--channels", "8"] + list(flags)
+            "--rounds", "3", "--beams", "--channels", "8",
+            # 1.24x on a T4 and checked against eager on the first batch;
+            # a P100 falls back to eager by itself
+            "--compile"] + list(flags)
     cells = [
         md("""
 # K=64 canonical run: %s, seed %d
@@ -1714,6 +1734,7 @@ for f in sorted(glob.glob(OUT + "/*.json")):
     ]
     name = "kaggle_k64_%s_seed%d.ipynb" % (tag, seed)
     _finalise(cells, NB_DIR / name)
+    k64_metadata(tag, seed)
     return name
 
 
