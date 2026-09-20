@@ -10,6 +10,7 @@ memory and returns a metrics dict that ``aggregate.py`` consumes.
 
 from __future__ import annotations
 
+import math
 import pathlib
 import time
 from dataclasses import dataclass, field, asdict
@@ -38,6 +39,8 @@ class TrainConfig:
     ckpt_every: int = 1            # epochs between checkpoint writes
     resume: bool = False           # restore from ckpt_path if it exists
     max_seconds: float | None = None   # self-terminate before a session cap
+    compile: bool = False          # torch.compile the model (CUDA sm_70+)
+    compile_backend: str = "inductor"   # "aot_eager" in tests: no GPU needed
 
 
 @dataclass
@@ -107,6 +110,42 @@ def lorentznet_lr_factor(epoch: int, total_epochs: int, warmup: int = 4,
     return gamma ** (epoch - (warmup + span) + 1)
 
 
+def _maybe_compile(model, device, cfg, sample):
+    """torch.compile(model), or the model unchanged when that cannot help.
+
+    Triton needs compute capability 7.0+, so a P100 (sm_60) stays eager.
+    Before training, the compiled model is checked against the eager one on
+    one real batch, in value and in gradient: a silent divergence here would
+    be invisible in the results and expensive.
+    """
+    if device.type != "cuda":
+        if cfg.compile_backend == "inductor":
+            print("[compile] skipped: not CUDA")
+            return model
+    elif torch.cuda.get_device_capability(device)[0] < 7:
+        print("[compile] skipped: %s is sm_%d%d, Triton needs sm_70+"
+              % (torch.cuda.get_device_name(device),
+                 *torch.cuda.get_device_capability(device)))
+        return model
+    compiled = torch.compile(model, backend=cfg.compile_backend)
+    x = sample.to(device)
+    out_e = model(x)
+    out_c = compiled(x)
+    scale = out_e.abs().max().clamp_min(1e-12)
+    d_out = ((out_c - out_e).abs().max() / scale).item()
+    params = [q for q in model.parameters() if q.requires_grad]
+    g_e = torch.autograd.grad(out_e.square().sum(), params)
+    g_c = torch.autograd.grad(out_c.square().sum(), params)
+    gs = max(g.abs().max().item() for g in g_e)
+    d_grad = max((a - b).abs().max().item() for a, b in zip(g_c, g_e)) / max(gs, 1e-12)
+    print("[compile] backend=%s, first batch: max |d logit| %.1e, "
+          "max |d grad| %.1e (relative)" % (cfg.compile_backend, d_out, d_grad))
+    if d_out > 1e-3 or d_grad > 1e-2:
+        raise RuntimeError("compiled model differs from eager: "
+                           "d_logit %.2e, d_grad %.2e" % (d_out, d_grad))
+    return compiled
+
+
 def train_classifier(
     model: nn.Module,
     X_train: torch.Tensor,
@@ -130,6 +169,13 @@ def train_classifier(
     device = torch.device(cfg.device)
 
     model = model.to(device)
+    # The module that owns the weights. torch.compile returns a wrapper whose
+    # state_dict keys carry an "_orig_mod." prefix, so checkpoints must always
+    # be written and read through this one, never through the wrapper.
+    base_model = model
+    if cfg.compile:
+        model = _maybe_compile(model, device, cfg, X_train[:cfg.batch_size])
+
     X_train = X_train.to(device)
     y_train = y_train.to(device)
     X_val   = X_val.to(device)
@@ -185,10 +231,33 @@ def train_classifier(
         # the CPU-only tests could never see. load_state_dict moves model and
         # optimizer tensors onto the parameters' device by itself.
         state = torch.load(ckpt_file, map_location="cpu", weights_only=False)
-        model.load_state_dict(state["model"])
+        base_model.load_state_dict(state["model"])
         optimizer.load_state_dict(state["optimizer"])
         if scheduler is not None and state.get("scheduler") is not None:
             scheduler.load_state_dict(state["scheduler"])
+            # A scheduler's state carries its own horizon, and the optimizer's
+            # carries the learning rate it had when the run stopped. Resuming a
+            # run with a LARGER cfg.epochs would therefore keep the old T_max
+            # and, if that schedule had already run out, a learning rate of
+            # exactly zero: every further epoch trains nothing while still
+            # reporting a training loss. Rebuild the cosine schedule over the
+            # new horizon, which also resets the learning rate for this epoch.
+            cos = torch.optim.lr_scheduler.CosineAnnealingLR
+            if isinstance(scheduler, cos) and scheduler.T_max != cfg.epochs:
+                print(f"[train] schedule horizon {scheduler.T_max} -> "
+                      f"{cfg.epochs}: re-anchoring the cosine schedule")
+                scheduler.T_max = cfg.epochs
+                # CosineAnnealingLR.get_lr() is recursive -- it derives the
+                # next rate from the current one -- so a restored rate of 0
+                # would stay 0 forever. Set the rate the closed form gives for
+                # the epochs already done, which is what a continuous run of
+                # cfg.epochs would use for the epoch about to start. Only on a
+                # changed horizon: on an unchanged one the restored state is
+                # already right, and rewriting it would break bit-identical
+                # resume.
+                for group, base in zip(optimizer.param_groups, scheduler.base_lrs):
+                    group["lr"] = scheduler.eta_min + (base - scheduler.eta_min) * (
+                        1 + math.cos(math.pi * scheduler.last_epoch / scheduler.T_max)) / 2
         torch.set_rng_state(state["cpu_rng"].cpu())
         if device.type == "cuda" and state.get("cuda_rng") is not None:
             torch.cuda.set_rng_state(state["cuda_rng"].cpu(), device)
@@ -263,7 +332,7 @@ def train_classifier(
             ckpt_file.parent.mkdir(parents=True, exist_ok=True)
             tmp = ckpt_file.with_suffix(ckpt_file.suffix + ".tmp")
             torch.save({
-                "model": model.state_dict(),
+                "model": base_model.state_dict(),
                 "optimizer": optimizer.state_dict(),
                 "scheduler": scheduler.state_dict() if scheduler is not None else None,
                 "cpu_rng": torch.get_rng_state(),

@@ -144,6 +144,10 @@ def main(argv: list[str] | None = None) -> int:
                         "equivariant aggregators (0 = off).")
     p.add_argument("--ckpt-dir", type=str, default=None,
                    help="Directory for training checkpoints; --resume needs it.")
+    p.add_argument("--compile", action="store_true",
+                   help="torch.compile the model. On a T4 this is ~25 percent "
+                        "faster; a P100 (sm_60) falls back to eager. The compiled "
+                        "model is checked against eager on the first batch.")
     p.add_argument("--resume", action="store_true",
                    help="Resume interrupted training and skip models whose "
                         "result JSON already exists.")
@@ -225,6 +229,7 @@ def main(argv: list[str] | None = None) -> int:
         optimizer=args.optimizer,
         schedule=args.schedule,
         warmup_epochs=args.warmup_epochs,
+        compile=args.compile,
         so3c_kwargs=so3c_kwargs,
         ckpt_dir=args.ckpt_dir,
         resume=args.resume,

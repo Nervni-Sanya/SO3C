@@ -271,6 +271,86 @@ def test_max_seconds_caps_the_session_not_the_run(tmp_path) -> None:
     assert resumed.walltime_sec > 1e6    # the recorded clock still accumulates
 
 
+def test_resume_with_a_longer_schedule_still_trains(tmp_path) -> None:
+    """Resuming with more epochs than the original run must keep training.
+
+    The optimizer's state carries the learning rate the run stopped with and
+    the scheduler's carries its horizon, so a run whose cosine schedule had
+    finished resumed at exactly lr=0: every further epoch reported a training
+    loss and changed nothing. train_classifier re-anchors the schedule on the
+    new horizon, which is also what a finish kernel with a longer --epochs
+    needs.
+    """
+    split = _tiny_split()
+    ckpt = tmp_path / "short.pt"
+    torch.manual_seed(0)
+    train_classifier(_small_model(), split.X_train, split.y_train,
+                     split.X_val, split.y_val,
+                     TrainConfig(epochs=2, batch_size=32, seed=0,
+                                 ckpt_path=str(ckpt)))
+    before = torch.load(ckpt, map_location="cpu", weights_only=False)["model"]
+    before = {k: v.clone() for k, v in before.items()}
+
+    lrs: list[float] = []
+    original_step = torch.optim.Adam.step
+
+    def spy(self, *a, **k):
+        lrs.append(self.param_groups[0]["lr"])
+        return original_step(self, *a, **k)
+
+    torch.optim.Adam.step = spy
+    try:
+        torch.manual_seed(0)
+        resumed = train_classifier(
+            _small_model(), split.X_train, split.y_train, split.X_val,
+            split.y_val, TrainConfig(epochs=4, batch_size=32, seed=0,
+                                     ckpt_path=str(ckpt), resume=True))
+    finally:
+        torch.optim.Adam.step = original_step
+
+    assert resumed.epochs_run == 4
+    assert min(lrs) > 0.0, f"resumed epochs trained at lr={min(lrs)}"
+    after = torch.load(ckpt, map_location="cpu", weights_only=False)["model"]
+    assert any(not torch.equal(before[k], after[k]) for k in before), \
+        "the resumed epochs changed no weights"
+
+
+def test_compile_matches_eager_and_keeps_checkpoint_keys(tmp_path) -> None:
+    """cfg.compile must not change results or checkpoints.
+
+    torch.compile returns a wrapper whose state_dict keys carry an
+    "_orig_mod." prefix; written to a checkpoint they would break resume and
+    every archived run. The backend here is aot_eager, which needs no GPU and
+    replays the same aten ops, so the results must be identical, not merely
+    close. On CUDA the inductor backend is checked against eager on the first
+    batch inside train_classifier instead.
+    """
+    split = _tiny_split()
+    runs = {}
+    for tag, compiled in (("eager", False), ("compiled", True)):
+        ckpt = tmp_path / f"{tag}.pt"
+        torch.manual_seed(0)
+        cfg = TrainConfig(epochs=2, batch_size=32, seed=0, ckpt_path=str(ckpt),
+                          compile=compiled, compile_backend="aot_eager")
+        result = train_classifier(_small_model(), split.X_train, split.y_train,
+                                  split.X_val, split.y_val, cfg)
+        keys = list(torch.load(ckpt, map_location="cpu",
+                               weights_only=False)["model"])
+        torch.manual_seed(0)
+        resumed = train_classifier(
+            _small_model(), split.X_train, split.y_train, split.X_val,
+            split.y_val,
+            TrainConfig(epochs=3, batch_size=32, seed=0, ckpt_path=str(ckpt),
+                        resume=True, compile=compiled,
+                        compile_backend="aot_eager"))
+        runs[tag] = (result.history, keys, resumed.epochs_run)
+
+    assert runs["eager"][0] == runs["compiled"][0], "compiled run differs"
+    assert runs["eager"][1] == runs["compiled"][1], "checkpoint keys differ"
+    assert not any(k.startswith("_orig_mod") for k in runs["compiled"][1])
+    assert runs["compiled"][2] == 3, "resume under compile did not continue"
+
+
 def test_cuda_resume_restores_rng_state(tmp_path) -> None:
     """Resuming on a GPU must get past restoring the saved RNG state.
 
