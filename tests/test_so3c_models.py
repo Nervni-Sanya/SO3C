@@ -851,6 +851,72 @@ def _reference_errors(device: str) -> dict:
     return errors
 
 
+def test_message_set_knn_carries_beams() -> None:
+    """Beams on the sparse graph: forced into every neighbourhood, and still
+    exactly covariant when jet and beams move together.
+
+    The beams are the only lab-frame information the model has, and a
+    neighbour list ranked by |Re(z_a . z_b)| can leave them out, so they are
+    excluded from the ranking and appended to every node's list instead. That
+    is a fixed set of node indices, identical in every frame, so the graph
+    stays frame-independent. The flow heads are excited: with them at zero
+    the flow is the identity and this would test only the readout.
+    """
+    from benchmarks.so3c_models import SO3CMessageSetClassifier
+    from so3c.lift import bivector_lift
+
+    def boost_z(p4, rapidity):
+        ch, sh = torch.cosh(rapidity), torch.sinh(rapidity)
+        E, px, py, pz = p4.unbind(-1)
+        return torch.stack([ch * E + sh * pz, px, py, sh * E + ch * pz], -1)
+
+    torch.manual_seed(0)
+    model = SO3CMessageSetClassifier(channels=4, rounds=2, beams=True,
+                                     neighbors=4, dtype=torch.float64)
+    g = torch.Generator().manual_seed(7)
+    with torch.no_grad():
+        for head in model.w_head:
+            head.weight.copy_(0.4 * torch.randn(head.weight.shape,
+                                                dtype=torch.float64, generator=g))
+            head.bias.copy_(0.1 * torch.randn(head.bias.shape,
+                                              dtype=torch.float64, generator=g))
+    B, K = 4, 12
+    n = torch.tensor([K, K - 2, 5, K - 4])
+    mask = (torch.arange(K)[None, :] < n[:, None]).double()
+    pv = (torch.randn(B, K, 3, dtype=torch.float64, generator=g) * 0.4
+          + torch.tensor([2.0, 0.5, 1.0], dtype=torch.float64))
+    E = pv.norm(dim=-1, keepdim=True)
+    x = torch.cat([torch.cat([E, pv], -1) * mask[..., None], mask[..., None]], -1)
+
+    out = model(x)
+    assert out.abs().max() > 1e-3, "flow is inactive; the test would be vacuous"
+
+    # every real constituent must have both beam nodes as neighbours
+    P = (x[..., :4] * mask.unsqueeze(-1)).sum(1, keepdim=True)
+    beams = model.beam_p4.unsqueeze(0).expand(B, 2, 4)
+    p4_all = torch.cat([x[..., :4] * mask.unsqueeze(-1), beams], dim=1)
+    mask_all = torch.cat([mask, mask.new_ones(B, 2)], dim=1)
+    z = bivector_lift(p4_all, P.expand_as(p4_all))
+    z = z / model._invariant_scale(z).unsqueeze(-1)
+    idx, emask = model._neighbour_graph(z, mask_all, n_forced=2)
+    N = p4_all.shape[1]
+    assert idx.shape[-1] == 4 + 2, idx.shape
+    assert ((idx[:, :K] == N - 2).any(-1) & (idx[:, :K] == N - 1).any(-1)).all()
+    assert emask[:, N - 2, -2].max() == 0.0 and emask[:, N - 1, -1].max() == 0.0, \
+        "a beam is its own neighbour"
+
+    # covariance: transform the jet and the beams together
+    rapidity = torch.tensor(1.3, dtype=torch.float64)
+    moved = SO3CMessageSetClassifier(channels=4, rounds=2, beams=True,
+                                     neighbors=4, dtype=torch.float64)
+    moved.load_state_dict(model.state_dict())
+    with torch.no_grad():
+        moved.beam_p4.copy_(boost_z(model.beam_p4, rapidity))
+    xb = x.clone()
+    xb[..., :4] = boost_z(x[..., :4], rapidity) * mask.unsqueeze(-1)
+    assert (moved(xb) - out).abs().max() < 1e-10 * max(1.0, out.abs().max().item())
+
+
 def test_message_set_matches_golden() -> None:
     """Logits and parameter gradients equal those of the implementation the
     published numbers were measured with, for every switch combination.
@@ -948,6 +1014,7 @@ if __name__ == "__main__":
     test_message_set_eq2to2_is_permutation_equivariant()
     test_message_set_pair_latent_symmetries()
     test_message_set_pair_latent_trains()
+    test_message_set_knn_carries_beams()
     test_message_set_matches_golden()
     test_message_set_matches_reference()
     test_message_set_soft_mask_matches_reference()

@@ -564,6 +564,10 @@ class SO3CMessageSetClassifier(nn.Module):
     rotate, but their pairwise invariants -- and hence the ranking -- are
     only changed by the flow, not by the frame.
 
+    With ``neighbors``, the beams are excluded from the ranked candidates and
+    appended to every node's neighbour list instead, so they always reach
+    every constituent; the sparse graph then costs (k + 2) edges per node.
+
     ``scalar_dim=0`` drops the scalar channel entirely, which makes
     "rounds=R with h" against "rounds=R without h" a single-variable
     ablation. Note that ``rounds=1`` is NOT the same thing as
@@ -651,8 +655,6 @@ class SO3CMessageSetClassifier(nn.Module):
             raise ValueError("the pair latent is implemented for the dense graph only")
         if vector_channel and neighbors is not None:
             raise ValueError("the vector channel is implemented for the dense graph only")
-        if beams and neighbors is not None:
-            raise ValueError("beams are implemented for the dense graph only")
         if beams:
             # A buffer rather than a constant so a test can move the beams
             # with the jet and check exact covariance.
@@ -837,19 +839,36 @@ class SO3CMessageSetClassifier(nn.Module):
         q = (v * v).sum(dim=-1)
         return 1.0 + (q.real.pow(2) + q.imag.pow(2) + 1e-12).sqrt().sqrt()
 
-    def _neighbour_graph(self, z, mask):
-        """(B, K, 3), (B, K) -> neighbour indices (B, K, k) and their mask.
+    def _neighbour_graph(self, z, mask, n_forced: int = 0):
+        """(B, N, 3), (B, N) -> neighbour indices (B, N, k') and their mask.
 
-        Ranked by the invariant |Re(z_a . z_b)|, self-edges excluded.
+        Ranked by the invariant |Re(z_a . z_b)|, self-edges excluded. The
+        last ``n_forced`` nodes -- the beams -- are excluded from the ranking
+        and appended to every node's list instead, so k' = k + n_forced.
+        Without that, a ranked list can drop the beams from most
+        neighbourhoods and lose the only lab-frame information the model has.
+        Forcing a fixed set of node indices keeps the graph the same in every
+        frame, so equivariance is untouched.
         """
-        k = self.neighbors
-        S = (z @ z.transpose(-1, -2)).real.abs()                 # (B, K, K)
+        k, N = self.neighbors, z.shape[1]
+        S = (z @ z.transpose(-1, -2)).real.abs()                 # (B, N, N)
         pair = mask.unsqueeze(-1) * mask.unsqueeze(-2)
-        eye = torch.eye(z.shape[1], dtype=pair.dtype, device=pair.device)
+        eye = torch.eye(N, dtype=pair.dtype, device=pair.device)
         pair = pair * (1.0 - eye)
+        if n_forced:
+            pair[..., N - n_forced:] = 0.0            # not ranked; appended
         key = torch.where(pair.bool(), S, torch.full_like(S, -1.0))
-        val, idx = key.topk(k, dim=-1)                            # (B, K, k)
-        return idx, (val >= 0).to(z.real.dtype) * mask.unsqueeze(-1)
+        val, idx = key.topk(min(k, N - n_forced), dim=-1)         # (B, N, k)
+        emask = (val >= 0).to(z.real.dtype) * mask.unsqueeze(-1)
+        if n_forced:
+            forced = torch.arange(N - n_forced, N, device=z.device)
+            fidx = forced.view(1, 1, n_forced).expand(z.shape[0], N, n_forced)
+            # a beam is not its own neighbour
+            fmask = (fidx != torch.arange(N, device=z.device).view(1, N, 1)
+                     ).to(z.real.dtype) * mask.unsqueeze(-1)
+            idx = torch.cat([idx, fidx], dim=-1)
+            emask = torch.cat([emask, fmask], dim=-1)
+        return idx, emask
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x.to(self.dtype)
@@ -899,7 +918,8 @@ class SO3CMessageSetClassifier(nn.Module):
         node_mask = mask_all.unsqueeze(-1)
         sparse = self.neighbors is not None and self.neighbors < K
         if sparse:
-            idx, edge_mask = self._neighbour_graph(z, mask_all)      # (B, K, k)
+            idx, edge_mask = self._neighbour_graph(
+                z, mask_all, n_forced=2 if self.beams else 0)     # (B, N, k')
             bat = torch.arange(B, device=z.device).view(B, 1, 1)
             k = idx.shape[-1]
             denom = edge_mask.sum(-1).clamp_min(1.0)             # (B, K)
