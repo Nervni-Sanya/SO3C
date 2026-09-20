@@ -1,6 +1,6 @@
 # SO3C status
 
-Last updated 2026-09-20. This is the single place to start from. Commit hashes point at the evidence for every number; unless marked **(SO3C)** they are commits in the **so33** repository this one was split from (see [Provenance](#provenance)).
+Last updated 2026-09-20 (evening). This is the single place to start from. Commit hashes point at the evidence for every number; unless marked **(SO3C)** they are commits in the **so33** repository this one was split from (see [Provenance](#provenance)).
 
 ## Scope and goal
 
@@ -20,15 +20,24 @@ Last updated 2026-09-20. This is the single place to start from. Commit hashes p
 
 ## Current best
 
-`so3c_message_set` with **beams + channels 8**, K=64, canonical protocol, 30 epochs, Adam 3e-3 cosine, P100 float32, 22834 parameters (`b72437f`):
+`so3c_message_set` with **beams + channels 8**, K=64, canonical protocol, Adam 3e-3 cosine, float32, 22834 parameters. **60 epochs is the best single model** (`f12cd65`); the 30-epoch runs below are the same configuration on the shorter schedule (`b72437f`).
+
+| | AUC | 1/ε_B@0.3 | 1/ε_B@0.5 | final val loss |
+|---|---|---|---|---|
+| **60 epochs, seed 0** (T4, `--compile`, 8.59 h) | **0.98363** | **1140.8** | 314.5 | **0.16276** |
+| 30 epochs, mean of 3 seeds | 0.98326 ± 0.00014 | 1089 ± 75 | 291 ± 5 | 0.16318 / 0.16449 / 0.16455 |
+| ensemble, 3 × 30 epochs | 0.98378 | 1160.4 | 316 | |
+| **ensemble, 3 × 30 + 60 epochs** | **0.98396** | **1231.2** | | |
+
++0.00037 AUC over the 30-epoch mean, about 2.3 σ of a single-run difference — suggestive, not conclusive from one seed. The validation loss is the cleaner signal: 0.16276 is below all three *complete* 30-epoch schedules, and it was still falling at the end (−0.00038 over the last five epochs), so 60 epochs is not obviously the end either. The rejection gain (+52) is inside the ±75 seed spread. Gap to PELICAN from the best ensemble: **0.0030 AUC, factor 1.83 in rejection**.
+
+The 30-epoch seeds, for the record:
 
 | | AUC | 1/ε_B@0.3 | 1/ε_B@0.5 |
 |---|---|---|---|
 | seed 0 (P100) | 0.98326 | 1147.2 | 287.6 |
 | seed 1 (P100) | 0.98340 | 1115.5 | 297.4 |
 | seed 2 (T4, rewritten forward pass) | 0.98312 | 1004.5 | 287.2 |
-| **mean** | **0.98326 ± 0.00014** | **1089 ± 75** | **291 ± 5** |
-| **three-seed ensemble** | **0.98378** | **1160** | **316** |
 
 **The rejection is much noisier than two seeds suggested.** Seeds 0 and 1 alone gave 1131 ± 22; the third seed landed at 1004.5 and the three-seed standard deviation is 75, that is 7%. The AUC is stable to 0.00014. Rejection at 30% signal efficiency is a tail statistic — a few hundred background jets decide it — so **a rejection gain under ~150 on a single seed is not evidence**, while +0.0004 AUC remains about three standard deviations. Seed 2 is not the rewrite's doing: its training curve matches seed 0's (final validation loss 0.16455 against 0.16449) and the two implementations agree to 1e-14 in float64.
 
@@ -177,11 +186,13 @@ Every pairwise interaction in the model passes through `act_hidden = 16` tanh un
 
 Still far below PELICAN's 208k, and the first capacity axis with a mechanism behind it rather than a general "more parameters". The three probe kernels are **built and held** (`8b3cde6`): running them at 20 epochs on 400k jets would repeat exactly the regime that cannot show a capacity gain. They belong at the long schedule on the full training set, after the 60-epoch baseline below says whether that regime is where the model actually lives.
 
-### 60 epochs at K=64 (`nsanya/so3c-k64-headline60-seed0`, `fcc137a`)
+### 60 epochs at K=64: the model was undertrained (`f12cd65`)
 
-The headline configuration, seed 0, 60 epochs on the full training set, one session. Cost from measured numbers: seed 2 ran at 621 s per epoch eager on a T4, and the profile's compiled/eager ratios (0.82 per training step, 0.61 per eval chunk) give ~495 s per epoch, so ~8.3 h; on a P100 compile is skipped and it is ~10.4 h, still inside the 12 h session cap, with `--max-seconds 39000` so either way it checkpoints cleanly. The summary prints the epoch-by-epoch validation curve, which is the point: whether the curve is still falling at 60.
+Done, 8.59 h on a T4 at 515 s per epoch with `--compile` (predicted ~495). Result in Current best: **0.98363 / 1140.8**, +0.00037 AUC over the 30-epoch mean, final validation loss below all three complete 30-epoch schedules and still falling. The epoch-by-epoch curve is in `results_k64/headline60`.
 
-Why this and not more probes: every K=64 run so far has its lowest validation loss at the final epoch, and the one doubling ever measured on the full training set (`results_60ep`, the older 9k model) paid 6 σ in AUC and 5 σ in rejection. That comparison is between two *complete* schedules, not a mid-run snapshot: the 60-epoch run is behind at epoch 30 (validation loss 0.19814, its learning rate still high) and finishes at 0.19639, against 0.19705 for the complete 30-epoch schedule, with validation accuracy +0.00027 over three 30-epoch seeds. Worth stating plainly: "lowest validation loss at the final epoch" is weak evidence on its own, because a cosine schedule anneals to zero and always flattens at the end — the 60-epoch run is the actual test. If the model is simply undertrained at 30 epochs, then every capacity candidate has been screened in a regime where it could not pay, and the screen has to be redone at the longer schedule.
+The evidence that motivated it (`results_60ep`, the older 9k model at K=32 on the full training set) paid 6 σ in AUC and 5 σ in rejection. That comparison is between two *complete* schedules, not a mid-run snapshot: the 60-epoch run is behind at epoch 30 (validation loss 0.19814, its learning rate still high) and finishes at 0.19639, against 0.19705 for the complete 30-epoch schedule, with validation accuracy +0.00027 over three 30-epoch seeds. Worth stating plainly: "lowest validation loss at the final epoch" is weak evidence on its own, because a cosine schedule anneals to zero and always flattens at the end — the 60-epoch run is the actual test. It was: every capacity candidate has therefore been screened in a regime where it could not pay, and the screen has to be redone at the longer schedule.
+
+**Next window (opens Saturday 2026-09-26, 30 GPU-h).** Recommended order: a second and third 60-epoch seed of the headline (8.6 h each) to turn +0.00037 into a measured mean, and the pair latent at 60 epochs (~11.7 h at 702 s per epoch), which is the one candidate whose paired probe came out positive. That is 29 h for three runs, so it is one or the other, not both — or a cheaper long-schedule screening protocol first: K=32 on the **full** training set at 60 epochs costs ~2.8 h per seed, the same regime as the `results_60ep` evidence, which would let candidates be screened three-seeded for ~8.4 h per arm.
 
 ### Sparse graph now carries beams (`829c4c0`)
 
@@ -189,7 +200,7 @@ The dense-only restriction on beams was conservative, not structural; it is lift
 
 ### Budget
 
-GPU used this window: ~9.2 h (screen) + 5.2 h (headline seed 2) + ~0.7 h (profiles, diagnostics, two guard failures) + ~3.1 h (seed replicates) ≈ 18.3 h of 30, leaving ~11.7 h. The 60-epoch run takes ~8.3 h of that; the width probes (~4.8 h) do not fit alongside it and are held for the next window. A 30-epoch K=64 seed now costs ~3.9 h with `--compile`, a 60-epoch one ~8.3 h, and a probe row 0.4–0.9 h.
+GPU used this window: ~9.2 h (screen) + 5.2 h (headline seed 2) + ~0.7 h (profiles, diagnostics, two guard failures) + ~3.1 h (base and pair8 replicates) + 8.6 h (60 epochs) ≈ 26.8 h of 30. The last ~1.5 h went to the vector-channel replicates (`nsanya/so3c-probe-seeds-vector`). The width probes are built and held for the next window. A 30-epoch K=64 seed now costs ~3.9 h with `--compile`, a 60-epoch one ~8.3 h, and a probe row 0.4–0.9 h.
 
 ## Infrastructure traps
 
