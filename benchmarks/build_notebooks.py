@@ -1774,6 +1774,120 @@ open("/kaggle/working/diag_cuda_golden.txt", "w").write(r.stdout + chr(10) + r.s
     _finalise(cells, NB_DIR / "kaggle_cuda_diag.ipynb")
 
 
+# Seed replicates on the probe protocol: (tag, extra flags). The gap screen
+# put every candidate within 0.0004 AUC of the base on one seed each, and
+# this protocol's spread was unmeasured.
+PROBE_SEED_RUNS = [
+    ("base", []),
+    ("pair8", ["--pair-latent", "8"]),
+]
+
+
+def build_probe_seeds(blob: str, tag: str, flags: list[str],
+                      seeds: tuple[int, ...] = (0, 1, 2)) -> str:
+    """Repeat one probe-protocol configuration over several seeds.
+
+    The gap screen put seven candidates within 0.0004 AUC of the base on a
+    single seed each, and this protocol's seed spread had never been
+    measured: the +-0.00014 figure comes from K=64 runs on the full training
+    set. Without it the screen cannot separate "no candidate helps" from
+    "the noise swamps everything". These runs measure it directly -- same
+    protocol, same configuration, different seeds -- and the same treatment
+    of a candidate makes the comparison paired.
+
+    Protocol as in the screen: K=32, canonical splits, 400k training jets,
+    20 epochs, batch 256, float32, beams + channels 8. The forward pass is
+    the rewritten one with --compile, so all rows here share it; the
+    screen's own rows were run eagerly on the old code, which is why the
+    base is repeated here rather than taken from the screen.
+    """
+    base = ["--cache-dir", "DATA", "--representation", "constituents",
+            "--canonical-splits", "--normalize", "global",
+            "--max-train-samples", "400000", "--epochs", "20",
+            "--device", "cuda", "--dtype", "float32", "--batch-size", "256",
+            "--n-constituents", "32", "--eval-chunk-size", "2048",
+            "--models", "so3c_message_set", "--rounds", "3", "--beams",
+            "--channels", "8", "--compile"] + list(flags)
+    cells = [
+        md("""
+# Seed spread on the probe protocol: %s
+
+Same configuration, seeds %s, K=32 / 400k jets / 20 epochs. The screen's
+reference numbers on this protocol (old forward pass, eager, seed 0) are
+0.98128 AUC and 834.4 rejection for the base, and 0.98124 / 827.5 for the
+pair latent.
+""" % (tag, ", ".join(str(s) for s in seeds))),
+        code("""
+import subprocess
+print(subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total",
+                      "--format=csv,noheader"], capture_output=True,
+                     text=True).stdout.strip())
+"""),
+        code(UNPACK.format(blob=blob)),
+        code(RUNNER),
+        code(GPU_SETUP),
+        code("""
+import glob, pathlib
+cands = glob.glob("/kaggle/input/**/top_tagging_train.npz", recursive=True)
+assert cands, "attach the K=128 data-prep kernel output"
+DATA = str(pathlib.Path(cands[0]).parent)
+TAG, SEEDS = %r, %r
+OUT = "/kaggle/working/results_probe_seeds/" + TAG
+BASE = %r
+BASE[BASE.index("DATA")] = DATA
+print("data:", DATA)
+""" % (tag, list(seeds), base)),
+        code("""
+# On-card guard: the forward pass must be the published function here too.
+import subprocess, sys
+g = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
+                    "tests/test_so3c_models.py", "-k", "golden_cuda"],
+                   cwd="/kaggle/working/repo", capture_output=True, text=True)
+print(g.stdout[-1200:], g.stderr[-800:])
+assert "1 passed" in g.stdout, "golden guard did not pass on the card"
+"""),
+        code("""
+import glob
+for seed in SEEDS:
+    print("=== seed %d ===" % seed, flush=True)
+    run(["benchmarks.run_top_tagging"] + BASE +
+        ["--seed", str(seed), "--results-dir", OUT + "/seed%d" % seed,
+         "--ckpt-dir", "/kaggle/working/checkpoints/%s_seed%d" % (TAG, seed),
+         "--resume", "--max-seconds", "30000"])
+    assert glob.glob(OUT + "/seed%d/*.json" % seed), "seed %d wrote no result" % seed
+"""),
+        code("""
+import json, glob, statistics
+aucs, rejs = [], []
+print("%-8s%9s%10s%10s%9s" % ("seed", "AUC", "rej@0.3", "rej@0.5", "hours"))
+for seed in SEEDS:
+    for f in sorted(glob.glob(OUT + "/seed%d/*.json" % seed)):
+        r = json.load(open(f)); t = r["test_metrics"]
+        aucs.append(t["test_auc"]); rejs.append(t["bg_rej_30"])
+        print("%-8d%9.5f%10.1f%10.1f%9.2f"
+              % (seed, t["test_auc"], t["bg_rej_30"],
+                 t.get("bg_rej_50", float("nan")), r["walltime_sec"] / 3600))
+if len(aucs) > 1:
+    print("mean %.5f sd %.5f AUC | mean %.1f sd %.1f rejection"
+          % (statistics.mean(aucs), statistics.stdev(aucs),
+             statistics.mean(rejs), statistics.stdev(rejs)))
+"""),
+    ]
+    name = "kaggle_probe_seeds_%s.ipynb" % tag
+    _finalise(cells, NB_DIR / name)
+    meta = {
+        "id": "nsanya/so3c-probe-seeds-" + tag.replace("_", "-"),
+        "title": "SO3C probe seeds %s" % tag,
+        "code_file": name, "language": "python", "kernel_type": "notebook",
+        "is_private": True, "enable_gpu": True, "enable_internet": True,
+        "dataset_sources": [], "competition_sources": [],
+        "kernel_sources": ["nsanya/so3c-data-prep-k-128"],
+    }
+    (NB_DIR / ("kernel-metadata-probe-seeds-%s.json" % tag.replace("_", "-"))
+     ).write_text(json.dumps(meta, indent=2) + chr(10), encoding="utf-8")
+    return name
+
+
 def build_message(blob: str, seed: int = 0, k: int = 64) -> None:
     """Tier-2 item 5: covariant message passing on the canonical protocol.
 
@@ -2011,6 +2125,8 @@ def main() -> int:
     build_gap_screen(blob)
     build_gpu_profile(blob)
     build_cuda_diag(blob)
+    for tag, flags in PROBE_SEED_RUNS:
+        build_probe_seeds(blob, tag, flags)
     for tag, flags, seed in K64_RUNS:
         build_k64_run(blob, tag, flags, seed)
     for k in (32, 64):
