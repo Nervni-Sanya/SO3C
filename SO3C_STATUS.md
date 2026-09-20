@@ -74,6 +74,10 @@ Last updated 2026-09-20. This is the single place to start from. Commit hashes p
 
 ## Open — candidates
 
+### Screened on 2026-09-20, none better than the base
+
+The two defect fixes, the vector channel, the relative-norm edge, the pair latent, their combination, depth 6 and f_α were all measured on the probe protocol (see the screen table below). None improved on the base; the interpretation waits on the seed spread being measured now.
+
 ### Verified defects in the current model (free to fix)
 
 Both are now switchable and default to the old behaviour: `--no-mass-input --no-self-edges` (22634 params on beams + channels 8, CPU cost 1.00x the headline, `6771158`). Not yet run on GPU.
@@ -92,12 +96,9 @@ Both are now switchable and default to the old behaviour: `--no-mass-input --no-
 
 | candidate | mechanism | note |
 |---|---|---|
-| Relative-norm edge feature d_ab = s_aa + s_bb − 2 s_ab | LorentzNet Eq 3.2 feeds ‖x_i − x_j‖²; not recoverable after asinh | implemented, `--relnorm-edge` (`6771158`); CPU cost 1.30x the headline |
-| f_α multi-resolution embedding, learnable exponents | PELICAN Sec 3.1: ((1+x)^(α²) − 1)/α², α initialised over [0.05, 0.5] | implemented, `--falpha n` (`6771158`). **Not** zero-runtime as the agent claimed: at n=3 on beams + channels 8, K=64, CPU cost is **3.54x the headline** (~37.5 h per 30-epoch seed). CPU ratios misled before (kNN), so measure on GPU before any full run |
 | N^α / N̄^α aggregation rescaling | sum-vs-mean semantics; our flow angle scales with Σ_b w_b z_b | ~0 runtime |
 | Time-axis reference particle (1,0,0,0) | a third symmetry-breaking reference, as in L-GATr -- **redundant with beams** (b+ + b- = 2t; see Closed) | 1.03× cost |
 | Softmax attention over w_b | normalised aggregation; needed for depth | ~1.05× |
-| Depth over width (rounds 6 re-asked with beams in the gap screen) | ~10 blocks with fewer channels at small budgets (slim L-GATr) | our rounds 6 was −0.0006, but **without** beams |
 | Lion optimiser, lr 3e-4, wd 0.2 | a different optimiser, not the ruled-out AdamW bundle | a training-limit control |
 | JetClass pretraining | the only published result above PELICAN (L-GATr 2894, arXiv:2411.00446) | ≥ 25 GPU-h truncated; changes the comparison class |
 
@@ -120,16 +121,42 @@ Peak memory −38% (headline). Profiles: `results_profile/t4_16302b1`, `t4_2a3b3
 
 **Guard.** Two tests, 16 switch combinations with platform-stable weights and every zero-init head excited: `test_message_set_matches_reference` runs the pre-rewrite implementation (16302b1, shipped as `tests/data/ref_so3c_models_16302b1.py`) beside the current one on the same weights and device; `test_message_set_matches_golden` compares with logits and gradient fingerprints stored from that implementation. Both hold to <5e-14 in float64, and mutations fail them wherever they can act (edge rewrite 15/16, pair_mix 4/4, flow time 16/16). On the trained headline checkpoint and 4000 real test jets, old and new agree to 2e-10 in float64; in float32 the new path is closer to float64 than the old one (max logit error 0.019 vs 0.128). K=64 notebooks now run `test_message_set_matches_golden_cuda` on the card first and require "1 passed".
 
-### Running
+### Gap screen: every candidate at or below the base
 
-- **`nsanya/so3c-gap-screen`**, pushed 2026-09-19 22:12. Its bundle was rebuilt from this repository (`fc1d6d8`) but predates the speedup, so it runs the **old** forward pass (~10 GPU-h); Kaggle's API has no cancel endpoint. Seven rows on the K=32 probe protocol (400k train jets, 20 epochs, seed 0) against beams + channels 8 (0.98128 / 834.4, `c325950`): `fixes` (no m², no self-edges), `vector`, `relnorm`, `pair8`, `combo` (vector + pair8 + fixes), `rounds6`, `falpha3`. A one-epoch smoke run with every switch at once runs first. Replayed locally before the push: every row builds and trains one CPU epoch from the bundle, with parameter counts 22634 / 23365 / 23602 / 26514 / 26861 / 28378 / 24373.
-- **`nsanya/so3c-gpu-profile`** with `--compile` (`05f18fb`), pushed 2026-09-20 04:32 into the slot seed 2 freed: the same three configurations eager and under `torch.compile` on one card.
+Seven rows, K=32 probe protocol (400k training jets, 20 epochs, seed 0, beams + channels 8), T4, old forward pass, against the base 0.98128 / 834.4 (`c325950`). Results in `results_message/gap_screen`, ~9.9 GPU-h.
 
-**Done:** `nsanya/so3c-k64-headline-seed2` (`89d67f3`) — 5.18 h, 621 s per epoch, 0.98312 / 1004.5, in the table above. Attempts from `de42242` and `4f397f4` stopped at the on-card guard, first on an import error and then on a platform-bound fixture, both before training and ~10 GPU-min in total (see traps).
+| row | params | AUC | ΔAUC | 1/ε_B@0.3 | Δ |
+|---|---|---|---|---|---|
+| base (c8) | 22834 | 0.98128 | — | 834.4 | — |
+| pair latent 8 | 26514 | 0.98124 | −0.00004 | 827.5 | −7 |
+| combo (vector + pair8 + fixes) | 26861 | 0.98115 | −0.00013 | 814.2 | −20 |
+| vector channel | 23365 | 0.98109 | −0.00019 | 817.5 | −17 |
+| f_α, n=3 | 24373 | 0.98105 | −0.00023 | 782.6 | −52 |
+| fixes (no m², no self-edges) | 22634 | 0.98097 | −0.00031 | 739.6 | −95 |
+| rounds 6 | 28378 | 0.98092 | −0.00036 | 721.1 | −113 |
+| relative-norm edge | 23602 | 0.98084 | −0.00044 | 788.7 | −46 |
 
-### After the screen
+Not one improves on the base, and the whole table spans 0.0004 AUC. Note that even removing verified noise (`fixes`: the per-constituent m², which is rounding noise, and the self-edge) costs 0.0003 — a sign that differences this small are dominated by optimisation variance rather than by the inputs.
 
-One seed per row. Read the rows by AUC: +0.0004 is about three standard deviations of the seed spread, while a rejection gain under ~150 is not evidence on its own (see Current best). Confirm any winner at K=64 against the three headline seeds. Add it to `K64_RUNS` in `benchmarks/build_notebooks.py` (`build_k64_run(tag, flags, seed)`), write its metadata file, replay the bundle, push. Measured cost of a 30-epoch K=64 seed on the new forward pass: headline 5.2 h; estimated from the profile, vector ~6.2 h and pair latent ~7.7 h. GPU used this window: ~10 h (screen) + ~5.2 h (seed 2) + ~0.7 h (profiles, diagnostics, two guard failures), leaving ~14 h — enough for two confirmation seeds of one winner, and the runs no longer need finish kernels.
+**Before calling these closed, the protocol's own seed spread is being measured** — it never has been. The ±0.00014 AUC figure comes from K=64 runs on the full training set, and the K=64 *rejection* spread turned out to be three times what two seeds suggested. `nsanya/so3c-probe-seeds-{base,pair8}` (`4769835`) repeat the base and the closest candidate over three seeds each on exactly this protocol, with the rewritten forward pass and `--compile` so the comparison is paired. ~3.2 GPU-h.
+
+### The capacity axis never tested: the edge width
+
+Every pairwise interaction in the model passes through `act_hidden = 16` tanh units: `edge[r] = Linear(edge_in → 16) + Tanh`, and the flow weights, the messages and the pair-latent update are all read out of those 16 numbers. The capacity sweep varied the complex channels, `scalar_dim` and `hidden` — the **readout** width — but never `act_hidden`. PELICAN's pair state is wide (tens of channels carried through every block), which is exactly the axis we never moved.
+
+| configuration | params | × base |
+|---|---|---|
+| base (act_hidden 16, msg 8, scalar 8) | 22834 | 1.00 |
+| act_hidden 32 | 27922 | 1.22 |
+| act_hidden 64, msg 24, scalar 24 | 60834 | 2.66 |
+| pair latent 16 + act_hidden 32 | 39506 | 1.73 |
+| pair latent 16 + act_hidden 64 + msg/scalar 24 | 76002 | 3.33 |
+
+Still far below PELICAN's 208k. This is the next probe once the seed spread is known, and it is the first capacity axis with a mechanism behind it rather than a general "more parameters".
+
+### Budget
+
+GPU used this window: ~9.9 h (screen) + 5.2 h (headline seed 2) + ~0.7 h (profiles, diagnostics, two guard failures) + ~3.2 h (seed replicates) ≈ 19 h of 30. A K=64 seed now costs ~3.9 h with `--compile`, and a probe row 0.4–0.9 h.
 
 ## Infrastructure traps
 
