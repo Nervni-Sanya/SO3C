@@ -1799,6 +1799,10 @@ open("/kaggle/working/diag_cuda_golden.txt", "w").write(r.stdout + chr(10) + r.s
 PROBE_SEED_RUNS = [
     ("base", [], (0, 1, 2)),
     ("pair8", ["--pair-latent", "8"], (0, 1, 2)),
+    # the vector channel supplies <p_a, p_b> directly, which the bivector
+    # lift only exposes through combinations; it is information, not
+    # capacity, so the short protocol can test it
+    ("vector", ["--vector-channel"], (0, 1, 2)),
     # The edge width, the one capacity axis the sweep never moved: every
     # pairwise interaction passes through act_hidden tanh units.
     ("w32", ["--act-hidden", "32"], (0, 1)),
