@@ -1778,8 +1778,14 @@ open("/kaggle/working/diag_cuda_golden.txt", "w").write(r.stdout + chr(10) + r.s
 # put every candidate within 0.0004 AUC of the base on one seed each, and
 # this protocol's spread was unmeasured.
 PROBE_SEED_RUNS = [
-    ("base", []),
-    ("pair8", ["--pair-latent", "8"]),
+    ("base", [], (0, 1, 2)),
+    ("pair8", ["--pair-latent", "8"], (0, 1, 2)),
+    # The edge width, the one capacity axis the sweep never moved: every
+    # pairwise interaction passes through act_hidden tanh units.
+    ("w32", ["--act-hidden", "32"], (0, 1)),
+    ("w64s24", ["--act-hidden", "64", "--msg-dim", "24",
+                "--scalar-dim", "24"], (0, 1)),
+    ("pair16w32", ["--pair-latent", "16", "--act-hidden", "32"], (0, 1)),
 ]
 
 
@@ -2125,8 +2131,8 @@ def main() -> int:
     build_gap_screen(blob)
     build_gpu_profile(blob)
     build_cuda_diag(blob)
-    for tag, flags in PROBE_SEED_RUNS:
-        build_probe_seeds(blob, tag, flags)
+    for tag, flags, seeds in PROBE_SEED_RUNS:
+        build_probe_seeds(blob, tag, flags, seeds)
     for tag, flags, seed in K64_RUNS:
         build_k64_run(blob, tag, flags, seed)
     for k in (32, 64):

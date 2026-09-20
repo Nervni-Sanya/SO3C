@@ -1,0 +1,15 @@
+{
+  "id": "nsanya/so3c-probe-seeds-pair16w32",
+  "title": "SO3C probe seeds pair16w32",
+  "code_file": "kaggle_probe_seeds_pair16w32.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "dataset_sources": [],
+  "competition_sources": [],
+  "kernel_sources": [
+    "nsanya/so3c-data-prep-k-128"
+  ]
+}
