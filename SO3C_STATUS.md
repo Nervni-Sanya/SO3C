@@ -1,6 +1,6 @@
 # SO3C status
 
-Last updated 2026-09-19. This is the single place to start from. Commit hashes point at the evidence for every number; unless marked **(SO3C)** they are commits in the **so33** repository this one was split from (see [Provenance](#provenance)).
+Last updated 2026-09-20. This is the single place to start from. Commit hashes point at the evidence for every number; unless marked **(SO3C)** they are commits in the **so33** repository this one was split from (see [Provenance](#provenance)).
 
 ## Scope and goal
 
@@ -21,15 +21,18 @@ Last updated 2026-09-19. This is the single place to start from. Commit hashes p
 
 | | AUC | 1/ε_B@0.3 | 1/ε_B@0.5 |
 |---|---|---|---|
-| seed 0 | 0.98326 | 1147.2 | 287.6 |
-| seed 1 | 0.98340 | 1115.5 | 297.4 |
-| **mean** | **0.98333 ± 0.00010** | **1131 ± 22** | **292 ± 7** |
-| **two-seed ensemble** | **0.98373** | **1174** | **306** |
+| seed 0 (P100) | 0.98326 | 1147.2 | 287.6 |
+| seed 1 (P100) | 0.98340 | 1115.5 | 297.4 |
+| seed 2 (T4, rewritten forward pass) | 0.98312 | 1004.5 | 287.2 |
+| **mean** | **0.98326 ± 0.00014** | **1089 ± 75** | **291 ± 5** |
+| **three-seed ensemble** | **0.98378** | **1160** | **316** |
 
-- **Gap to PELICAN:** 0.0037 AUC and a factor 1.99 in rejection (from 0.0063 and 2.6 before beams).
+**The rejection is much noisier than two seeds suggested.** Seeds 0 and 1 alone gave 1131 ± 22; the third seed landed at 1004.5 and the three-seed standard deviation is 75, that is 7%. The AUC is stable to 0.00014. Rejection at 30% signal efficiency is a tail statistic — a few hundred background jets decide it — so **a rejection gain under ~150 on a single seed is not evidence**, while +0.0004 AUC remains about three standard deviations. Seed 2 is not the rewrite's doing: its training curve matches seed 0's (final validation loss 0.16455 against 0.16449) and the two implementations agree to 1e-14 in float64.
+
+- **Gap to PELICAN:** 0.0037 AUC and a factor 2.1 in rejection (from 0.0063 and 2.6 before beams).
 - **The sobering comparison (verified):** PELICAN's own 1k-parameter model (0.9835 / 1145) matches this 22.8k-parameter model. The gap is architectural, not a matter of size.
 - **Exact equivariance, measured** (float64, `87206e7`): with the beams transformed along with the jet, AUC stays 0.9684 at every boost scale (drop −0.0001); with the beams pinned to the lab it falls to 0.9332. That is exact covariance, the correct physics, and the same property PELICAN has.
-- **Reproduce:** `notebooks/kaggle_beams_k64_seed{0,1}.ipynb`, then `notebooks/kaggle_beams_k64_finish.ipynb` (both seeds stop at epoch 24 on the session cap and resume). Results, the epoch-30 checkpoints of both seeds and the full kernel logs are in `results_message/beams_k64/` (weights archived from Kaggle in `a76d837`; every other SO3C run's checkpoints sit beside its results the same way). Ensemble: `python -m benchmarks.ensemble_scores --results-dir results_message/beams_k64`.
+- **Reproduce:** `notebooks/kaggle_k64_headline_seed2.ipynb` (one session, ~5.2 h since the speedup) for a new seed; seeds 0 and 1 came from `notebooks/kaggle_beams_k64_seed{0,1}.ipynb` plus `kaggle_beams_k64_finish.ipynb` (they stopped at epoch 24 on the session cap and resumed). Seed 2 with its checkpoint and log is in `results_k64/headline/`; results, the epoch-30 checkpoints of seeds 0 and 1 and the full kernel logs are in `results_message/beams_k64/` (weights archived from Kaggle in `a76d837`; every other SO3C run's checkpoints sit beside its results the same way). Ensemble: `python -m benchmarks.ensemble_scores --results-dir results_message/beams_k64`.
 
 ## How we got here (canonical protocol)
 
@@ -120,15 +123,13 @@ Peak memory −38% (headline). Profiles: `results_profile/t4_16302b1`, `t4_2a3b3
 ### Running
 
 - **`nsanya/so3c-gap-screen`**, pushed 2026-09-19 22:12. Its bundle was rebuilt from this repository (`fc1d6d8`) but predates the speedup, so it runs the **old** forward pass (~10 GPU-h); Kaggle's API has no cancel endpoint. Seven rows on the K=32 probe protocol (400k train jets, 20 epochs, seed 0) against beams + channels 8 (0.98128 / 834.4, `c325950`): `fixes` (no m², no self-edges), `vector`, `relnorm`, `pair8`, `combo` (vector + pair8 + fixes), `rounds6`, `falpha3`. A one-epoch smoke run with every switch at once runs first. Replayed locally before the push: every row builds and trains one CPU epoch from the bundle, with parameter counts 22634 / 23365 / 23602 / 26514 / 26861 / 28378 / 24373.
-- **`nsanya/so3c-k64-headline-seed2`** (`89d67f3`; attempts from `de42242` and `4f397f4` stopped at the on-card guard, first on an import error and then on a platform-bound fixture, both before training, ~10 GPU-min in total; see traps), running alongside: the headline configuration, seed 2, on the new forward pass. It checks that the rewrite reproduces the headline on real data, measures the real epoch time, and adds a third ensemble member. Expected ~5 h.
+- **`nsanya/so3c-gpu-profile`** with `--compile` (`05f18fb`), pushed 2026-09-20 04:32 into the slot seed 2 freed: the same three configurations eager and under `torch.compile` on one card.
 
-### Queued for a free slot
-
-- `nsanya/so3c-gpu-profile` with `--compile` (`05f18fb`): the same three configurations eager and under `torch.compile` on one card. The whole model captures as a single graph with no breaks (checked locally with aot_eager, identical output); Triton needs sm_70+, so it can only help on a T4. Push when the screen or seed 2 finishes.
+**Done:** `nsanya/so3c-k64-headline-seed2` (`89d67f3`) — 5.18 h, 621 s per epoch, 0.98312 / 1004.5, in the table above. Attempts from `de42242` and `4f397f4` stopped at the on-card guard, first on an import error and then on a platform-bound fixture, both before training and ~10 GPU-min in total (see traps).
 
 ### After the screen
 
-One seed per row, so a gain near +0.0004 AUC is at the edge of noise; confirm any winner at K=64 before believing it, against the three headline seeds. Add the winner to `K64_RUNS` in `benchmarks/build_notebooks.py` (`build_k64_run(tag, flags, seed)`), write its metadata file, replay, push. Estimated cost per 30-epoch K=64 seed on the new forward pass: headline ~4.9 h, vector ~6.2 h, pair latent ~7.7 h. GPU used so far this window: ~10.5 h (screen, three profiles) plus ~5 h (seed 2), leaving ~14 h: two confirmation seeds of one winner, or one seed each of two.
+One seed per row. Read the rows by AUC: +0.0004 is about three standard deviations of the seed spread, while a rejection gain under ~150 is not evidence on its own (see Current best). Confirm any winner at K=64 against the three headline seeds. Add it to `K64_RUNS` in `benchmarks/build_notebooks.py` (`build_k64_run(tag, flags, seed)`), write its metadata file, replay the bundle, push. Measured cost of a 30-epoch K=64 seed on the new forward pass: headline 5.2 h; estimated from the profile, vector ~6.2 h and pair latent ~7.7 h. GPU used this window: ~10 h (screen) + ~5.2 h (seed 2) + ~0.7 h (profiles, diagnostics, two guard failures), leaving ~14 h — enough for two confirmation seeds of one winner, and the runs no longer need finish kernels.
 
 ## Infrastructure traps
 
@@ -172,6 +173,7 @@ One seed per row, so a gain near +0.0004 AUC is at the edge of noise; confirm an
 | `so3c_covariant_set`, K=64 | ~199 | 1.66 h |
 | `so3c_message_set`, K=64 | ~930 | 7.75 h |
 | + beams + channels 8, K=64 | 1272 | 10.6 h |
+| + beams + channels 8, K=64, **rewritten forward pass, T4** (measured, seed 2) | 621 | 5.2 h |
 | K=128 dense (from 100k jets) | ~7290 | 60.8 h |
 | K=128 kNN(16) (from 100k jets) | ~2313 | 19.3 h |
 
