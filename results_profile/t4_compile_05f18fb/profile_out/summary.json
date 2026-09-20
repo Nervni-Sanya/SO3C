@@ -1,0 +1,56 @@
+{
+ "device": "Tesla T4",
+ "k": 64,
+ "batch_size": 256,
+ "dtype": "float32",
+ "torch": "2.10.0+cu128",
+ "rows": [
+  {
+   "config": "base",
+   "kwargs": {
+    "channels": 8,
+    "rounds": 3,
+    "beams": true
+   },
+   "n_params": 22834,
+   "compiled": false,
+   "compile_note": "",
+   "train_step_s": 0.11066173494999987,
+   "eval_chunk_s": 0.1545605825999928,
+   "peak_train_gib": 1.4167060852050781,
+   "epoch_estimate_s": 584.3099207867153
+  },
+  {
+   "config": "vector",
+   "kwargs": {
+    "channels": 8,
+    "rounds": 3,
+    "beams": true,
+    "vector_channel": true
+   },
+   "n_params": 23365,
+   "compiled": false,
+   "compile_note": "",
+   "train_step_s": 0.13875454770000034,
+   "eval_chunk_s": 0.19488354759999993,
+   "peak_train_gib": 1.471632480621338,
+   "epoch_estimate_s": 733.0713854898454
+  },
+  {
+   "config": "pair8",
+   "kwargs": {
+    "channels": 8,
+    "rounds": 3,
+    "beams": true,
+    "pair_latent": 8
+   },
+   "n_params": 26514,
+   "compiled": false,
+   "compile_note": "",
+   "train_step_s": 0.17158453539999813,
+   "eval_chunk_s": 0.2559206624000012,
+   "peak_train_gib": 1.7652478218078613,
+   "epoch_estimate_s": 912.3940590085854
+  }
+ ]
+}

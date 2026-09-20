@@ -1,0 +1,56 @@
+{
+ "device": "Tesla T4",
+ "k": 64,
+ "batch_size": 256,
+ "dtype": "float32",
+ "torch": "2.10.0+cu128",
+ "rows": [
+  {
+   "config": "base",
+   "kwargs": {
+    "channels": 8,
+    "rounds": 3,
+    "beams": true
+   },
+   "n_params": 22834,
+   "compiled": true,
+   "compile_note": " | compiled (first call 35 s, max |d logit| vs eager 2.9e-05)",
+   "train_step_s": 0.09138110994999807,
+   "eval_chunk_s": 0.09516833679999763,
+   "peak_train_gib": 1.5141429901123047,
+   "epoch_estimate_s": 469.72943000799773
+  },
+  {
+   "config": "vector",
+   "kwargs": {
+    "channels": 8,
+    "rounds": 3,
+    "beams": true,
+    "vector_channel": true
+   },
+   "n_params": 23365,
+   "compiled": true,
+   "compile_note": " | compiled (first call 77 s, max |d logit| vs eager 2.6e-05)",
+   "train_step_s": 0.10677586495000355,
+   "eval_chunk_s": 0.11050059499998496,
+   "peak_train_gib": 1.5481348037719727,
+   "epoch_estimate_s": 548.5879195339952
+  },
+  {
+   "config": "pair8",
+   "kwargs": {
+    "channels": 8,
+    "rounds": 3,
+    "beams": true,
+    "pair_latent": 8
+   },
+   "n_params": 26514,
+   "compiled": true,
+   "compile_note": " | compiled (first call 80 s, max |d logit| vs eager 2.0e-05)",
+   "train_step_s": 0.13499205720000304,
+   "eval_chunk_s": 0.15990469040000335,
+   "peak_train_gib": 1.8560771942138672,
+   "epoch_estimate_s": 701.5069485429844
+  }
+ ]
+}

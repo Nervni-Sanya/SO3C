@@ -1,0 +1,24 @@
+{
+ "device": "Tesla T4",
+ "k": 32,
+ "batch_size": 256,
+ "dtype": "float32",
+ "torch": "2.10.0+cu128",
+ "rows": [
+  {
+   "config": "base",
+   "kwargs": {
+    "channels": 8,
+    "rounds": 3,
+    "beams": true
+   },
+   "n_params": 22834,
+   "compiled": false,
+   "compile_note": "",
+   "train_step_s": 0.04032477664999874,
+   "eval_chunk_s": 0.09190993120000712,
+   "peak_train_gib": 0.43039703369140625,
+   "epoch_estimate_s": 208.8408879193314
+  }
+ ]
+}
