@@ -58,12 +58,12 @@ Last updated 2026-09-20. This is the single place to start from. Commit hashes p
 | **K beyond 64, by energy content** (raw 200-slot parquet, 100k test jets) | K=64 keeps 99.75% of jet energy on average (p1 95.3%); 82% of jets are complete and have exact jet mass. K=128 adds only the soft tail. Combined with the K sweep above and 19.3 h per seed even with kNN: **closed** | `1259ff7` |
 | **Per-constituent mass m² as an input** | rounding noise: \|m²\|/E² median 4.6e-8, max 2.3e-7, 50% negative, log\|m²\| tracks log E² with slope 0.998. The constituents are massless | `1259ff7` |
 | Channels on the broken model | flat, 0.9743–0.9745 across 22× parameters | — |
-| kNN(16) graph at K=32 | −0.0011 AUC for 2% wall clock saved | `1f01ddd` |
+| kNN(16) graph at K=32 | −0.0011 AUC for 2% wall clock saved. Note 16 neighbours cover half the jet at K=32 and an eighth at K=128, so the penalty should grow, not shrink, with K | `1f01ddd` |
 | Capacity **without** beams (K=32 probe) | flat: scalar_dim 24, hidden 256, channels 8/16, rounds 6 all within 0.0006 AUC of the anchor | `abd5660` |
 | Scalar channel | load-bearing: −0.0025 AUC and −40% rejection without it | `abd5660` |
 | Published LorentzNet/PELICAN recipe (AdamW wd 0.01, dropout 0.2, lr 1e-3, 35-epoch warm restarts) | **negative**: 0.97769 alone (below anchor 0.9786), and beams + recipe 0.98065 < beams alone 0.98088 | `837c567` |
 | Learning rate | 3e-3 beats both 6e-3 (−0.0003) and 1e-3 | `c325950` |
-| Longer training | 35 epochs: +0.00015 AUC, −14 rejection, 75% more compute | `c325950` |
+| ~~Longer training~~ **REOPENED 2026-09-20** | The verdict rested on one probe-protocol row (35 vs 20 epochs on 400k jets, K=32: +0.00015 AUC, −14 rejection). Against it: validation loss is lowest at the **final** epoch in all four K=64 runs, and on the older 9k `so3c_equivariant_set` at K=32 on the full training set, 60 epochs beat 30 by +0.00024 AUC (6.4 σ) and +30 rejection (9.5%, 5.2 σ) — `results_60ep` against its three 30-epoch seeds, same batch, same learning rate, only the epoch count differing. Being tested at K=64 | `c325950`, `results_60ep` |
 | Regularisation | dropout 0.05 + wd 1e-4: −0.0011 AUC, −133 rejection. The model **underfits** | `c325950` |
 | Capacity **with** beams | channels 8: +0.0004 AUC, +67 rejection; **channels 16: worse than 8** (0.98111 / 811) at 1.5× cost | `c325950`, `90f2ead` |
 | K=128 wall clock | dense 602 s/epoch on 100k jets (60.8 h full protocol); kNN(16) 191 s (19.3 h), 3.15× faster | `90f2ead` |
@@ -141,6 +141,8 @@ Seven rows, K=32 probe protocol (400k training jets, 20 epochs, seed 0, beams + 
 
 Not one improves on the base, and the whole table spans 0.0004 AUC. Note that even removing verified noise (`fixes`: the per-constituent m², which is rounding noise, and the self-edge) costs 0.0003 — a sign that differences this small are dominated by optimisation variance rather than by the inputs.
 
+**The regime limits what this screen could ever have shown.** It ran at 20 epochs on 400k jets. Candidates that *add capacity* — the pair latent, a wider edge — cannot pay there: more parameters need more data and more training before they earn their keep. A null result in that regime does not transfer to 30–60 epochs on 1.2M jets, so none of these candidates is closed on the strength of this table. What the screen does establish is that none of them is a large, regime-independent win.
+
 **Before calling these closed, the protocol's own seed spread is being measured** — it never has been. The ±0.00014 AUC figure comes from K=64 runs on the full training set, and the K=64 *rejection* spread turned out to be three times what two seeds suggested. `nsanya/so3c-probe-seeds-{base,pair8}` (`4769835`) repeat the base and the closest candidate over three seeds each on exactly this protocol, with the rewritten forward pass and `--compile` so the comparison is paired. ~3.2 GPU-h.
 
 ### The capacity axis never tested: the edge width
@@ -155,11 +157,21 @@ Every pairwise interaction in the model passes through `act_hidden = 16` tanh un
 | pair latent 16 + act_hidden 32 | 39506 | 1.73 |
 | pair latent 16 + act_hidden 64 + msg/scalar 24 | 76002 | 3.33 |
 
-Still far below PELICAN's 208k. This is the next probe once the seed spread is known, and it is the first capacity axis with a mechanism behind it rather than a general "more parameters".
+Still far below PELICAN's 208k, and the first capacity axis with a mechanism behind it rather than a general "more parameters". The three probe kernels are **built and held** (`8b3cde6`): running them at 20 epochs on 400k jets would repeat exactly the regime that cannot show a capacity gain. They belong at the long schedule on the full training set, after the 60-epoch baseline below says whether that regime is where the model actually lives.
+
+### 60 epochs at K=64 (`nsanya/so3c-k64-headline60-seed0`, `fcc137a`)
+
+The headline configuration, seed 0, 60 epochs on the full training set, one session. Cost from measured numbers: seed 2 ran at 621 s per epoch eager on a T4, and the profile's compiled/eager ratios (0.82 per training step, 0.61 per eval chunk) give ~495 s per epoch, so ~8.3 h; on a P100 compile is skipped and it is ~10.4 h, still inside the 12 h session cap, with `--max-seconds 39000` so either way it checkpoints cleanly. The summary prints the epoch-by-epoch validation curve, which is the point: whether the curve is still falling at 60.
+
+Why this and not more probes: every K=64 run so far has its lowest validation loss at the final epoch, and the one doubling ever measured on the full training set (`results_60ep`, the older 9k model) paid 6 σ in AUC and 5 σ in rejection. If the model is simply undertrained at 30 epochs, then every capacity candidate has been screened in a regime where it could not pay, and the screen has to be redone at the longer schedule.
+
+### Sparse graph now carries beams (`829c4c0`)
+
+The dense-only restriction on beams was conservative, not structural; it is lifted, with the two beam nodes forced into every node's neighbourhood (a fixed, frame-independent index set) so a ranked list cannot discard the only lab-frame information the model has. Cost: k + 2 edges per node. This unlocks K=128 with kNN and beams at roughly 7.7 h per 30-epoch seed, but that experiment is **not** scheduled: its case rests on +0.0009 AUC with rejection flat on the 9k covariant model, and the kNN penalty should grow with K.
 
 ### Budget
 
-GPU used this window: ~9.9 h (screen) + 5.2 h (headline seed 2) + ~0.7 h (profiles, diagnostics, two guard failures) + ~3.2 h (seed replicates) ≈ 19 h of 30. A K=64 seed now costs ~3.9 h with `--compile`, and a probe row 0.4–0.9 h.
+GPU used this window: ~9.2 h (screen) + 5.2 h (headline seed 2) + ~0.7 h (profiles, diagnostics, two guard failures) + ~3.1 h (seed replicates) ≈ 18.3 h of 30, leaving ~11.7 h. The 60-epoch run takes ~8.3 h of that; the width probes (~4.8 h) do not fit alongside it and are held for the next window. A 30-epoch K=64 seed now costs ~3.9 h with `--compile`, a 60-epoch one ~8.3 h, and a probe row 0.4–0.9 h.
 
 ## Infrastructure traps
 
