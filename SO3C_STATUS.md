@@ -149,6 +149,18 @@ Not one improves on the base, and the whole table spans 0.0004 AUC. Note that ev
 - A single-run difference has spread √2 × 0.00017 = 0.00024, so every candidate delta is inside noise: pair8 0.2 σ, combo 0.5 σ, vector 0.8 σ, f_α 1.0 σ, fixes 1.3 σ, rounds 6 1.5 σ, relnorm 1.8 σ. **The screen neither closes nor supports any candidate**; it only rules out a large, regime-independent win.
 - The rewrite and `--compile` do not shift results: base seed 0 scores 0.98125 against 0.98128 for the old eager code, a difference of 0.00003.
 
+**The pair latent's sign flips when it is measured properly** (`fb8d80a`). Three seeds each, paired, same code:
+
+| seed | base | pair8 | diff |
+|---|---|---|---|
+| 0 | 0.98125 | 0.98120 | −0.00005 |
+| 1 | 0.98092 | 0.98113 | +0.00021 |
+| 2 | 0.98100 | 0.98121 | +0.00021 |
+| mean | 0.98106 ± 0.00017 | **0.98118 ± 0.00004** | **+0.00012** |
+| 1/ε_B@0.3 | 806 ± 58 | 835 ± 27 | +29 |
+
+Paired difference +0.00012 AUC (sd 0.00015, t = 1.42 on three seeds, p ≈ 0.14 one-sided) — not significant, but positive rather than the screen's −0.00004, and its run-to-run spread is four times smaller than the base's. The pair latent costs 0.59 h per seed against 0.45 h. It is the one candidate worth carrying into the long-schedule regime.
+
 **Rule for future screens on this protocol:** one seed per row resolves nothing below about 0.0005 AUC. Compare against a multi-seed base, not a single row, and budget three seeds per arm (about 1.4 GPU-h at 0.45 h per row) — or screen where the effect is expected to be larger.
 
 ### The capacity axis never tested: the edge width
@@ -169,7 +181,7 @@ Still far below PELICAN's 208k, and the first capacity axis with a mechanism beh
 
 The headline configuration, seed 0, 60 epochs on the full training set, one session. Cost from measured numbers: seed 2 ran at 621 s per epoch eager on a T4, and the profile's compiled/eager ratios (0.82 per training step, 0.61 per eval chunk) give ~495 s per epoch, so ~8.3 h; on a P100 compile is skipped and it is ~10.4 h, still inside the 12 h session cap, with `--max-seconds 39000` so either way it checkpoints cleanly. The summary prints the epoch-by-epoch validation curve, which is the point: whether the curve is still falling at 60.
 
-Why this and not more probes: every K=64 run so far has its lowest validation loss at the final epoch, and the one doubling ever measured on the full training set (`results_60ep`, the older 9k model) paid 6 σ in AUC and 5 σ in rejection. If the model is simply undertrained at 30 epochs, then every capacity candidate has been screened in a regime where it could not pay, and the screen has to be redone at the longer schedule.
+Why this and not more probes: every K=64 run so far has its lowest validation loss at the final epoch, and the one doubling ever measured on the full training set (`results_60ep`, the older 9k model) paid 6 σ in AUC and 5 σ in rejection. That comparison is between two *complete* schedules, not a mid-run snapshot: the 60-epoch run is behind at epoch 30 (validation loss 0.19814, its learning rate still high) and finishes at 0.19639, against 0.19705 for the complete 30-epoch schedule, with validation accuracy +0.00027 over three 30-epoch seeds. Worth stating plainly: "lowest validation loss at the final epoch" is weak evidence on its own, because a cosine schedule anneals to zero and always flattens at the end — the 60-epoch run is the actual test. If the model is simply undertrained at 30 epochs, then every capacity candidate has been screened in a regime where it could not pay, and the screen has to be redone at the longer schedule.
 
 ### Sparse graph now carries beams (`829c4c0`)
 
