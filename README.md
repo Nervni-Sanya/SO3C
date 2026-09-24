@@ -25,18 +25,27 @@ training, 403,000 validation and 404,000 test jets. It has not been reached.
 
 | Model | Parameters | AUC | 1/ε_B at ε_S = 0.3 |
 |---|---:|---|---|
-| **SO3C**, `so3c_message_set --beams --channels 8`, K = 64, mean of 2 seeds | 22,834 | **0.98333 ± 0.00010** | **1131 ± 22** |
-| the same two seeds with their scores averaged | 2 × 22,834 | 0.98373 | 1174 |
+| **SO3C**, `so3c_message_set --beams --channels 8`, K = 64, 60 epochs, 1 seed | 22,834 | **0.98363** | **1140.8** |
+| the same configuration, mean of 3 seeds at 30 epochs | 22,834 | 0.98326 ± 0.00014 | 1089 ± 75 |
+| ensemble: those 3 seeds plus the 60-epoch model | 4 × 22,834 | **0.98396** | **1231.2** |
 | PELICAN | 208,000 | 0.9870 | 2250 ± 75 |
 | LorentzNet | 224,000 | 0.9868 | 2195 ± 173 |
+| L-GATr, trained from scratch | 1,100,000 | 0.9870 ± 0.0001 | 2240 ± 70 |
 | PELICAN, its own size sweep | 11,000 | 0.9858 | 1879 ± 103 |
 | PELICAN, its own size sweep | 1,000 | 0.9835 | 1145 ± 74 |
 
-The gap to PELICAN is 0.0037 AUC and a factor of 2.0 in background rejection.
-PELICAN's 1,000-parameter model already matches the 22,834-parameter SO3C
-model, so what is missing is architecture, not size. The published values were
-checked against the source tables
-([`figures/literature_reference.csv`](figures/literature_reference.csv),
+Training longer helped: 60 epochs beats the 30-epoch mean by +0.00037 AUC,
+about 2.3σ from a single seed — suggestive on its own, but its validation
+loss finished below all three complete 30-epoch runs and was still falling.
+The gap to PELICAN from the best ensemble is 0.0030 AUC and a factor of 1.83
+in background rejection (was 0.0037 and 2.0 before the longer schedule).
+PELICAN's 1,000-parameter model still matches SO3C's best single model, so
+what is missing remains architecture, not size. The one published number
+above this whole band is L-GATr fine-tuned after JetClass pretraining
+(0.98793 / 2894) — a different comparison class, since the same
+architecture trained from scratch on this dataset lands at 0.9870 / 2240, in
+line with PELICAN. The published values were checked against the source
+tables ([`figures/literature_reference.csv`](figures/literature_reference.csv),
 [`figures/pelican_scaling.csv`](figures/pelican_scaling.csv)). The
 working status — candidates under test, questions closed by measurement, the
 GPU budget — is in [`SO3C_STATUS.md`](SO3C_STATUS.md).
@@ -95,10 +104,12 @@ on the full data yet: `--no-mass-input`, `--no-self-edges`, `--relnorm-edge`,
 | `so3c_covariant_set` | 9,078 | 32 | 3 | 0.9746 ± 0.0001 | 312 ± 19 |
 | `so3c_covariant_set` | 9,078 | 64 | 2 | 0.9772 ± <0.0001 | 638 ± 1 |
 | `so3c_message_set` | 13,862 | 64 | 2 | 0.9807 ± 0.0001 | 850 ± 56 |
-| `so3c_message_set --beams --channels 8` | 22,834 | 64 | 2 | 0.98333 ± 0.00010 | 1131 ± 22 |
+| `so3c_message_set --beams --channels 8` | 22,834 | 64 | 3 | 0.98326 ± 0.00014 | 1089 ± 75 |
+| `so3c_message_set --beams --channels 8`, 60 epochs | 22,834 | 64 | 1 | 0.98363 | 1140.8 |
 
 K is the number of leading constituents per jet; ± is the standard deviation
-over seeds. On test jets pushed through random Lorentz transformations (boost
+over seeds; every row trains for 30 epochs except the last, which trains for
+60. On test jets pushed through random Lorentz transformations (boost
 scale up to 3, float64), the AUC of the invariant models moves by at most
 0.0002, and so does that of the beams model when its beams move with the jet,
 while `so3c_equivariant_set` falls from 0.9424 to 0.4414 ± 0.3284. Every result,
@@ -154,13 +165,15 @@ python -m benchmarks.run_top_tagging --cache-dir data --representation constitue
 ```
 
 ```bash
-# The headline configuration, one seed: 10.6 hours on a Kaggle P100 in float32.
+# The headline configuration, one seed: about 3.9 hours on a Kaggle T4 with
+# --compile (roughly 8.3 hours at --epochs 60, the current best single model),
+# or about twice that on a P100, where torch.compile falls back to eager.
 # --max-seconds ends a session; rerunning the same command resumes from the checkpoint.
 python -m benchmarks.run_top_tagging --cache-dir data --representation constituents \
     --canonical-splits --epochs 30 --normalize global --seed 0 \
     --device cuda --dtype float32 --batch-size 256 --n-constituents 64 \
     --models so3c_message_set --rounds 3 --beams --channels 8 --eval-chunk-size 1024 \
-    --results-dir results_beams_k64 --ckpt-dir ckpt_beams_k64 --resume --max-seconds 30000
+    --compile --results-dir results_beams_k64 --ckpt-dir ckpt_beams_k64 --resume --max-seconds 30000
 
 # Seed ensemble from the saved per-jet scores, no retraining
 python -m benchmarks.ensemble_scores --results-dir results_message/beams_k64
@@ -200,7 +213,7 @@ in the infrastructure table of [`SO3C_STATUS.md`](SO3C_STATUS.md).
 | [`notebooks/`](notebooks/) | Generated Kaggle notebooks with the code embedded |
 | [`figures/`](figures/) | Figures, their CSV twins and the published reference values |
 | [`so3c_notes/`](so3c_notes/) | Research notes and the related-work survey |
-| `results_message/`, `results_kappa/`, `results_fixed/`, `results_boost/`, `results_scaling/`, `results_init/`, `results_sweep/`, `results_60ep/`, `results_cleanup/`, `results_matched/`, `results_matched_canonical/` | Committed results with per-jet test scores |
+| `results_message/`, `results_kappa/`, `results_fixed/`, `results_boost/`, `results_scaling/`, `results_init/`, `results_sweep/`, `results_60ep/`, `results_k64/`, `results_profile/`, `results_cleanup/`, `results_matched/`, `results_matched_canonical/` | Committed results with per-jet test scores |
 | `results_higgs_ablation/` | HIGGS feature-set ablation (matched bottleneck, three feature sets) |
 
 `results/` and `data/` (the datasets, about 11 GB) are in `.gitignore`.
@@ -211,11 +224,12 @@ in the infrastructure table of [`SO3C_STATUS.md`](SO3C_STATUS.md).
 python -m pytest tests/ -q
 ```
 
-The suite has 64 tests. The 47 SO3C tests cover the algebra (5), the activation
-(7), the interaction layer (5), the lift (4), the models (20) and float32
-behaviour (6); the 17 harness tests cover checkpointing and resume,
-reproducibility, the training schedules and the figure scripts. On a CPU-only
-machine 62 pass and two CUDA-only harness tests are skipped. Tests of the flow models' equivariance set the zero-initialised
+The suite has 71 tests. The 52 SO3C tests cover the algebra (5), the activation
+(7), the interaction layer (5), the lift (4), the models (25, including the
+forward-pass rewrite guard) and float32 behaviour (6); the 19 harness tests
+cover checkpointing and resume, reproducibility, the training schedules and
+the figure scripts. On a CPU-only machine 68 pass and three CUDA-only tests
+are skipped. Tests of the flow models' equivariance set the zero-initialised
 weight heads to random values first: on a freshly built model the flow is the
 identity, and an invariance check would pass without testing the flow.
 
@@ -230,9 +244,11 @@ DOI 10.5281/zenodo.19763339 belongs to the SO(3,3) software in the
 
 Every GPU result in this repository was trained on **Kaggle**'s free notebook
 sessions (P100 and T4), within their quota of 30 GPU-hours per week. The
-headline configuration spends 10.6 of those hours per seed, so this work would
-not exist without that free compute; the notebooks that ran there, with the
-code embedded, are in [`notebooks/`](notebooks/).
+headline configuration originally spent 10.6 of those hours per seed; a
+rewritten forward pass and `torch.compile` brought that to about 3.9 hours
+(8.3 at 60 epochs), but this work would not exist without that free compute
+either way; the notebooks that ran there, with the code embedded, are in
+[`notebooks/`](notebooks/).
 
 The data is the top-tagging reference set of Kasieczka et al.
 ([arXiv:1902.09914](https://arxiv.org/abs/1902.09914), Zenodo 2603256).
