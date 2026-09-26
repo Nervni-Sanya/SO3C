@@ -1,0 +1,15 @@
+{
+  "id": "nsanya/so3c-long-seeds-w64s24-s1",
+  "title": "SO3C long seeds w64s24 s1",
+  "code_file": "kaggle_long_seeds_w64s24_s1.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "dataset_sources": [],
+  "competition_sources": [],
+  "kernel_sources": [
+    "nsanya/so3c-data-prep-k-128"
+  ]
+}

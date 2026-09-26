@@ -1965,6 +1965,20 @@ for k, chunk in (("32", "2048"), ("64", "1024")):
         json.dumps(meta, indent=2) + chr(10), encoding="utf-8")
 
 
+# Long-schedule screen, window 2026-09-26: the width scaling curve,
+# (tag, flags, seed), one seed per kernel so the order can adapt. Measured
+# compiled cost at K=32 over 60 epochs: base ~3.0 h, w64s24 ~4.3 h,
+# w128s32 ~6.4 h (results_profile/t4_width_1007eaa).
+LONG_RUNS = [
+    ("base", [], 0),
+    ("w128s32", ["--act-hidden", "128", "--msg-dim", "32", "--scalar-dim", "32"], 0),
+    ("w64s24", ["--act-hidden", "64", "--msg-dim", "24", "--scalar-dim", "24"], 0),
+    ("base", [], 1),
+    ("w128s32", ["--act-hidden", "128", "--msg-dim", "32", "--scalar-dim", "32"], 1),
+    ("w64s24", ["--act-hidden", "64", "--msg-dim", "24", "--scalar-dim", "24"], 1),
+]
+
+
 def build_long_seeds(blob: str, tag: str, flags: list[str],
                      seeds: tuple[int, ...], part: str = "") -> str:
     """The long-schedule screen: K=32 on the FULL training set, 60 epochs.
@@ -2320,6 +2334,8 @@ def main() -> int:
     build_gpu_profile(blob)
     build_cuda_diag(blob)
     build_width_profile(blob)
+    for tag, flags, seed in LONG_RUNS:
+        build_long_seeds(blob, tag, flags, (seed,), part="s%d" % seed)
     for tag, flags, seeds in PROBE_SEED_RUNS:
         build_probe_seeds(blob, tag, flags, seeds)
     for tag, flags, seed, epochs in K64_RUNS:
