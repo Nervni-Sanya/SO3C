@@ -1917,6 +1917,54 @@ if len(aucs) > 1:
     return name
 
 
+def build_width_profile(blob: str) -> None:
+    """Time the capacity candidates on the card before a window commits to them.
+
+    The long-schedule screen (K=32, full training set, 60 epochs) runs each
+    arm for hours per seed, and CPU cost ratios have misled three times, so
+    every candidate is timed on the GPU first: compiled, K=32 and K=64,
+    synthetic jets (cost depends only on shapes). No dataset; ~20 minutes.
+    """
+    configs = ["base", "w32", "w64s24", "w128s32", "c16", "pair8", "pair16w32"]
+    cells = [
+        md("""
+# Width and capacity candidates: compiled cost on the card
+
+Per-epoch estimates at K=32 (batch 256, eval chunk 2048) and K=64 (eval
+chunk 1024), with `--compile`, for the configurations a long-schedule screen
+would compare.
+"""),
+        code("""
+import subprocess
+print(subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total",
+                      "--format=csv,noheader"], capture_output=True,
+                     text=True).stdout.strip())
+"""),
+        code(UNPACK.format(blob=blob)),
+        code(RUNNER),
+        code(GPU_SETUP),
+        code("""
+CONFIGS = %r
+for k, chunk in (("32", "2048"), ("64", "1024")):
+    args = ["benchmarks.profile_gpu", "--out", "/kaggle/working/width_k" + k,
+            "--k", k, "--batch-size", "256", "--eval-chunk-size", chunk,
+            "--compile", "--no-profile", "--steps", "15"]
+    for c in CONFIGS:
+        args += ["--config", c]
+    ok = run(args)
+    assert ok, "profile at K=%%s failed" %% k
+""" % configs),
+    ]
+    _finalise(cells, NB_DIR / "kaggle_width_profile.ipynb")
+    meta = {"id": "nsanya/so3c-width-profile", "title": "SO3C width profile",
+            "code_file": "kaggle_width_profile.ipynb", "language": "python",
+            "kernel_type": "notebook", "is_private": True, "enable_gpu": True,
+            "enable_internet": True, "dataset_sources": [],
+            "competition_sources": [], "kernel_sources": []}
+    (NB_DIR / "kernel-metadata-width-profile.json").write_text(
+        json.dumps(meta, indent=2) + chr(10), encoding="utf-8")
+
+
 def build_message(blob: str, seed: int = 0, k: int = 64) -> None:
     """Tier-2 item 5: covariant message passing on the canonical protocol.
 
@@ -2154,6 +2202,7 @@ def main() -> int:
     build_gap_screen(blob)
     build_gpu_profile(blob)
     build_cuda_diag(blob)
+    build_width_profile(blob)
     for tag, flags, seeds in PROBE_SEED_RUNS:
         build_probe_seeds(blob, tag, flags, seeds)
     for tag, flags, seed, epochs in K64_RUNS:

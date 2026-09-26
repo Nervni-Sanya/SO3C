@@ -42,6 +42,13 @@ CONFIGS = {
     "pair8": {"pair_latent": 8},
     "fixes": {"mass_input": False, "self_edges": False},
     "rounds1": {"rounds": 1},
+    # the edge width, the capacity axis never swept: every pairwise
+    # interaction passes through act_hidden tanh units
+    "w32": {"act_hidden": 32},
+    "w64s24": {"act_hidden": 64, "msg_dim": 24, "scalar_dim": 24},
+    "w128s32": {"act_hidden": 128, "msg_dim": 32, "scalar_dim": 32},
+    "c16": {"channels": 16},
+    "pair16w32": {"pair_latent": 16, "act_hidden": 32},
 }
 
 
