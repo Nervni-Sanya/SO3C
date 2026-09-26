@@ -1965,6 +1965,123 @@ for k, chunk in (("32", "2048"), ("64", "1024")):
         json.dumps(meta, indent=2) + chr(10), encoding="utf-8")
 
 
+def build_long_seeds(blob: str, tag: str, flags: list[str],
+                     seeds: tuple[int, ...], part: str = "") -> str:
+    """The long-schedule screen: K=32 on the FULL training set, 60 epochs.
+
+    Why this protocol. 60 epochs at K=64 beat the 30-epoch mean by +0.00037
+    AUC with a final validation loss below all three complete 30-epoch
+    schedules (f12cd65): the model was undertrained, so every capacity
+    candidate had been screened at 20 epochs on 400k jets, where more
+    parameters cannot pay. This keeps the two things that matter for
+    capacity -- all 1.211M training jets and a 60-epoch schedule -- and cuts
+    only K, to 32. It is also the regime of the results_60ep evidence.
+
+    Several multi-hour seeds share one 12 h Kaggle session, so before each
+    run the notebook gives it what is left of an 11.2 h budget as
+    --max-seconds, minus a margin for the final evaluation. A run that would
+    overrun stops cleanly with a checkpoint and is reported as incomplete.
+    """
+    base = ["--cache-dir", "DATA", "--representation", "constituents",
+            "--canonical-splits", "--normalize", "global", "--epochs", "60",
+            "--device", "cuda", "--dtype", "float32", "--batch-size", "256",
+            "--n-constituents", "32", "--eval-chunk-size", "2048",
+            "--models", "so3c_message_set", "--rounds", "3", "--beams",
+            "--channels", "8", "--compile"] + list(flags)
+    suffix = ("_" + part) if part else ""
+    cells = [
+        md("""
+# Long-schedule screen: %s, seeds %s
+
+K=32, all 1.211M training jets, 60 epochs, beams + channels 8%s, compiled.
+""" % (tag, ", ".join(str(s) for s in seeds),
+       (" + " + " ".join(flags)) if flags else "")),
+        code("""
+import subprocess, time
+T0 = time.time()
+print(subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total",
+                      "--format=csv,noheader"], capture_output=True,
+                     text=True).stdout.strip())
+"""),
+        code(UNPACK.format(blob=blob)),
+        code(RUNNER),
+        code(GPU_SETUP),
+        code("""
+import glob, pathlib
+cands = glob.glob("/kaggle/input/**/top_tagging_train.npz", recursive=True)
+assert cands, "attach the K=128 data-prep kernel output"
+DATA = str(pathlib.Path(cands[0]).parent)
+TAG, SEEDS = %r, %r
+OUT = "/kaggle/working/results_long_seeds/" + TAG
+BASE = %r
+BASE[BASE.index("DATA")] = DATA
+BUDGET = 11.2 * 3600          # the whole session, minus a margin under 12 h
+EVAL_MARGIN = 900             # final test evaluation and writing results
+print("data:", DATA)
+""" % (tag, list(seeds), base)),
+        code("""
+# On-card guard: the forward pass must be the published function here too.
+import subprocess, sys
+g = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
+                    "tests/test_so3c_models.py", "-k", "golden_cuda"],
+                   cwd="/kaggle/working/repo", capture_output=True, text=True)
+print(g.stdout[-1200:], g.stderr[-800:])
+assert "1 passed" in g.stdout, "golden guard did not pass on the card"
+"""),
+        code("""
+import glob, time
+for seed in SEEDS:
+    left = BUDGET - (time.time() - T0) - EVAL_MARGIN
+    print("=== seed %d: %.2f h of session budget left ===" % (seed, left / 3600), flush=True)
+    if left < 1800:
+        print("not enough session left; seed %d skipped" % seed)
+        continue
+    run(["benchmarks.run_top_tagging"] + BASE +
+        ["--seed", str(seed), "--results-dir", OUT + "/seed%d" % seed,
+         "--ckpt-dir", "/kaggle/working/checkpoints/%s_seed%d" % (TAG, seed),
+         "--resume", "--max-seconds", str(int(left))])
+    assert glob.glob(OUT + "/seed%d/*.json" % seed), "seed %d wrote no result" % seed
+"""),
+        code("""
+import json, glob, statistics
+aucs, rejs = [], []
+print("%-6s%9s%10s%10s%8s%9s%11s" % ("seed", "AUC", "rej@0.3", "rej@0.5", "epochs", "hours", "val_loss"))
+for seed in SEEDS:
+    for f in sorted(glob.glob(OUT + "/seed%d/*.json" % seed)):
+        r = json.load(open(f)); t = r["test_metrics"]; h = r["history"]
+        print("%-6d%9.5f%10.1f%10.1f%8d%9.2f%11.5f"
+              % (seed, t["test_auc"], t["bg_rej_30"], t.get("bg_rej_50", float("nan")),
+                 r["epochs_run"], r["walltime_sec"] / 3600, h[-1]["val_loss"]))
+        if r["epochs_run"] < 60:
+            print("  INCOMPLETE: stopped at epoch %d on the session budget" % r["epochs_run"])
+        else:
+            aucs.append(t["test_auc"]); rejs.append(t["bg_rej_30"])
+        vl = [e["val_loss"] for e in h]
+        print("  val_loss: epoch 30 %.5f, 50 %.5f, last %.5f; last 5 epochs %+.5f"
+              % (vl[29] if len(vl) > 29 else float("nan"),
+                 vl[49] if len(vl) > 49 else float("nan"), vl[-1], vl[-1] - vl[-6]))
+if len(aucs) > 1:
+    print("complete seeds: mean %.5f sd %.5f AUC | mean %.1f sd %.1f rejection"
+          % (statistics.mean(aucs), statistics.stdev(aucs),
+             statistics.mean(rejs), statistics.stdev(rejs)))
+"""),
+    ]
+    name = "kaggle_long_seeds_%s%s.ipynb" % (tag, suffix)
+    _finalise(cells, NB_DIR / name)
+    slug = ("long-seeds-%s%s" % (tag, ("-" + part) if part else "")).replace("_", "-")
+    meta = {
+        "id": "nsanya/so3c-" + slug,
+        "title": "SO3C long seeds %s%s" % (tag, (" " + part) if part else ""),
+        "code_file": name, "language": "python", "kernel_type": "notebook",
+        "is_private": True, "enable_gpu": True, "enable_internet": True,
+        "dataset_sources": [], "competition_sources": [],
+        "kernel_sources": ["nsanya/so3c-data-prep-k-128"],
+    }
+    (NB_DIR / ("kernel-metadata-%s.json" % slug)).write_text(
+        json.dumps(meta, indent=2) + chr(10), encoding="utf-8")
+    return name
+
+
 def build_message(blob: str, seed: int = 0, k: int = 64) -> None:
     """Tier-2 item 5: covariant message passing on the canonical protocol.
 
