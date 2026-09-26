@@ -1,6 +1,6 @@
 # SO3C status
 
-Last updated 2026-09-20 (evening). This is the single place to start from. Commit hashes point at the evidence for every number; unless marked **(SO3C)** they are commits in the **so33** repository this one was split from (see [Provenance](#provenance)).
+Last updated 2026-09-26. This is the single place to start from. Commit hashes point at the evidence for every number; unless marked **(SO3C)** they are commits in the **so33** repository this one was split from (see [Provenance](#provenance)).
 
 ## Scope and goal
 
@@ -116,7 +116,26 @@ Both are now switchable and default to the old behaviour: `--no-mass-input --no-
 
 Full agent text: `so3c_notes/gap_to_sota_2026-09-13.md`. Three of the workflow's six agents failed on the usage limit, so the findings there are unranked.
 
-## GPU window 2026-09-19 → 2026-09-26 (in progress)
+## GPU window 2026-09-26 → 2026-10-03 (in progress): width at the long schedule
+
+**Question.** The model was undertrained at 30 epochs, so every capacity candidate was screened where it could not pay. Does capacity pay once the schedule is long enough — and specifically the edge width `act_hidden`, the one capacity axis never moved, through which every pairwise interaction passes? PELICAN's own size sweep goes 1k → 11k → 208k parameters for 0.9835 → 0.9858 → 0.9870; our 22.8k model sits at its 1k point, so a working capacity axis is the only lever in sight the size of the remaining 0.0030.
+
+**Protocol: the long-schedule screen** (`build_long_seeds`, `4b3cba6`). K=32 on **all 1.211M training jets, 60 epochs**, compiled — it keeps the two things capacity needs and cuts only K, and it is the regime of the `results_60ep` evidence. Several multi-hour seeds can share a 12 h session: each run is given what remains of an 11.2 h budget as `--max-seconds`, so an overrun stops with a checkpoint instead of being killed. The on-card golden guard runs first.
+
+**Measured cost** (`results_profile/t4_width_1007eaa`, T4, compiled, per epoch):
+
+| config | params | K=32 | 60 epochs at K=32 | K=64 |
+|---|---|---|---|---|
+| base | 22834 | 168 s | ~3.0 h | 485 s |
+| w32 (act_hidden 32) | 27922 | 178 s | ~3.1 h | 584 s |
+| w64s24 (act_hidden 64, msg/scalar 24) | 60834 | 243 s | ~4.3 h | 815 s |
+| w128s32 (act_hidden 128, msg/scalar 32) | 120202 | 361 s | ~6.4 h | 1270 s |
+
+The same profile's rows for c16, pair8 and pair16w32 are eager, not compiled: dynamo's recompile cache filled after four configurations in one process and it fell back silently (compile time 0 s, logit difference exactly 0). Fixed in `c3478d1` with `torch._dynamo.reset()` per configuration; training runs build one model per process and are unaffected.
+
+**Design** (`89e05b3`, `LONG_RUNS`): base, w64s24 and w128s32, two seeds each, one seed per kernel so the order can adapt — ≈27.4 GPU-h of the ~29.5 h left after the profile. base seed 0 and w128s32 seed 0 run first, in the two slots, so within ~6.5 h it is known whether width pays at the long schedule at all; if it clearly does, the remaining budget moves to the larger-K confirmation instead of more K=32 seeds.
+
+## GPU window 2026-09-19 → 2026-09-26 (closed)
 
 ### Forward pass is 2× faster (SO3C `2a3b344`, `47ec4ad`)
 
