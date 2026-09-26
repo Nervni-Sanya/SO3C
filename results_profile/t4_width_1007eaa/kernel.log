@@ -1,0 +1,44 @@
+[{"stream_name":"stderr","time":5.947837344,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":5.947875116,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":5.947880581,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":5.947885719,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stderr","time":6.483560195,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":6.483601133,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":6.483606715,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":6.483611005,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stdout","time":7.5062605300000005,"data":"Tesla T4, 15360 MiB\n"}
+,{"stream_name":"stdout","time":7.5062892,"data":"Tesla T4, 15360 MiB\n"}
+,{"stream_name":"stdout","time":7.609757695,"data":"['benchmarks', 'so3c', 'tests']\n"}
+,{"stream_name":"stderr","time":7.610818227,"data":"/tmp/ipykernel_23/3359059965.py:3: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n"}
+,{"stream_name":"stderr","time":7.610838397,"data":"  tarfile.open(fileobj=io.BytesIO(base64.b64decode(CODE_B64)), mode=\"r:gz\").extractall(\"/kaggle/working/repo\")\n"}
+,{"stream_name":"stderr","time":7.610843308,"data":"\n"}
+,{"stream_name":"stderr","time":7.610847037,"data":"/tmp/ipykernel_23/3359059965.py:3: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n"}
+,{"stream_name":"stderr","time":7.610851063,"data":"  tarfile.open(fileobj=io.BytesIO(base64.b64decode(CODE_B64)), mode=\"r:gz\").extractall(\"/kaggle/working/repo\")\n"}
+,{"stream_name":"stdout","time":11.930909825,"data":"torch 2.10.0+cu128 already supports sm_75\n"}
+,{"stream_name":"stdout","time":378.666633963,"data":"device Tesla T4 | K=32 | batch 256 | float32\n"}
+,{"stream_name":"stdout","time":378.666675479,"data":"base      22834 par | step 0.0329 s | eval chunk 0.0619 s | peak 0.45 GiB | epoch ~168 s | compiled (first call 39 s, max |d logit| vs eager 1.6e-05)\n"}
+,{"stream_name":"stdout","time":378.666680133,"data":"w32       27922 par | step 0.0344 s | eval chunk 0.0777 s | peak 0.51 GiB | epoch ~178 s | compiled (first call 62 s, max |d logit| vs eager 9.1e-06)\n"}
+,{"stream_name":"stdout","time":378.666683606,"data":"w64s24    60834 par | step 0.0468 s | eval chunk 0.1094 s | peak 0.71 GiB | epoch ~243 s | compiled (first call 59 s, max |d logit| vs eager 7.6e-06)\n"}
+,{"stream_name":"stdout","time":378.666686877,"data":"w128s32  120202 par | step 0.0689 s | eval chunk 0.1787 s | peak 1.15 GiB | epoch ~361 s | compiled (first call 56 s, max |d logit| vs eager 2.0e-05)\n"}
+,{"stream_name":"stdout","time":378.666690189,"data":"c16       45146 par | step 0.0617 s | eval chunk 0.1525 s | peak 0.78 GiB | epoch ~322 s | compiled (first call 0 s, max |d logit| vs eager 0.0e+00)\n"}
+,{"stream_name":"stdout","time":378.666693828,"data":"pair8     26514 par | step 0.0611 s | eval chunk 0.1543 s | peak 0.53 GiB | epoch ~319 s | compiled (first call 0 s, max |d logit| vs eager 0.0e+00)\n"}
+,{"stream_name":"stdout","time":378.666697351,"data":"pair16w32  39506 par | step 0.0751 s | eval chunk 0.2322 s | peak 0.68 GiB | epoch ~401 s | compiled (first call 0 s, max |d logit| vs eager 0.0e+00)\n"}
+,{"stream_name":"stdout","time":378.666710044,"data":"\n"}
+,{"stream_name":"stdout","time":757.495386537,"data":"device Tesla T4 | K=64 | batch 256 | float32\n"}
+,{"stream_name":"stdout","time":757.495443589,"data":"base      22834 par | step 0.0944 s | eval chunk 0.0988 s | peak 1.51 GiB | epoch ~485 s | compiled (first call 28 s, max |d logit| vs eager 3.3e-05)\n"}
+,{"stream_name":"stdout","time":757.495450026,"data":"w32       27922 par | step 0.1131 s | eval chunk 0.1246 s | peak 1.71 GiB | epoch ~584 s | compiled (first call 61 s, max |d logit| vs eager 1.4e-05)\n"}
+,{"stream_name":"stdout","time":757.495460647,"data":"w64s24    60834 par | step 0.1567 s | eval chunk 0.1863 s | peak 2.48 GiB | epoch ~815 s | compiled (first call 59 s, max |d logit| vs eager 2.7e-05)\n"}
+,{"stream_name":"stdout","time":757.495464661,"data":"w128s32  120202 par | step 0.2430 s | eval chunk 0.3063 s | peak 4.10 GiB | epoch ~1270 s | compiled (first call 58 s, max |d logit| vs eager 1.1e-05)\n"}
+,{"stream_name":"stdout","time":757.495468212,"data":"c16       45146 par | step 0.1926 s | eval chunk 0.2637 s | peak 2.57 GiB | epoch ~1015 s | compiled (first call 0 s, max |d logit| vs eager 0.0e+00)\n"}
+,{"stream_name":"stdout","time":757.495471483,"data":"pair8     26514 par | step 0.1836 s | eval chunk 0.2758 s | peak 1.77 GiB | epoch ~977 s | compiled (first call 0 s, max |d logit| vs eager 0.0e+00)\n"}
+,{"stream_name":"stdout","time":757.495474771,"data":"pair16w32  39506 par | step 0.2582 s | eval chunk 0.4268 s | peak 2.31 GiB | epoch ~1389 s | compiled (first call 0 s, max |d logit| vs eager 0.0e+00)\n"}
+,{"stream_name":"stdout","time":757.495478094,"data":"\n"}
+,{"stream_name":"stderr","time":760.382121461,"data":"/usr/local/lib/python3.12/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\\|'\n"}
+,{"stream_name":"stderr","time":760.382155077,"data":"  cells[i][c] = re.sub('\\\\\\\\\\|', '|', cell)\n"}
+,{"stream_name":"stderr","time":760.530122199,"data":"/usr/local/lib/python3.12/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\\_'\n"}
+,{"stream_name":"stderr","time":760.530146992,"data":"  text = re.sub(r'_', '\\_', text) # Escape underscores in display text\n"}
+,{"stream_name":"stderr","time":761.16022292,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to notebook\n"}
+,{"stream_name":"stderr","time":761.463432239,"data":"[NbConvertApp] Writing 240061 bytes to __notebook__.ipynb\n"}
+,{"stream_name":"stderr","time":763.816064807,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to html\n"}
+,{"stream_name":"stderr","time":764.602225749,"data":"[NbConvertApp] Writing 520720 bytes to __results__.html\n"}
+]

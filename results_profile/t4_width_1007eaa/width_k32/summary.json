@@ -1,0 +1,124 @@
+{
+ "device": "Tesla T4",
+ "k": 32,
+ "batch_size": 256,
+ "dtype": "float32",
+ "torch": "2.10.0+cu128",
+ "rows": [
+  {
+   "config": "base",
+   "kwargs": {
+    "channels": 8,
+    "rounds": 3,
+    "beams": true
+   },
+   "n_params": 22834,
+   "compiled": true,
+   "compile_note": " | compiled (first call 39 s, max |d logit| vs eager 1.6e-05)",
+   "train_step_s": 0.032887500866665205,
+   "eval_chunk_s": 0.061925063666668244,
+   "peak_train_gib": 0.4485759735107422,
+   "epoch_estimate_s": 167.75874465523427
+  },
+  {
+   "config": "w32",
+   "kwargs": {
+    "channels": 8,
+    "rounds": 3,
+    "beams": true,
+    "act_hidden": 32
+   },
+   "n_params": 27922,
+   "compiled": true,
+   "compile_note": " | compiled (first call 62 s, max |d logit| vs eager 9.1e-06)",
+   "train_step_s": 0.03440106933333406,
+   "eval_chunk_s": 0.07770126266666466,
+   "peak_train_gib": 0.5120763778686523,
+   "epoch_estimate_s": 178.02303152148744
+  },
+  {
+   "config": "w64s24",
+   "kwargs": {
+    "channels": 8,
+    "rounds": 3,
+    "beams": true,
+    "act_hidden": 64,
+    "msg_dim": 24,
+    "scalar_dim": 24
+   },
+   "n_params": 60834,
+   "compiled": true,
+   "compile_note": " | compiled (first call 59 s, max |d logit| vs eager 7.6e-06)",
+   "train_step_s": 0.046832023733331125,
+   "eval_chunk_s": 0.1093834066666659,
+   "peak_train_gib": 0.7089462280273438,
+   "epoch_estimate_s": 243.06160098397376
+  },
+  {
+   "config": "w128s32",
+   "kwargs": {
+    "channels": 8,
+    "rounds": 3,
+    "beams": true,
+    "act_hidden": 128,
+    "msg_dim": 32,
+    "scalar_dim": 32
+   },
+   "n_params": 120202,
+   "compiled": true,
+   "compile_note": " | compiled (first call 56 s, max |d logit| vs eager 2.0e-05)",
+   "train_step_s": 0.06892368533333411,
+   "eval_chunk_s": 0.17873415766666767,
+   "peak_train_gib": 1.1462230682373047,
+   "epoch_estimate_s": 361.2121723872109
+  },
+  {
+   "config": "c16",
+   "kwargs": {
+    "channels": 16,
+    "rounds": 3,
+    "beams": true
+   },
+   "n_params": 45146,
+   "compiled": true,
+   "compile_note": " | compiled (first call 0 s, max |d logit| vs eager 0.0e+00)",
+   "train_step_s": 0.061705470600001415,
+   "eval_chunk_s": 0.1524620513333351,
+   "peak_train_gib": 0.778803825378418,
+   "epoch_estimate_s": 321.89687786140024
+  },
+  {
+   "config": "pair8",
+   "kwargs": {
+    "channels": 8,
+    "rounds": 3,
+    "beams": true,
+    "pair_latent": 8
+   },
+   "n_params": 26514,
+   "compiled": true,
+   "compile_note": " | compiled (first call 0 s, max |d logit| vs eager 0.0e+00)",
+   "train_step_s": 0.06108379399999345,
+   "eval_chunk_s": 0.15432807666665363,
+   "peak_train_gib": 0.5251693725585938,
+   "epoch_estimate_s": 319.32324764091703
+  },
+  {
+   "config": "pair16w32",
+   "kwargs": {
+    "channels": 8,
+    "rounds": 3,
+    "beams": true,
+    "pair_latent": 16,
+    "act_hidden": 32
+   },
+   "n_params": 39506,
+   "compiled": true,
+   "compile_note": " | compiled (first call 0 s, max |d logit| vs eager 0.0e+00)",
+   "train_step_s": 0.07510559539999424,
+   "eval_chunk_s": 0.23222453166666432,
+   "peak_train_gib": 0.6827569007873535,
+   "epoch_estimate_s": 400.98119848477046
+  }
+ ]
+}

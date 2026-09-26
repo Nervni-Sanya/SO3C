@@ -171,6 +171,12 @@ def main(argv=None) -> int:
         if args.compile:
             t0 = time.perf_counter()
             eager_out = model(x).detach()
+            # A fresh dynamo cache per configuration: every config compiles
+            # the same forward code object, and after 8 recompiles dynamo
+            # silently falls back to eager for it. In the first width profile
+            # the last three configs reported compile time 0 s and a logit
+            # difference of exactly 0 -- eager timings labelled compiled.
+            torch._dynamo.reset()
             compiled = torch.compile(model)
             try:
                 diff = (compiled(x).detach() - eager_out).abs().max().item()
@@ -178,8 +184,12 @@ def main(argv=None) -> int:
                 print("%-8s compile FAILED: %s" % (cfg, str(exc)[:300]), flush=True)
                 summary["rows"].append({"config": cfg, "compile_error": str(exc)[:2000]})
                 continue
-            compile_note = " | compiled (first call %.0f s, max |d logit| vs eager %.1e)" % (
-                time.perf_counter() - t0, diff)
+            first = time.perf_counter() - t0
+            if first < 1.0 and diff == 0.0:
+                compile_note = " | COMPILE FELL BACK TO EAGER (first call %.1f s, d logit 0)" % first
+            else:
+                compile_note = " | compiled (first call %.0f s, max |d logit| vs eager %.1e)" % (
+                    first, diff)
             model = compiled
         if device.type == "cuda":
             torch.cuda.reset_peak_memory_stats(device)
