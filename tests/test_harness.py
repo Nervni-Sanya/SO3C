@@ -351,6 +351,81 @@ def test_compile_matches_eager_and_keeps_checkpoint_keys(tmp_path) -> None:
     assert runs["compiled"][2] == 3, "resume under compile did not continue"
 
 
+def test_keep_best_holds_the_lowest_val_loss_weights() -> None:
+    """keep_best returns the weights of the epoch with the lowest validation
+    loss -- reproducing that loss exactly -- and not merely the last ones.
+
+    A high, constant learning rate makes the validation loss bounce, so the
+    best epoch (4 of 8 here) is not the last one and the test cannot pass by
+    returning the final weights.
+    """
+    split = _tiny_split()
+    torch.manual_seed(0)
+    model = _small_model()
+    res = train_classifier(model, split.X_train, split.y_train,
+                           split.X_val, split.y_val,
+                           TrainConfig(epochs=8, batch_size=32, seed=0, lr=0.05,
+                                       cosine_schedule=False, keep_best=True))
+    vl = [h["val_loss"] for h in res.history]
+    assert res.best_epoch == vl.index(min(vl)) + 1
+    assert res.best_val_loss == min(vl)
+    assert res.best_epoch < res.epochs_run, "best is the last epoch; test is vacuous"
+    final = {k: v.clone() for k, v in model.state_dict().items()}
+    model.load_state_dict(res.best_state)
+    model.eval()
+    with torch.no_grad():
+        loss = nn.CrossEntropyLoss()(forward_in_chunks(model, split.X_val), split.y_val).item()
+    assert abs(loss - res.history[res.best_epoch - 1]["val_loss"]) < 1e-9
+    assert any(not torch.equal(final[k], res.best_state[k]) for k in final)
+
+
+def test_keep_best_survives_resume(tmp_path) -> None:
+    """An interrupted and resumed run keeps the best weights of the epochs it
+    ran before the interruption, exactly as an uninterrupted run would."""
+    split = _tiny_split()
+    common = dict(epochs=8, batch_size=32, seed=0, lr=0.05,
+                  cosine_schedule=False, keep_best=True)
+    torch.manual_seed(0)
+    cont = train_classifier(_small_model(), split.X_train, split.y_train,
+                            split.X_val, split.y_val, TrainConfig(**common))
+    ckpt = tmp_path / "run.pt"
+    torch.manual_seed(0)
+    part = train_classifier(_small_model(), split.X_train, split.y_train,
+                            split.X_val, split.y_val,
+                            TrainConfig(ckpt_path=str(ckpt), max_seconds=0.0, **common))
+    assert part.epochs_run < 8
+    assert 1 < cont.best_epoch < 8, "best epoch must fall after the interruption"
+    torch.manual_seed(0)
+    resumed = train_classifier(_small_model(), split.X_train, split.y_train,
+                               split.X_val, split.y_val,
+                               TrainConfig(ckpt_path=str(ckpt), resume=True, **common))
+    assert resumed.best_epoch == cont.best_epoch
+    assert resumed.best_val_loss == cont.best_val_loss
+    for k in cont.best_state:
+        assert torch.equal(resumed.best_state[k], cont.best_state[k]), k
+
+
+def test_runner_reports_best_val_metrics(tmp_path) -> None:
+    """With keep_best the result JSON carries test metrics for the best-
+    validation weights beside the final ones, and a second scores file."""
+    split = _tiny_split()
+    run_tabular_experiment("t", split, models=["so3c_invariant_set"], seed=0,
+                           epochs=4, batch_size=32, lr=0.05, keep_best=True,
+                           representation="constituents", results_dir=tmp_path)
+    rec = json.loads((tmp_path / "t__so3c_invariant_set__seed0.json").read_text())
+    assert rec["keep_best"] is True
+    assert 1 <= rec["best_val_epoch"] <= 4
+    assert "test_auc" in rec["test_metrics_best_val"]
+    assert (tmp_path / "t__so3c_invariant_set__seed0__scores_bestval.npz").is_file()
+    # without the flag nothing extra is written
+    run_tabular_experiment("u", split, models=["so3c_invariant_set"], seed=0,
+                           epochs=2, batch_size=32, representation="constituents",
+                           results_dir=tmp_path)
+    rec = json.loads((tmp_path / "u__so3c_invariant_set__seed0.json").read_text())
+    assert rec["test_metrics_best_val"] is None
+    assert not (tmp_path / "u__so3c_invariant_set__seed0__scores_bestval.npz").exists()
+
+
 def test_cuda_resume_restores_rng_state(tmp_path) -> None:
     """Resuming on a GPU must get past restoring the saved RNG state.
 

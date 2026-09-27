@@ -148,6 +148,10 @@ def main(argv: list[str] | None = None) -> int:
                    help="torch.compile the model. On a T4 this is ~25 percent "
                         "faster; a P100 (sm_60) falls back to eager. The compiled "
                         "model is checked against eager on the first batch.")
+    p.add_argument("--keep-best", action="store_true",
+                   help="Also keep the weights of the lowest validation-loss "
+                        "epoch and report test metrics for them "
+                        "(test_metrics_best_val) beside the final ones.")
     p.add_argument("--resume", action="store_true",
                    help="Resume interrupted training and skip models whose "
                         "result JSON already exists.")
@@ -230,6 +234,7 @@ def main(argv: list[str] | None = None) -> int:
         schedule=args.schedule,
         warmup_epochs=args.warmup_epochs,
         compile=args.compile,
+        keep_best=args.keep_best,
         so3c_kwargs=so3c_kwargs,
         ckpt_dir=args.ckpt_dir,
         resume=args.resume,

@@ -103,6 +103,7 @@ def run_tabular_experiment(
     schedule: str = "cosine",
     warmup_epochs: int = 4,
     compile: bool = False,
+    keep_best: bool = False,
     natural_hidden: int = 256,
     representation: str = "flat",
     pool: str = "mean",
@@ -181,7 +182,7 @@ def run_tabular_experiment(
             weight_decay=weight_decay,
             optimizer=optimizer, schedule=schedule,
             warmup_epochs=warmup_epochs,
-        compile=compile,
+            compile=compile, keep_best=keep_best,
             seed=seed, cosine_schedule=True, grad_clip=1.0,
             device=device, eval_chunk_size=eval_chunk_size,
             ckpt_path=str(ckpt_path) if ckpt_path else None,
@@ -192,6 +193,17 @@ def run_tabular_experiment(
         )
         test_res = evaluate_test(model, split.X_test, split.y_test,
                                  split.n_classes, eval_chunk_size)
+        # The lowest-validation-loss weights, tested on the same jets. The
+        # final weights stay in the model afterwards and in the checkpoint.
+        best_res = None
+        best_state = getattr(train_res, "best_state", None)
+        if keep_best and best_state is not None:
+            final_state = {k: v.detach().to("cpu", copy=True)
+                           for k, v in model.state_dict().items()}
+            model.load_state_dict(best_state)
+            best_res = evaluate_test(model, split.X_test, split.y_test,
+                                     split.n_classes, eval_chunk_size)
+            model.load_state_dict(final_state)
 
         record = {
             "experiment":    experiment,
@@ -201,6 +213,7 @@ def run_tabular_experiment(
             "so3c_kwargs":   dict(so3c_kwargs or {}),
             "dtype":         str(dtype).replace("torch.", ""),
             "compile":       bool(compile),
+            "keep_best":     bool(keep_best),
             "seed":          seed,
             "n_params":      train_res.n_params,
             "n_train":       len(split.X_train),
@@ -216,6 +229,11 @@ def run_tabular_experiment(
             },
             "test_metrics":  {k: v for k, v in test_res.items()
                               if not k.startswith("_")},
+            "best_val_epoch": train_res.best_epoch if best_res else None,
+            "best_val_loss":  train_res.best_val_loss if best_res else None,
+            "test_metrics_best_val": ({k: v for k, v in best_res.items()
+                                       if not k.startswith("_")}
+                                      if best_res else None),
             "config":        asdict(cfg),
             "history":       train_res.history,
         }
@@ -230,6 +248,12 @@ def run_tabular_experiment(
                 scores=test_res["_scores"].astype(np.float32),
                 labels=test_res["_labels"].astype(np.int8),
             )
+            if best_res is not None and "_scores" in best_res:
+                np.savez_compressed(
+                    out_dir / f"{experiment}__{name}__seed{seed}__scores_bestval.npz",
+                    scores=best_res["_scores"].astype(np.float32),
+                    labels=best_res["_labels"].astype(np.int8),
+                )
 
         line = {
             "model":     name,

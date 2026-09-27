@@ -41,6 +41,7 @@ class TrainConfig:
     max_seconds: float | None = None   # self-terminate before a session cap
     compile: bool = False          # torch.compile the model (CUDA sm_70+)
     compile_backend: str = "inductor"   # "aot_eager" in tests: no GPU needed
+    keep_best: bool = False        # also keep the lowest-val-loss weights
 
 
 @dataclass
@@ -53,6 +54,8 @@ class TrainResult:
     walltime_sec:    float = 0.0
     peak_memory_mb:  float = 0.0
     epochs_run:      int   = 0
+    best_val_loss:   float = float("inf")   # tracked when cfg.keep_best
+    best_epoch:      int   = 0
     history:         list[dict[str, float]] = field(default_factory=list)
     config:          dict[str, Any] = field(default_factory=dict)
 
@@ -212,6 +215,11 @@ def train_classifier(
 
     best_val_acc = 0.0
     epochs_no_improve = 0
+    # Lowest-validation-loss weights, when cfg.keep_best: CPU copies, so they
+    # neither cost GPU memory nor alias the parameters training keeps moving.
+    best_val_loss = float("inf")
+    best_epoch = 0
+    best_state: dict[str, torch.Tensor] | None = None
     history: list[dict[str, float]] = []
     t0 = time.perf_counter()
     prior_walltime = 0.0
@@ -263,6 +271,9 @@ def train_classifier(
             torch.cuda.set_rng_state(state["cuda_rng"].cpu(), device)
         start_epoch = state["epoch"] + 1
         best_val_acc = state["best_val_acc"]
+        best_val_loss = state.get("best_val_loss", float("inf"))
+        best_epoch = state.get("best_epoch", 0)
+        best_state = state.get("best_state")
         epochs_no_improve = state["epochs_no_improve"]
         history = state["history"]
         prior_walltime = state["walltime_sec"]
@@ -316,6 +327,11 @@ def train_classifier(
             "val_acc":    val_acc,
         })
 
+        if cfg.keep_best and val_loss < best_val_loss:
+            best_val_loss, best_epoch = val_loss, epoch
+            best_state = {k: v.detach().to("cpu", copy=True)
+                          for k, v in base_model.state_dict().items()}
+
         improved = val_acc > best_val_acc
         if improved:
             best_val_acc = val_acc
@@ -340,6 +356,9 @@ def train_classifier(
                              if device.type == "cuda" else None),
                 "epoch": epoch,
                 "best_val_acc": best_val_acc,
+                "best_val_loss": best_val_loss,
+                "best_epoch": best_epoch,
+                "best_state": best_state,
                 "epochs_no_improve": epochs_no_improve,
                 "history": history,
                 "walltime_sec": elapsed,
@@ -368,7 +387,7 @@ def train_classifier(
     if device.type == "cuda":
         peak_mem_mb = torch.cuda.max_memory_allocated() / (1024 ** 2)
 
-    return TrainResult(
+    result = TrainResult(
         final_train_acc = train_acc,
         final_val_acc   = val_acc,
         best_val_acc    = best_val_acc,
@@ -377,6 +396,11 @@ def train_classifier(
         walltime_sec    = walltime,
         peak_memory_mb  = peak_mem_mb,
         epochs_run      = epochs_run,
+        best_val_loss   = best_val_loss,
+        best_epoch      = best_epoch,
         history         = history,
         config          = asdict(cfg),
     )
+    # Not a dataclass field: asdict() would try to serialise the tensors.
+    result.best_state = best_state
+    return result
