@@ -1976,6 +1976,9 @@ LONG_RUNS = [
     ("base", [], 1),
     ("w128s32", ["--act-hidden", "128", "--msg-dim", "32", "--scalar-dim", "32"], 1),
     ("w64s24", ["--act-hidden", "64", "--msg-dim", "24", "--scalar-dim", "24"], 1),
+    # third base seed: the protocol's own spread decides whether the width
+    # gain is real; replaces w64s24 seed 1, which would land at the quota edge
+    ("base", [], 2),
 ]
 
 
