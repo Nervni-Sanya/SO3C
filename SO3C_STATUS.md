@@ -146,6 +146,19 @@ The same profile's rows for c16, pair8 and pair16w32 are eager, not compiled: dy
 
 The curves change the picture more than the numbers do. The wide model **overfits**: its validation loss bottoms at epoch 45 and rises to epoch 60 while its training loss keeps falling, and its train − val gap is 2.5× the base's. The small model underfit, which is exactly why dropout and weight decay only ever hurt it (`c325950`); the wide model is the first to reach the regime where regularisation can help. The earlier flat capacity sweeps were training-starved, not parameter-starved.
 
+**Replicated, and the runs are paired** (`7d8aafe`):
+
+| seed | base | w128s32 | paired Δ |
+|---|---|---|---|
+| 0 | 0.98261 | 0.98308 | +0.00047 |
+| 1 | 0.98221 | 0.98270 | +0.00049 |
+| mean ± sd | 0.98241 ± 0.00028 | 0.98289 ± 0.00027 | **+0.00048 ± 0.00001** |
+| 1/ε_B@0.3 | 913 ± 44 | 990 ± 65 | +77 |
+
+Unpaired, +0.00048 is only t = 1.76 (df 2). But **runs with the same seed see the same batch order across architectures**: `train_classifier` calls `torch.manual_seed(cfg.seed)` after the model is built, so model initialisation, whatever RNG it consumes, cannot shift the shuffle; checked directly by capturing the permutations of two different architectures under seed 1 (identical). The seed-to-seed swing of ~0.0004 is therefore data-order noise **shared** between the arms, and the paired differences agree to ±0.00001 (paired t ≈ 48, df 1, p ≈ 0.007 one-sided). Two pairs make that variance estimate fragile, so the honest reading is *strong, pending more pairs* — but the unpaired test badly understates it. The commit message of the w128s32 seed-1 result said a shared seed does not pair runs; that was wrong.
+
+**Methodological consequence:** every comparison in this harness should be designed and analysed paired by seed. At this protocol the data-order component (~0.0004) is an order of magnitude larger than the architecture effect's own scatter, so pairing is worth far more than extra seeds.
+
 **Cost correction:** real runs are 1.06× (w128s32) to 1.26× (base) the synthetic profile — fixed per-epoch overheads weigh more on the small model. The full two-seed curve no longer fits; w128s32 seed 1 runs now to replicate, base seed 1 follows w64s24 seed 0, and w64s24 seed 1 is the likely cut.
 
 **What this implies for the next window:** the SOTA path now runs through a wide model at K=64 with regularisation tuned for it. At K=64 the wide model costs 1270 s per epoch compiled (~22 h for 60 epochs, two sessions); since it overfits by epoch ~45 at K=32, a shorter schedule or early stopping on validation loss is the natural first move there.
