@@ -135,6 +135,21 @@ The same profile's rows for c16, pair8 and pair16w32 are eager, not compiled: dy
 
 **Design** (`89e05b3`, `LONG_RUNS`): base, w64s24 and w128s32, two seeds each, one seed per kernel so the order can adapt — ≈27.4 GPU-h of the ~29.5 h left after the profile. base seed 0 and w128s32 seed 0 run first, in the two slots, so within ~6.5 h it is known whether width pays at the long schedule at all; if it clearly does, the remaining budget moves to the larger-K confirmation instead of more K=32 seeds.
 
+### First result: width pays, and the wide model overfits (`a43d4d7`)
+
+| arm | params | AUC | 1/ε_B@0.3 | 1/ε_B@0.5 | best val loss (epoch) | train − val gap at 60 | cost |
+|---|---|---|---|---|---|---|---|
+| base, seed 0 | 22834 | 0.98261 | 943.5 | 256.2 | 0.16650 (60) | 0.0049 | 3.52 h |
+| **w128s32, seed 0** | 120202 | **0.98308** | **1035.5** | **277.7** | 0.16541 (45) | **0.0120** | 6.40 h |
+
++0.00047 AUC, +92 rejection (+10%), +21.5 at ε_S = 0.5. One seed each — roughly 2.4 σ if this protocol's spread matches K=64's — so suggestive, not established, but all three metrics agree, and it is the **first time added capacity has helped this model**.
+
+The curves change the picture more than the numbers do. The wide model **overfits**: its validation loss bottoms at epoch 45 and rises to epoch 60 while its training loss keeps falling, and its train − val gap is 2.5× the base's. The small model underfit, which is exactly why dropout and weight decay only ever hurt it (`c325950`); the wide model is the first to reach the regime where regularisation can help. The earlier flat capacity sweeps were training-starved, not parameter-starved.
+
+**Cost correction:** real runs are 1.06× (w128s32) to 1.26× (base) the synthetic profile — fixed per-epoch overheads weigh more on the small model. The full two-seed curve no longer fits; w128s32 seed 1 runs now to replicate, base seed 1 follows w64s24 seed 0, and w64s24 seed 1 is the likely cut.
+
+**What this implies for the next window:** the SOTA path now runs through a wide model at K=64 with regularisation tuned for it. At K=64 the wide model costs 1270 s per epoch compiled (~22 h for 60 epochs, two sessions); since it overfits by epoch ~45 at K=32, a shorter schedule or early stopping on validation loss is the natural first move there.
+
 ## GPU window 2026-09-19 → 2026-09-26 (closed)
 
 ### Forward pass is 2× faster (SO3C `2a3b344`, `47ec4ad`)
