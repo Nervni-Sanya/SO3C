@@ -1,6 +1,6 @@
 # SO3C status
 
-Last updated 2026-09-26. This is the single place to start from. Commit hashes point at the evidence for every number; unless marked **(SO3C)** they are commits in the **so33** repository this one was split from (see [Provenance](#provenance)).
+Last updated 2026-09-27. This is the single place to start from. Commit hashes point at the evidence for every number; unless marked **(SO3C)** they are commits in the **so33** repository this one was split from (see [Provenance](#provenance)).
 
 ## Scope and goal
 
@@ -116,7 +116,7 @@ Both are now switchable and default to the old behaviour: `--no-mass-input --no-
 
 Full agent text: `so3c_notes/gap_to_sota_2026-09-13.md`. Three of the workflow's six agents failed on the usage limit, so the findings there are unranked.
 
-## GPU window 2026-09-26 → 2026-10-03 (in progress): width at the long schedule
+## GPU window 2026-09-26 → 2026-10-03 (quota spent): width at the long schedule
 
 **Question.** The model was undertrained at 30 epochs, so every capacity candidate was screened where it could not pay. Does capacity pay once the schedule is long enough — and specifically the edge width `act_hidden`, the one capacity axis never moved, through which every pairwise interaction passes? PELICAN's own size sweep goes 1k → 11k → 208k parameters for 0.9835 → 0.9858 → 0.9870; our 22.8k model sits at its 1k point, so a working capacity axis is the only lever in sight the size of the remaining 0.0030.
 
@@ -134,6 +134,18 @@ Full agent text: `so3c_notes/gap_to_sota_2026-09-13.md`. Three of the workflow's
 The same profile's rows for c16, pair8 and pair16w32 are eager, not compiled: dynamo's recompile cache filled after four configurations in one process and it fell back silently (compile time 0 s, logit difference exactly 0). Fixed in `c3478d1` with `torch._dynamo.reset()` per configuration; training runs build one model per process and are unaffected.
 
 **Design** (`89e05b3`, `LONG_RUNS`): base, w64s24 and w128s32, two seeds each, one seed per kernel so the order can adapt — ≈27.4 GPU-h of the ~29.5 h left after the profile. base seed 0 and w128s32 seed 0 run first, in the two slots, so within ~6.5 h it is known whether width pays at the long schedule at all; if it clearly does, the remaining budget moves to the larger-K confirmation instead of more K=32 seeds.
+
+### Final table of the window (`results_long_seeds/`)
+
+| arm | params | seeds | AUC | 1/ε_B@0.3 | best val epoch | train − val gap at 60 | h per seed |
+|---|---|---|---|---|---|---|---|
+| base | 22834 | 0, 1, 2 | 0.98242 ± 0.00020 | 909 ± 32 | 56–60 | 0.005 | 3.4–3.5 |
+| w64s24 | 60834 | 0 | 0.98286 | 931 | 50 | 0.009 | 4.4 |
+| **w128s32** | 120202 | 0, 1 | **0.98289 ± 0.00027** | **990 ± 65** | 45–47 | 0.010–0.012 | 6.4–7.0 |
+
+**w128s32 − base = +0.00048 AUC, +81 rejection (+9%).** Paired by seed (same batch order, see below): +0.00047 and +0.00049. Unpaired against three base seeds: t = 2.34, df 3, p ≈ 0.05 one-sided. The midpoint (w64s24, one seed) is +0.00025 over base seed 0, so AUC rises monotonically with width at roughly +0.0002 per doubling of parameters, while overfitting rises just as steadily.
+
+**What it means for the SOTA gap.** Width is the first capacity axis that pays for this model, but at ~+0.0002 per doubling it cannot close 0.0030 on its own, and the wide models are **overfit-limited** — the next lever is regularisation for them, not more width. Also measured here: this protocol's base spread is ±0.00020 AUC, ±32 rejection over three seeds.
 
 ### First result: width pays, and the wide model overfits (`a43d4d7`)
 
@@ -161,7 +173,10 @@ Unpaired, +0.00048 is only t = 1.76 (df 2). But **runs with the same seed see th
 
 **Cost correction:** real runs are 1.06× (w128s32) to 1.26× (base) the synthetic profile — fixed per-epoch overheads weigh more on the small model. The full two-seed curve no longer fits; w128s32 seed 1 runs now to replicate, base seed 1 follows w64s24 seed 0, and w64s24 seed 1 is the likely cut.
 
-**What this implies for the next window:** the SOTA path now runs through a wide model at K=64 with regularisation tuned for it. At K=64 the wide model costs 1270 s per epoch compiled (~22 h for 60 epochs, two sessions); since it overfits by epoch ~45 at K=32, a shorter schedule or early stopping on validation loss is the natural first move there.
+**Next window (opens Saturday 2026-10-03, 30 GPU-h).**
+
+1. **Regularise the wide model, paired against the runs already made.** Because a shared seed gives the same batch order, w128s32 with a regulariser at seeds 0 and 1 is compared *paired* with the w128s32 seed 0 and 1 runs of this window, which cost nothing more. Two runs ≈ 13.5 h. The regulariser: decoupled weight decay (`--optimizer adamw --weight-decay`); PELICAN uses 0.005, and with lr 3e-3 over 60 cosine epochs that shrinks an untrained weight by exp(−0.005 × 426) ≈ 0.12, so 0.002 (≈ 0.43) is the milder first value. Every run carries **`--keep-best`** (`59817e1`), so early stopping on validation loss is measured on the same runs for free.
+2. **Then K=64.** The wide model at K=64 costs 1270 s per epoch compiled — ~22 h for 60 epochs, two sessions — and w64s24 815 s (~14.4 h). With the overfitting at epoch 45–50, a 45-epoch schedule with `--keep-best` is the cheaper first K=64 run. Worth doing only once step 1 says how to regularise it.
 
 ## GPU window 2026-09-19 → 2026-09-26 (closed)
 
