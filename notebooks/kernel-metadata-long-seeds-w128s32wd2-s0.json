@@ -1,0 +1,15 @@
+{
+  "id": "nsanya/so3c-long-seeds-w128s32wd2-s0",
+  "title": "SO3C long seeds w128s32wd2 s0",
+  "code_file": "kaggle_long_seeds_w128s32wd2_s0.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "dataset_sources": [],
+  "competition_sources": [],
+  "kernel_sources": [
+    "nsanya/so3c-data-prep-k-128"
+  ]
+}

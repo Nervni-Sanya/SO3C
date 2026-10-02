@@ -1979,6 +1979,19 @@ LONG_RUNS = [
     # third base seed: the protocol's own spread decides whether the width
     # gain is real; replaces w64s24 seed 1, which would land at the quota edge
     ("base", [], 2),
+    # Window 2026-10-03: regularise the wide model. Decoupled weight decay
+    # 0.002 (milder than PELICAN's 0.005: over 60 cosine epochs at lr 3e-3 it
+    # shrinks an untrained weight by exp(-0.002 x 426) ~ 0.43) and
+    # --keep-best, at seeds 0 and 1. A shared seed gives the same
+    # initialisation and the same batch order, and AdamW with zero decay is
+    # Adam, so these are paired against the unregularised w128s32 seed 0
+    # and 1 runs above, differing only in the decay.
+    ("w128s32wd2", ["--act-hidden", "128", "--msg-dim", "32", "--scalar-dim", "32",
+                    "--optimizer", "adamw", "--weight-decay", "0.002",
+                    "--keep-best"], 0),
+    ("w128s32wd2", ["--act-hidden", "128", "--msg-dim", "32", "--scalar-dim", "32",
+                    "--optimizer", "adamw", "--weight-decay", "0.002",
+                    "--keep-best"], 1),
 ]
 
 
@@ -2073,6 +2086,11 @@ for seed in SEEDS:
             print("  INCOMPLETE: stopped at epoch %d on the session budget" % r["epochs_run"])
         else:
             aucs.append(t["test_auc"]); rejs.append(t["bg_rej_30"])
+        if r.get("test_metrics_best_val"):
+            tb = r["test_metrics_best_val"]
+            print("  best-val weights (epoch %d, val_loss %.5f): AUC %.5f, rej@0.3 %.1f, rej@0.5 %.1f"
+                  % (r["best_val_epoch"], r["best_val_loss"], tb["test_auc"],
+                     tb["bg_rej_30"], tb.get("bg_rej_50", float("nan"))))
         vl = [e["val_loss"] for e in h]
         print("  val_loss: epoch 30 %.5f, 50 %.5f, last %.5f; last 5 epochs %+.5f"
               % (vl[29] if len(vl) > 29 else float("nan"),
