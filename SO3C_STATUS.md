@@ -1,6 +1,6 @@
 # SO3C status
 
-Last updated 2026-09-27. This is the single place to start from. Commit hashes point at the evidence for every number; unless marked **(SO3C)** they are commits in the **so33** repository this one was split from (see [Provenance](#provenance)).
+Last updated 2026-10-03. This is the single place to start from. Commit hashes point at the evidence for every number; unless marked **(SO3C)** they are commits in the **so33** repository this one was split from (see [Provenance](#provenance)).
 
 ## Scope and goal
 
@@ -116,7 +116,28 @@ Both are now switchable and default to the old behaviour: `--no-mass-input --no-
 
 Full agent text: `so3c_notes/gap_to_sota_2026-09-13.md`. Three of the workflow's six agents failed on the usage limit, so the findings there are unranked.
 
-## GPU window 2026-09-26 → 2026-10-03 (quota spent): width at the long schedule
+## GPU window 2026-10-03 → 2026-10-10 (in progress): regularising the wide model
+
+**Run:** w128s32 with decoupled weight decay (`--optimizer adamw --weight-decay 0.002`) and `--keep-best`, seeds 0 and 1, long-schedule protocol (`c762616`). Verified before pushing: the notebooks equal the control notebooks plus exactly those flags; same initial weights and same batch order as the control under each seed; AdamW with zero decay reproduces Adam exactly, so the decay is the only knob. Pushed 03:10, 6.30 h and 7.41 h. Results in `results_long_seeds/w128s32wd2`.
+
+**Result: a small, consistent negative.** Paired against the unregularised w128s32 runs of the same seeds:
+
+| | seed 0 | seed 1 | mean |
+|---|---|---|---|
+| control (Adam), final AUC | 0.98308 | 0.98270 | 0.98289 |
+| wd 0.002, final AUC | 0.98298 (−0.00010) | 0.98259 (−0.00012) | **−0.00011** |
+| wd 0.002, best-validation weights | 0.98304 (−0.00004), epoch 50 | 0.98260 (−0.00010), epoch 52 | −0.00007 |
+| 1/ε_B@0.3, final | 1035.5 → 1035.5 | 943.5 → 874.1 | −35 |
+| train − val gap at epoch 60 | 0.0120 → 0.0133 | 0.0103 → 0.0104 | not reduced |
+| best validation loss | 0.16532 → 0.16537 | 0.16632 → 0.16724 | not improved |
+
+Decoupled decay on every parameter (torch's AdamW also decays the identity-initialised channel mixing and the channel weights) does not regularise this model: the generalisation gap is unchanged and the training loss ends at least as low.
+
+**What the `--keep-best` numbers show, which matters more than the decay itself:** the best-validation weights beat the final weights by only +0.00006 and +0.00001 AUC. The rise in validation *loss* after epoch 45–50 is therefore mostly calibration — the model growing overconfident — not lost ranking power. Calling the wide models "overfit-limited" (previous window) overstated it: their discrimination saturates rather than degrades, which is why a regulariser had little to recover. Rejection at 30% efficiency is also coarse at this level: ~195 of ~202k background jets pass the cut, so it moves in steps of about one jet (~0.5%).
+
+**Budget:** ~13.9 of 30 GPU-h used. **Open decision for the remaining ~16 h:** whether width transfers to K=64, where the headline lives. The cheapest clean test is w64s24 at K=64 over 30 epochs (815 s/epoch compiled, ~7.2 h per seed), seeds 0 and 1, **paired against the existing 30-epoch K=64 headline seeds 0 and 1**: the forward-pass rewrite did not change parameter shapes or RNG use, so a shared seed still gives the same initialisation and batch order even though those controls ran on the old code. w128s32 at K=64 costs ~11.2 h for 30 epochs, at the edge of a session.
+
+## GPU window 2026-09-26 → 2026-10-03 (closed): width at the long schedule
 
 **Question.** The model was undertrained at 30 epochs, so every capacity candidate was screened where it could not pay. Does capacity pay once the schedule is long enough — and specifically the edge width `act_hidden`, the one capacity axis never moved, through which every pairwise interaction passes? PELICAN's own size sweep goes 1k → 11k → 208k parameters for 0.9835 → 0.9858 → 0.9870; our 22.8k model sits at its 1k point, so a working capacity axis is the only lever in sight the size of the remaining 0.0030.
 
