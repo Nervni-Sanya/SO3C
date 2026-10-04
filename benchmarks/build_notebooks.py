@@ -1620,6 +1620,16 @@ K64_RUNS = [
     # is negative" verdict rests on a single probe-protocol row (35 vs 20
     # epochs on 400k jets), a regime where nothing capacity-like can pay.
     ("headline60", [], 0, 60),
+    # Window 2026-10-03: does width transfer to K=64? w64s24 and a control
+    # rerun of the headline configuration, both seed 0, 30 epochs, pushed
+    # together so they run the same software (T4, torch 2.10, compiled) and
+    # see the same batch order. The old seed-0 headline ran on a P100 under
+    # torch 2.5.1, where matching CUDA randperm output is unverified, so the
+    # control is rerun rather than reused. --keep-best on both; it draws no
+    # randomness and cannot change training.
+    ("w64s24", ["--act-hidden", "64", "--msg-dim", "24", "--scalar-dim", "24",
+                "--keep-best"], 0, 30),
+    ("headline_t4", ["--keep-best"], 0, 30),
 ]
 
 
