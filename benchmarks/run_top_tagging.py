@@ -142,6 +142,13 @@ def main(argv: list[str] | None = None) -> int:
                    help="so3c_message_set: channels of a rank-2 pair state "
                         "carried through the rounds with 7 of PELICAN's 15 "
                         "equivariant aggregators (0 = off).")
+    p.add_argument("--edge-norm", action="store_true",
+                   help="so3c_message_set: per-pair LayerNorm over the edge "
+                        "units before their tanh, which saturates in rounds 1-2.")
+    p.add_argument("--log-knee", action="store_true",
+                   help="so3c_message_set: asinh(exp(kappa) x) with learnable "
+                        "kappa on the bilinear invariants, whose round-0 values "
+                        "sit in asinh's linear range.")
     p.add_argument("--ckpt-dir", type=str, default=None,
                    help="Directory for training checkpoints; --resume needs it.")
     p.add_argument("--compile", action="store_true",
@@ -214,6 +221,8 @@ def main(argv: list[str] | None = None) -> int:
         ("falpha", args.falpha),
         ("vector_channel", True if args.vector_channel else None),
         ("pair_latent", args.pair_latent),
+        ("edge_norm", True if args.edge_norm else None),
+        ("log_knee", True if args.log_knee else None),
     ) if v is not None} or None
 
     kwargs = dict(

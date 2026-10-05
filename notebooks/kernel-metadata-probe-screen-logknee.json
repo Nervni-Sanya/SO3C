@@ -1,0 +1,15 @@
+{
+  "id": "nsanya/so3c-probe-screen-logknee",
+  "title": "SO3C probe screen logknee",
+  "code_file": "kaggle_probe_screen_logknee.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "dataset_sources": [],
+  "competition_sources": [],
+  "kernel_sources": [
+    "nsanya/so3c-data-prep-k-128"
+  ]
+}

@@ -565,6 +565,95 @@ def test_message_set_bundle_is_exactly_covariant() -> None:
         print(f"  ✓ switch {key}={value} is wired in ({moved:.1e})")
 
 
+def test_message_set_edge_norm_and_log_knee() -> None:
+    """The two conditioning switches: exact covariance with every head excited,
+    permutation invariance, wired in, trainable, and off by default.
+
+    edge_norm normalises invariant activations pair by pair; log_knee rescales
+    invariants before asinh. Neither touches a covariant quantity, so moving
+    the jet -- and the beams, when present -- by one Lorentz matrix must leave
+    the logits unchanged, on the dense graph and on the kNN graph.
+    """
+    from benchmarks.models import build_model
+    from so3c.lift import random_lorentz_pair
+
+    def make(**kw):
+        return build_model("so3c_message_set", in_features=4, out_features=2,
+                           representation="constituents", so3c_kwargs=kw)
+
+    # Parameter counts: off adds nothing; on adds 2 x act_hidden per round
+    # (LayerNorm) and 2 x rounds + 1 knees.
+    head = {"beams": True, "channels": 8}
+    assert sum(q.numel() for q in make(**head).parameters()) == 22834
+    assert sum(q.numel() for q in make(**head, edge_norm=True).parameters()) == 22834 + 3 * 2 * 16
+    assert sum(q.numel() for q in make(**head, log_knee=True).parameters()) == 22834 + 2 * 3 + 1
+    try:
+        make(**head, log_knee=True, falpha=3)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("log_knee with falpha must be refused")
+
+    gen = torch.Generator().manual_seed(61)
+    x = _random_jets(6, 12, gen)
+    L, _ = random_lorentz_pair(rot_scale=1.0, boost_scale=1.0, generator=gen)
+    x_t = torch.cat([x[..., :4] @ L.T, x[..., 4:]], dim=-1)
+    perm = torch.randperm(12, generator=gen)
+    cases = [dict(edge_norm=True), dict(log_knee=True),
+             dict(edge_norm=True, log_knee=True)]
+    for sw in cases:
+        for extra in (dict(beams=False), dict(beams=True),
+                      dict(beams=False, neighbors=4), dict(beams=True, neighbors=4)):
+            torch.manual_seed(10)
+            m = make(**sw, **extra, channels=4).double().eval()
+            with torch.no_grad():
+                for r in range(m.rounds):
+                    m.w_head[r].weight.normal_(0, 0.5, generator=gen)
+                    m.w_head[r].bias.normal_(0, 0.5, generator=gen)
+                    m.mix[r].normal_(0, 0.3, generator=gen)
+                    if m.edge_ln is not None:
+                        m.edge_ln[r].weight.normal_(1, 0.3, generator=gen)
+                        m.edge_ln[r].bias.normal_(0, 0.3, generator=gen)
+                if m.knee_pair is not None:
+                    m.knee_pair.normal_(4, 1, generator=gen)
+                    m.knee_node.normal_(4, 1, generator=gen)
+                    m.knee_q.normal_(4, 1, generator=gen)
+                base = m(x)
+                if m.beams:
+                    beams0 = m.beam_p4.clone()
+                    m.beam_p4.copy_(beams0 @ L.T)
+                err = (m(x_t) - base).abs().max().item()
+                if m.beams:
+                    m.beam_p4.copy_(beams0)
+                perr = (m(x[:, perm]) - base).abs().max().item()
+            assert err < 1e-6, f"{sw} {extra}: lost covariance ({err:.2e})"
+            assert perr < 1e-9, f"{sw} {extra}: not permutation invariant ({perr:.2e})"
+            print(f"  ✓ {sw} {extra}: covariant ({err:.1e}), permutation-invariant ({perr:.1e})")
+
+    # Wired in: with the shared weights loaded, each switch moves the logits,
+    # and its own parameters receive gradient.
+    for sw in (dict(edge_norm=True), dict(log_knee=True)):
+        torch.manual_seed(3)
+        ref = make(beams=True).eval()
+        torch.manual_seed(3)
+        alt = make(beams=True, **sw).eval()
+        alt.load_state_dict(ref.state_dict(), strict=False)
+        with torch.no_grad():
+            for mod in (ref, alt):
+                g = torch.Generator().manual_seed(46)
+                for r in range(mod.rounds):
+                    mod.w_head[r].weight.normal_(0, 0.5, generator=g)
+                    mod.w_head[r].bias.normal_(0, 0.5, generator=g)
+            moved = (ref(x) - alt(x)).abs().max().item()
+        assert moved > 1e-6, f"switch {sw} changed nothing"
+        alt.train()
+        alt(x).sum().backward()
+        new = [p for n, p in alt.named_parameters() if n.startswith(("edge_ln", "knee_"))]
+        assert new and all(p.grad is not None and torch.isfinite(p.grad).all()
+                           and p.grad.abs().sum() > 0 for p in new), f"{sw}: no gradient"
+        print(f"  ✓ switch {sw} is wired in ({moved:.1e}) and trainable")
+
+
 def test_message_set_falpha_learns() -> None:
     """The f_alpha exponents receive gradient, and f_alpha is odd and finite."""
     from benchmarks.models import build_model

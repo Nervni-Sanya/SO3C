@@ -33,6 +33,18 @@ from .models import build_model, MATCHED_MODELS, NATURAL_MODELS, SET_MODELS, SO3
 from .train import train_classifier, TrainConfig, forward_in_chunks
 
 
+def _environment(device: str) -> dict:
+    """Software and card a result was produced on. Seed pairing across runs
+    holds only on the same torch build (CUDA randperm is not specified to be
+    stable across versions), so every result records it."""
+    import platform
+    env = {"torch": torch.__version__, "cuda": torch.version.cuda,
+           "python": platform.python_version(), "device": str(device)}
+    if str(device).startswith("cuda") and torch.cuda.is_available():
+        env["gpu"] = torch.cuda.get_device_name(0)
+    return env
+
+
 def evaluate_test(
     model: nn.Module,
     X_test: torch.Tensor,
@@ -221,6 +233,7 @@ def run_tabular_experiment(
             "n_test":        len(split.X_test),
             "n_features":    split.n_features,
             "walltime_sec":  train_res.walltime_sec,
+            "env":           _environment(device),
             "epochs_run":    train_res.epochs_run,
             "train_metrics": {
                 "final_train_acc": train_res.final_train_acc,

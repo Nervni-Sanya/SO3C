@@ -1927,6 +1927,168 @@ if len(aucs) > 1:
     return name
 
 
+# Seed pairing compares runs that saw the same batch order, which needs the
+# same torch build: CUDA randperm is not specified to be stable across
+# versions. Kaggle's T4 image moved from torch 2.10 to 2.11 between windows,
+# so the screens below pin the build, refuse any card but a T4, and every
+# result JSON records both (tabular_runner "env").
+GPU_SETUP_T4_PINNED = """
+import subprocess, sys, time
+WANT = "2.11.0+cu128"
+name = subprocess.run(["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+                      capture_output=True, text=True).stdout.strip()
+print("device:", name)
+assert "T4" in name, "paired with T4 runs only; got %r -- stopping before any GPU time is spent" % name
+
+def torch_version():
+    return subprocess.run([sys.executable, "-c", "import torch; print(torch.__version__)"],
+                          capture_output=True, text=True).stdout.strip()
+
+v = torch_version()
+if v != WANT:
+    print("torch", v, "- installing", WANT)
+    t0 = time.perf_counter()
+    r = subprocess.run([sys.executable, "-m", "pip", "install", "-q", "torch==2.11.0",
+                        "--index-url", "https://download.pytorch.org/whl/cu128"],
+                       capture_output=True, text=True)
+    print("pip rc", r.returncode, "in %.0f s" % (time.perf_counter() - t0))
+    if r.returncode:
+        print(r.stderr[-2000:])
+        raise SystemExit("could not install torch " + WANT)
+    v = torch_version()
+assert v == WANT, "torch %s, expected %s" % (v, WANT)
+print("torch", v, "on", name)
+subprocess.run([sys.executable, "-m", "pip", "-q", "install", "torchdiffeq"], check=True)
+"""
+
+# The conditioning screen (so3c_notes/gap_generic_ml.md sections 3.2 and 8.7):
+# a fresh base control and the two switches, three seeds each, on the probe
+# protocol, all on torch 2.11 so the arms pair seed by seed with the control.
+# Budgets are per kernel, in hours, and sum to 4.75 h of the 4.85 h left this
+# window; measured kernel time for the base on 2.10 was 1.44 h.
+PROBE_SCREEN_RUNS = [
+    ("base", [], (0, 1, 2), 1.55),
+    ("edgenorm", ["--edge-norm"], (0, 1, 2), 1.62),
+    ("logknee", ["--log-knee"], (0, 1, 2), 1.58),
+]
+
+
+def build_probe_screen(blob: str, tag: str, flags: list[str],
+                       seeds: tuple[int, ...], budget_h: float) -> str:
+    """One arm of the conditioning screen: seeds 0-2 on the probe protocol.
+
+    Protocol as build_probe_seeds (K=32, canonical splits, 400k training
+    jets, 20 epochs, batch 256, float32, beams + channels 8, --compile), on a
+    T4 with torch 2.11.0+cu128 pinned and asserted. Each seed gets what is
+    left of the kernel budget as --max-seconds, so a slow arm stops with a
+    checkpoint instead of overrunning the week's quota; a seed is skipped when
+    too little budget is left for it to finish.
+    """
+    import hashlib
+    bundle_sha = hashlib.sha256(blob.encode()).hexdigest()[:12]
+    base = ["--cache-dir", "DATA", "--representation", "constituents",
+            "--canonical-splits", "--normalize", "global",
+            "--max-train-samples", "400000", "--epochs", "20",
+            "--device", "cuda", "--dtype", "float32", "--batch-size", "256",
+            "--n-constituents", "32", "--eval-chunk-size", "2048",
+            "--models", "so3c_message_set", "--rounds", "3", "--beams",
+            "--channels", "8", "--compile"] + list(flags)
+    cells = [
+        md("""
+# Conditioning screen, probe protocol: %s
+
+Flags beyond the base: `%s`. Seeds %s, K=32 / 400k jets / 20 epochs, T4 with
+torch 2.11.0+cu128 pinned, paired seed by seed with the base control of the
+same screen. Kernel budget %.2f h.
+""" % (tag, " ".join(flags) or "(none: the control)",
+           ", ".join(str(s) for s in seeds), budget_h)),
+        code("""
+import subprocess, time
+T0 = time.time()
+print(subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total",
+                      "--format=csv,noheader"], capture_output=True,
+                     text=True).stdout.strip())
+"""),
+        code(GPU_SETUP_T4_PINNED),
+        code(UNPACK.format(blob=blob)),
+        code(RUNNER),
+        code("""
+import glob, pathlib
+cands = glob.glob("/kaggle/input/**/top_tagging_train.npz", recursive=True)
+assert cands, "attach the K=128 data-prep kernel output"
+DATA = str(pathlib.Path(cands[0]).parent)
+TAG, SEEDS = %r, %r
+OUT = "/kaggle/working/results_probe_screen/" + TAG
+BASE = %r
+BASE[BASE.index("DATA")] = DATA
+BUDGET = %r * 3600           # this kernel's share of the week's GPU quota
+EVAL_MARGIN = 240            # final test evaluation and writing results
+MIN_SEED = 1500              # a seed needs ~0.45 h; less than this cannot finish
+pathlib.Path(OUT).mkdir(parents=True, exist_ok=True)
+pathlib.Path(OUT, "bundle_sha256.txt").write_text(%r + chr(10))
+print("data:", DATA, "| bundle", %r)
+""" % (tag, list(seeds), base, budget_h, bundle_sha, bundle_sha)),
+        code("""
+# On-card guard: the forward pass must be the published function here too.
+import subprocess, sys
+g = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
+                    "tests/test_so3c_models.py", "-k", "golden_cuda"],
+                   cwd="/kaggle/working/repo", capture_output=True, text=True)
+print(g.stdout[-1200:], g.stderr[-800:])
+assert "1 passed" in g.stdout, "golden guard did not pass on the card"
+"""),
+        code("""
+import glob, time
+for seed in SEEDS:
+    left = BUDGET - (time.time() - T0) - EVAL_MARGIN
+    print("=== seed %d: %.2f h of kernel budget left ===" % (seed, left / 3600), flush=True)
+    if left < MIN_SEED:
+        print("not enough budget left; seed %d skipped" % seed)
+        continue
+    run(["benchmarks.run_top_tagging"] + BASE +
+        ["--seed", str(seed), "--results-dir", OUT + "/seed%d" % seed,
+         "--ckpt-dir", "/kaggle/working/checkpoints/%s_seed%d" % (TAG, seed),
+         "--resume", "--max-seconds", str(int(left))])
+    assert glob.glob(OUT + "/seed%d/*.json" % seed), "seed %d wrote no result" % seed
+print("kernel time %.2f h" % ((time.time() - T0) / 3600))
+"""),
+        code("""
+import json, glob, statistics
+aucs, rejs = [], []
+print("%-6s%9s%10s%10s%8s%8s%20s%10s" % ("seed", "AUC", "rej@0.3", "rej@0.5", "epochs", "hours", "torch", "gpu"))
+for seed in SEEDS:
+    for f in sorted(glob.glob(OUT + "/seed%d/*.json" % seed)):
+        r = json.load(open(f)); t = r["test_metrics"]; env = r.get("env", {})
+        print("%-6d%9.5f%10.1f%10.1f%8d%8.2f%20s%10s"
+              % (seed, t["test_auc"], t["bg_rej_30"], t.get("bg_rej_50", float("nan")),
+                 r["epochs_run"], r["walltime_sec"] / 3600, env.get("torch"),
+                 env.get("gpu", "").replace("Tesla ", "")))
+        assert env.get("torch") == "2.11.0+cu128", "result recorded torch %r" % env.get("torch")
+        if r["epochs_run"] < 20:
+            print("  INCOMPLETE: stopped at epoch %d on the kernel budget" % r["epochs_run"])
+        else:
+            aucs.append(t["test_auc"]); rejs.append(t["bg_rej_30"])
+if len(aucs) > 1:
+    print("complete seeds: mean %.5f sd %.5f AUC | mean %.1f sd %.1f rejection"
+          % (statistics.mean(aucs), statistics.stdev(aucs),
+             statistics.mean(rejs), statistics.stdev(rejs)))
+"""),
+    ]
+    name = "kaggle_probe_screen_%s.ipynb" % tag
+    _finalise(cells, NB_DIR / name)
+    meta = {
+        "id": "nsanya/so3c-probe-screen-" + tag,
+        "title": "SO3C probe screen %s" % tag,
+        "code_file": name, "language": "python", "kernel_type": "notebook",
+        "is_private": True, "enable_gpu": True, "enable_internet": True,
+        "dataset_sources": [], "competition_sources": [],
+        "kernel_sources": ["nsanya/so3c-data-prep-k-128"],
+    }
+    (NB_DIR / ("kernel-metadata-probe-screen-%s.json" % tag)
+     ).write_text(json.dumps(meta, indent=2) + chr(10), encoding="utf-8")
+    return name
+
+
 def build_width_profile(blob: str) -> None:
     """Time the capacity candidates on the card before a window commits to them.
 
@@ -2369,6 +2531,8 @@ def main() -> int:
         build_long_seeds(blob, tag, flags, (seed,), part="s%d" % seed)
     for tag, flags, seeds in PROBE_SEED_RUNS:
         build_probe_seeds(blob, tag, flags, seeds)
+    for tag, flags, seeds, budget_h in PROBE_SCREEN_RUNS:
+        build_probe_screen(blob, tag, flags, seeds, budget_h)
     for tag, flags, seed, epochs in K64_RUNS:
         build_k64_run(blob, tag, flags, seed, epochs=epochs)
     for k in (32, 64):
