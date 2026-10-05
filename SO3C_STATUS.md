@@ -1,6 +1,6 @@
 # SO3C status
 
-Last updated 2026-10-03. This is the single place to start from. Commit hashes point at the evidence for every number; unless marked **(SO3C)** they are commits in the **so33** repository this one was split from (see [Provenance](#provenance)).
+Last updated 2026-10-05. This is the single place to start from. Commit hashes point at the evidence for every number; unless marked **(SO3C)** they are commits in the **so33** repository this one was split from (see [Provenance](#provenance)).
 
 ## Scope and goal
 
@@ -135,7 +135,25 @@ Decoupled decay on every parameter (torch's AdamW also decays the identity-initi
 
 **What the `--keep-best` numbers show, which matters more than the decay itself:** the best-validation weights beat the final weights by only +0.00006 and +0.00001 AUC. The rise in validation *loss* after epoch 45–50 is therefore mostly calibration — the model growing overconfident — not lost ranking power. Calling the wide models "overfit-limited" (previous window) overstated it: their discrimination saturates rather than degrades, which is why a regulariser had little to recover. Rejection at 30% efficiency is also coarse at this level: ~195 of ~202k background jets pass the cut, so it moves in steps of about one jet (~0.5%).
 
-**Budget:** ~13.9 of 30 GPU-h used. **Open decision for the remaining ~16 h:** whether width transfers to K=64, where the headline lives. The cheapest clean test is w64s24 at K=64 over 30 epochs (815 s/epoch compiled, ~7.2 h per seed). Pairing needs care here: a different architecture shares only the **batch order** with its control, not the initialisation, and of the existing 30-epoch K=64 headline seeds only **seed 2** ran on the same software (T4, torch 2.10). Seeds 0 and 1 ran on a P100 under torch 2.5.1, and whether `torch.randperm` on CUDA gives the same permutation across those versions is unverified — so a clean paired test either uses seed 2 as the control, or reruns the control seed alongside. w128s32 at K=64 costs ~11.2 h for 30 epochs, at the edge of a session.
+### Width at K=64 over 30 epochs: no gain (`82235c4`, `8e76d33`, `4b91517`)
+
+w64s24 and a control rerun of the headline configuration, both seed 0, K=64, 30 epochs, pushed together on the same software (T4, **torch 2.11**, compiled, `--keep-best`).
+
+| K=64, 30 epochs, seed 0 | params | AUC | 1/ε_B@0.3 | 1/ε_B@0.5 | best val loss (epoch) | train − val gap | h |
+|---|---|---|---|---|---|---|---|
+| control (`results_k64/headline_t4`) | 22834 | 0.98311 | 1040.8 | 287.6 | 0.16483 (30) | 0.0030 | 4.10 |
+| w64s24 (`results_k64/w64s24`) | 60834 | 0.98319 | 1035.5 | 284.4 | 0.16448 (30) | 0.0039 | 6.72 |
+| Δ, paired | 2.7× | **+0.00008** | −5 | −3 | −0.00035 | | |
+
+Neither model overfits at 30 epochs (validation loss lowest at the final epoch, so `--keep-best` returns the final weights). At K=32 the width gain appeared on the **60-epoch** schedule; at K=64 on 30 epochs it is +0.00008. That is consistent with capacity needing the long schedule, so width at K=64 on 60 epochs is still untested — not refuted.
+
+**Cross-software reproducibility.** The control reruns the original seed-0 headline (P100, torch 2.5.1, old forward pass, eager: 0.98326 / 1147.2) and lands at 0.98311 / 1040.8: −0.00014 AUC, −106 rejection, about one seed spread. Across that software jump two seed-0 runs behave like independent seeds.
+
+**Kaggle moved from torch 2.10 to 2.11** between 2026-09-27 and 2026-10-03, unannounced. Every log was checked: the long screen (base, w64s24, w128s32), the probe replicates and headline seed 2 ran on 2.10; the weight-decay runs and today's K=64 pair on 2.11. So the weight-decay comparison crossed the upgrade. Whether a shared seed still gives the same batch order across 2.10 → 2.11 cannot be checked directly here (no CUDA locally), but the epoch-1 numbers say it very likely does: same-seed pairs across the upgrade differ by 0.0008–0.0015 in epoch-1 validation loss, against 0.0047–0.0070 for different seeds on one version; and the 60-epoch headline (2.10) and today's control (2.11), both seed 0, differ by 0.00011 at epoch 1 against 0.0013 for seed 2. The weight-decay verdict therefore stands as paired, by inference. **Trap:** record the torch version of every run (the GPU_SETUP line in each log) and check it before calling two runs paired.
+
+**Budget:** ~25 of 30 GPU-h used this window (resets Saturday 2026-10-10).
+
+**Where this leaves the SOTA question.** Best single model is still the 60-epoch K=64 headline, 0.98363; best ensemble 0.98396; PELICAN 0.9870. Measured levers so far: training length (+0.00037 at K=64), width (+0.00048 at K=32 on 60 epochs, +0.00008 at K=64 on 30 epochs), weight decay (−0.00011), early stopping (~0). The one width test left is K=64 on 60 epochs: w64s24 needs ~13.4 h (two sessions, so a finish kernel), w128s32 ~22 h, and the 60-epoch headline seed 0 can serve as its paired control given the evidence above. Even a full transfer of the K=32 width effect would leave the gap near 0.0025, so this is the last tuning-scale lever; closing the gap needs a structural change, not more of these.
 
 ## GPU window 2026-09-26 → 2026-10-03 (closed): width at the long schedule
 
