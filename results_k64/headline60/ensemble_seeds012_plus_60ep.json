@@ -1,0 +1,45 @@
+{
+  "results_dir": [
+    "results_message/beams_k64",
+    "results_k64/headline",
+    "results_k64/headline60"
+  ],
+  "model": "so3c_message_set",
+  "experiment": "top_tagging_canonical",
+  "members": [
+    {
+      "seed": 0,
+      "auc": 0.983627954928741,
+      "bg_rej_30": 1140.7570621468926,
+      "bg_rej_50": 314.50778816199374,
+      "source": "results_k64/headline60"
+    },
+    {
+      "seed": 0,
+      "auc": 0.9832551316698106,
+      "bg_rej_30": 1147.2386363636363,
+      "bg_rej_50": 287.6267806267806,
+      "source": "results_message/beams_k64"
+    },
+    {
+      "seed": 1,
+      "auc": 0.9834021000573947,
+      "bg_rej_30": 1115.546961325967,
+      "bg_rej_50": 297.36966126656847,
+      "source": "results_message/beams_k64"
+    },
+    {
+      "seed": 2,
+      "auc": 0.9831173649798066,
+      "bg_rej_30": 1004.5472636815921,
+      "bg_rej_50": 287.2176386913229,
+      "source": "results_k64/headline"
+    }
+  ],
+  "ensemble": {
+    "auc": 0.9839641740368354,
+    "bg_rej_30": 1231.1829268292684,
+    "bg_rej_50": 327.78246753246754
+  },
+  "mean_score_correlation": 0.9943559871622804
+}

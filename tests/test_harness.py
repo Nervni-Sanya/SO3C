@@ -426,6 +426,63 @@ def test_runner_reports_best_val_metrics(tmp_path) -> None:
     assert not (tmp_path / "u__so3c_invariant_set__seed0__scores_bestval.npz").exists()
 
 
+def test_ensemble_scores_members_sharing_a_seed(tmp_path) -> None:
+    """Two different runs may share a seed number (the 30- and the 60-epoch
+    headline runs are both seed 0). ensemble_scores refuses that unless
+    --allow-shared-seed is passed, refuses the same file twice (however the
+    directory is spelled) and two files with identical scores even then,
+    refuses a directory without scores, and with the flag averages every
+    member and names each member's directory."""
+    import shutil
+    import numpy as np
+    from benchmarks import ensemble_scores as es
+
+    rng = np.random.default_rng(0)
+    labels = (rng.random(1000) > 0.5).astype(np.int8)
+    probs = {}
+    for name, seed in (("a", 0), ("b", 0), ("c", 1)):
+        d = tmp_path / name
+        d.mkdir()
+        s = np.clip(0.5 * labels + rng.normal(0.25, 0.4, 1000), 0, 1).astype(np.float32)
+        probs[name] = s
+        stem = f"e__m__seed{seed}"
+        np.savez(d / f"{stem}__scores.npz", scores=s, labels=labels)
+        m = es.metrics(labels, s)
+        (d / f"{stem}.json").write_text(json.dumps({"test_metrics": {
+            "test_auc": m["auc"], "bg_rej_30": m["bg_rej_30"],
+            "bg_rej_50": m["bg_rej_50"]}}))
+    shutil.copytree(tmp_path / "a", tmp_path / "copy_of_a")   # one run in two places
+    (tmp_path / "empty").mkdir()
+    common = ["--model", "m", "--experiment", "e"]
+    dirs = [str(tmp_path / n) for n in ("a", "b", "c")]
+
+    with pytest.raises(SystemExit, match="seed appears twice"):        # no flag
+        es.main(common + ["--results-dir"] + dirs)
+    with pytest.raises(SystemExit, match="same scores file"):
+        es.main(common + ["--allow-shared-seed", "--results-dir", dirs[0], dirs[0]])
+    with pytest.raises(SystemExit, match="same scores file"):         # spelled two ways
+        es.main(common + ["--allow-shared-seed", "--results-dir", dirs[0],
+                          str(tmp_path / "b" / ".." / "a")])
+    with pytest.raises(SystemExit, match="same scores as"):           # a copy of a run
+        es.main(common + ["--allow-shared-seed", "--results-dir", dirs[0],
+                          str(tmp_path / "copy_of_a"), dirs[2]])
+    with pytest.raises(SystemExit, match="no e__m__seed"):            # nothing to read
+        es.main(common + ["--results-dir", dirs[0], dirs[2], str(tmp_path / "empty")])
+
+    out = tmp_path / "unshared.json"
+    assert es.main(common + ["--out", str(out), "--results-dir", dirs[0], dirs[2]]) == 0
+    assert all("source" not in m for m in json.loads(out.read_text())["members"])
+
+    out = tmp_path / "ensemble.json"
+    assert es.main(common + ["--allow-shared-seed", "--out", str(out),
+                             "--results-dir"] + dirs) == 0
+    rec = json.loads(out.read_text())
+    assert [m["seed"] for m in rec["members"]] == [0, 0, 1]
+    assert [m["source"].rsplit("/", 1)[-1] for m in rec["members"]] == ["a", "b", "c"]
+    expected = es.metrics(labels, np.mean([probs[n] for n in ("a", "b", "c")], axis=0))
+    assert rec["ensemble"] == pytest.approx(expected)
+
+
 def test_cuda_resume_restores_rng_state(tmp_path) -> None:
     """Resuming on a GPU must get past restoring the saved RNG state.
 
