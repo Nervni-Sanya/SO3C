@@ -64,6 +64,16 @@ $\det Q=1$; on 256 random complex $a$ in float64 both deviations were below
 $2\times10^{-13}$ (the tests require $10^{-10}$ in float64 and $10^{-5}$ in
 float32). Real `float64` inputs give `complex128`, `float32` gives `complex64`.
 
+`expm_so3c_apply(a, z, t)` applies the same map to a vector without forming the
+matrix: with $b=ta$,
+$\exp(tA)\,z=z+\frac{\sin\theta}{\theta}\,(b\times z)+\frac{1-\cos\theta}{\theta^2}\,b\times(b\times z)$,
+with the coefficients and their near-zero series computed by the same helper
+as `expm_so3c`. On random complex pairs in float64 (standard normal real and
+imaginary parts, $t=-1$, $-0.7$ and $1$) it agreed with `expm_so3c(a, t) @ z` to
+$1.4\times10^{-14}$, or $2\times10^{-15}$ relative to the largest component.
+`so3c_message_set` uses it for every
+flow step; `so3c_covariant_set` still forms $Q$.
+
 ## 4. The flow and what it conserves
 
 $$\dot z=-[a]_\times z .$$
@@ -228,7 +238,8 @@ $z_a\leftarrow z_a/(1+\lvert z_a\cdot z_a\rvert^{1/2})$; channels start as compl
 multiples $z_a^{(c)}=w_cz_a$; the scalar state $h_a\in\mathbb R^D$ is
 initialised by `Linear(3→D)` on
 $\operatorname{asinh}(\operatorname{Re}z_a\cdot z_a,\ \operatorname{Im}z_a\cdot z_a,\ \langle p_a,p_a\rangle)$.
-Each round $r$ then does, for particles $a,b$ (all pairs, or the $k$ nearest):
+Each round $r$ then does, for particles $a,b$ (all pairs; or, with
+`neighbors=k`, the $k$ nearest, plus the two beam nodes when there are beams):
 
 $$\begin{aligned}
 e_{ab}&=\tanh\!\big(W_r[\,\operatorname{asinh}(\operatorname{Re},\operatorname{Im})\ \text{of}\ s^{(c)}_{ab},s^{(c)}_{aa},s^{(c)}_{bb}\ \text{for all}\ c;\ h_a;\ h_b\,]\big)\\
@@ -258,7 +269,23 @@ with the largest $\lvert\operatorname{Re}(z_a\cdot z_b)\rvert$ on the input
 bivectors, self-edges excluded; the graph is built once and reused in every
 round. The key is an invariant, so the neighbour set is the same in every
 frame. A frame-dependent key (angular distance, $p_T$ order) would reshuffle
-edges under a boost and break equivariance with nothing to flag it.
+edges under a boost and break equivariance with nothing to flag it. With beams
+(§11), the two beam nodes are left out of the ranking and appended to every
+node's list, a beam never being its own neighbour: a constituent gets $k+2$
+partners, a beam node its $k$ ranked constituents and the other beam. The
+appended indices are fixed, so the graph is still the same in every frame.
+
+**How a dense round is evaluated.** The dense path never builds the
+$(B,K,K,6C+2D)$ edge input. The first edge layer is linear, so the shares of
+the per-node inputs ($s_{aa}$, $s_{bb}$, $h_a$, $h_b$) are computed once per node
+and broadcast, and the pair-latent update (§12) is evaluated map by map in the
+same way. $z_a\cdot z_b$ is computed in real arithmetic, the flow uses
+`expm_so3c_apply` (§3), and the readout pools every channel in one call. This
+is the same function as the equations above, with the same parameters:
+`test_message_set_matches_golden` and `test_message_set_matches_reference` hold
+it to the earlier direct implementation, shipped as
+`tests/data/ref_so3c_models_16302b1.py`, on 16 switch combinations. The sparse
+path still builds the concatenated edge input.
 
 ## 11. Beams: what symmetry survives
 
@@ -274,8 +301,8 @@ label. They give the network each constituent's lab-frame energy and
 longitudinal momentum, which no Lorentz invariant of the jet alone contains.
 The readout still pools real constituents only, and appends the two beam
 nodes' final scalar states and $\operatorname{asinh}\langle P,b_\pm\rangle$
-(§13). Beams need the dense graph: combining them with `neighbors` raises
-`ValueError`.
+(§13). On the sparse graph (`neighbors=k`) the beams are appended to every
+neighbour list (§10); no model with beams has been trained on the sparse graph.
 
 Every feature is still an invariant of the whole set $\{p_a,b_+,b_-\}$ and every
 update is covariant, so the network is exactly Lorentz-covariant as a function
@@ -303,12 +330,19 @@ On real test jets a trained model keeps its AUC (0.9684) with the beams moved
 along up to boost scale 3, and loses 0.035 by scale 3 with them fixed
 ([experiments.md, table E](experiments.md#e-boost-robustness)).
 
-## 12. Switches implemented but not yet trained
+## 12. Switches screened on the probe protocol
 
 Six arguments of `SO3CMessageSetClassifier` change what the model computes.
 Each defaults to the behaviour the results in [experiments.md](experiments.md)
-were measured with, and none has been trained on the full data yet. Each keeps
-exact covariance: it adds or recompresses invariants, or updates covariant
+were measured with. All six were trained on the short probe protocol ($K=32$,
+400,000 training jets, 20 epochs, with beams and 8 channels; `mass_input=False`
+and `self_edges=False` only together), and the vector channel and the pair
+latent three more times, paired with three runs of the base. None showed a
+resolved gain: the best, the pair latent, came out +0.00012 AUC above the base
+over the three paired seeds ($t=1.42$). None has been trained on the full
+training set or at $K=64$
+([experiments.md, table L](experiments.md#l-switch-screen-and-probe-protocol-noise)).
+Each keeps exact covariance: it adds or recompresses invariants, or updates covariant
 vectors by invariant-weighted linear combinations.
 
 - **`mass_input=False`** drops $m^2=\langle p_a,p_a\rangle$ from the scalar
@@ -346,7 +380,8 @@ vectors by invariant-weighted linear combinations.
   together with that round's edge hidden state. The readout adds the mean of
   $E$ over real pairs and over its diagonal. $E$ is built from invariants only.
 
-`vector_channel` and `pair_latent` also need the dense graph.
+`vector_channel` and `pair_latent` are the only options that need the dense
+graph: combined with `neighbors`, either raises `ValueError`.
 
 ## 13. Readout features
 
@@ -377,3 +412,19 @@ about 55. The note in
 [`benchmarks/run_boost_robustness.py`](../../benchmarks/run_boost_robustness.py)
 records a drop of 0.0232 AUC in float32 against 0.0001 in float64 for the same
 weights and jets, which is why that diagnostic defaults to float64.
+
+Two later changes to the GPU runs were checked against this. The rewritten
+forward pass of `so3c_message_set` (§10) computes the same function: the float64
+guard tests hold it to the earlier implementation, while in float32 the two
+round differently. On the probe protocol one run of each, on different cards
+and torch builds, scored 0.98125 (rewritten, with `--compile`, on a T4) and
+0.98128 (original, on a P100): consistent with no shift, though a single
+cross-stack pair cannot test it. `--compile` runs the model through
+`torch.compile` on CUDA cards of compute capability 7.0 or higher only (a P100
+stays eager), after checking it against eager execution on the first
+`batch_size` training jets: the run stops if the logits differ by more than
+$10^{-3}$ or the gradients by more than $10^{-2}$, relative to their largest
+values. In the float32 training runs on a T4 that check recorded relative
+differences of $1.6\times10^{-5}$ to $8.1\times10^{-5}$ in the logits and at most
+$5.1\times10^{-5}$ in the gradients (kernel logs in `results_k64/`,
+`results_long_seeds/` and `results_message/probe_seeds/`).

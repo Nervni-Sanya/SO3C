@@ -32,6 +32,7 @@ Shapes use `…` for leading batch dimensions. Real tensors default to
 | `so3c_generator_stack(dtype=float64)` | → `(6, 6, 6)` | $[R_1,R_2,R_3,B_1,B_2,B_3]$ on $\mathbb R^6$ |
 | `cross_matrix(a)` | `(…, 3)` → `(…, 3, 3)` | $[a]_\times$, real or complex |
 | `expm_so3c(a, t=1.0)` | `(…, 3)` → `(…, 3, 3)` complex | $\exp(t[a]_\times)$, closed form; real `a` is promoted to complex |
+| `expm_so3c_apply(a, z, t=1.0)` | `(…, 3)`, `(…, 3)` complex → `(…, 3)` complex | $\exp(t[a]_\times)\,z$ without forming the matrix; equals `expm_so3c(a, t) @ z` to rounding; real `a` is promoted (float64 → complex128, float32 → complex64), and `z` must be complex of the same precision, otherwise `RuntimeError` |
 | `complex_matrix_to_real(Q)` | `(…, 3, 3)` → `(…, 6, 6)` | $\begin{pmatrix}\operatorname{Re}Q&-\operatorname{Im}Q\\ \operatorname{Im}Q&\operatorname{Re}Q\end{pmatrix}$ |
 | `random_group_element(rot_scale=1.0, boost_scale=0.5, dtype=float64, generator=None)` | → `(6, 6)` | real form of $\exp([\rho+i\beta]_\times)$, $\rho\sim\mathcal N(0,\text{rot\_scale}^2)$, $\beta\sim\mathcal N(0,\text{boost\_scale}^2)$ per component |
 
@@ -142,8 +143,10 @@ SO3CFlowClassifier(out_features=2, channels=4, hidden=32, act_hidden=16, T=1.0, 
 With `beams=True`, `SO3CMessageSetClassifier` holds the beams in a buffer
 `beam_p4` of shape `(2, 4)`, rows $E_b(1,0,0,+1)$ and $E_b(1,0,0,-1)$.
 Transforming it in place (`model.beam_p4.copy_(...)`) is how the tests and
-`run_boost_robustness` move the beams together with the jet. `beams`,
-`vector_channel` or `pair_latent` combined with `neighbors` raise `ValueError`.
+`run_boost_robustness` move the beams together with the jet. `vector_channel`
+or `pair_latent` combined with `neighbors` raises `ValueError`; `beams` works on
+both graphs, and on the sparse one the two beam nodes are added to every
+neighbour list.
 `N_POOLED_FULL = 11` and `N_POOLED_SIMPLE = 5` are the pooled-feature counts.
 
 ## Harness entry points
@@ -162,11 +165,17 @@ Transforming it in place (`model.beam_p4.copy_(...)`) is how the tests and
   `so3c_kwargs`; `so3c_multi` does not.
 - `benchmarks.models.count_parameters(model)` counts trainable parameters.
 
-**`benchmarks.tabular_runner.run_tabular_experiment(experiment, split, *, models=None, seed=0, epochs=30, batch_size=128, lr=3e-3, weight_decay=0.0, optimizer="adam", schedule="cosine", warmup_epochs=4, natural_hidden=256, representation="flat", pool="mean", results_dir="results", device="cpu", dtype=float64, so3c_kwargs=None, eval_chunk_size=4096, ckpt_dir=None, resume=False, max_seconds=None)`**
+**`benchmarks.tabular_runner.run_tabular_experiment(experiment, split, *, models=None, seed=0, epochs=30, batch_size=128, lr=3e-3, weight_decay=0.0, optimizer="adam", schedule="cosine", warmup_epochs=4, compile=False, keep_best=False, natural_hidden=256, representation="flat", pool="mean", results_dir="results", device="cpu", dtype=float64, so3c_kwargs=None, eval_chunk_size=4096, ckpt_dir=None, resume=False, max_seconds=None)`**
 trains each model, evaluates it on the test split and writes
 `<results_dir>/<experiment>__<model>__seed<seed>.json` plus a
 `…__scores.npz` with per-example test scores. The record includes
-`so3c_kwargs` and `dtype`; result files written before 2026-09-13 lack both.
+`so3c_kwargs` and `dtype` (absent from files written before 2026-09-13),
+`compile` (written by code from 2026-09-20 on) and `keep_best` (from
+2026-09-27 on). With
+`keep_best=True` the lowest-validation-loss weights are tested on the same
+split as well: the record gains `best_val_epoch`, `best_val_loss` and
+`test_metrics_best_val` (null otherwise), and `…__scores_bestval.npz` holds
+their per-example scores. `test_metrics` always refers to the final weights.
 The global seed is set before each model is built, so identical commands
 reproduce each other. The file layout is described in
 [experiments.md](experiments.md#5-output-files).
@@ -176,7 +185,8 @@ reproduce each other. The file layout is described in
 `cosine_schedule=True`, `optimizer="adam"`, `schedule="cosine"`,
 `warmup_epochs=4`, `early_stop_patience=None`, `seed=0`, `device="cpu"`,
 `eval_chunk_size=4096`, `ckpt_path=None`, `ckpt_every=1`, `resume=False`,
-`max_seconds=None`. `optimizer` is `"adam"` or `"adamw"`. `schedule="cosine"`
+`max_seconds=None`, `compile=False`, `compile_backend="inductor"`,
+`keep_best=False`. `optimizer` is `"adam"` or `"adamw"`. `schedule="cosine"`
 anneals over the run; `schedule="lorentznet"` is the LorentzNet and PELICAN
 recipe, `lorentznet_lr_factor(epoch, total_epochs, warmup=4, t0=4, t_mult=2, decay_epochs=3, gamma=0.5)`:
 linear warm-up, cosine annealing with warm restarts (cycles of 4, 8 and 16
@@ -184,18 +194,48 @@ epochs in a 35-epoch run) and a final decay by 0.5 per epoch.
 `cosine_schedule=False` turns scheduling off.
 `train_classifier(model, X_train, y_train, X_val, y_val, cfg)` minimises
 cross-entropy plus `model.regularization_loss()`, clips gradients, validates
-every epoch and returns the final epoch's weights (there is no best-epoch
-restore). A checkpoint stores model, optimizer, scheduler and RNG state, so a
-resumed run continues exactly; `max_seconds` limits a single session.
-`forward_in_chunks(model, X, chunk_size)` bounds evaluation memory for the
-$K\times K$ pairwise readouts.
+every epoch and returns a `TrainResult`; the model keeps the last epoch's
+weights, and nothing is restored. `TrainResult` has the fields
+`final_train_acc`, `final_val_acc`, `best_val_acc`, `final_val_loss`,
+`n_params`, `walltime_sec`, `peak_memory_mb`, `epochs_run`, `best_val_loss`,
+`best_epoch`, `history` (one dict per epoch: `epoch`, `train_loss`,
+`train_acc`, `val_loss`, `val_acc`) and `config`. With `cfg.keep_best=True` the
+weights of the epoch with the lowest validation loss are kept as CPU tensors
+in `result.best_state`, an attribute rather than a field so that `asdict`
+skips it, and `best_epoch` and `best_val_loss` say which epoch that was.
+With `cfg.compile=True` the model is wrapped in
+`torch.compile(model, backend=compile_backend)`, except on a CUDA card of
+compute capability below 7.0 (a P100), which always stays eager, and on the CPU
+with the default `"inductor"` backend (the tests use `"aot_eager"` there). The
+compiled model is first checked against the eager one on the first
+`batch_size` jets of the training split, in stored order, and `RuntimeError` is
+raised if the logits differ by more than
+$10^{-3}$ or the gradients by more than $10^{-2}$, relative to their largest
+values. A checkpoint stores model, optimizer, scheduler and RNG state and the
+best weights kept so far, so a resumed run continues exactly; the weights are
+saved through the uncompiled module, so compiled and eager runs share
+checkpoints. Resuming with a larger `epochs` than the run started with
+re-anchors the cosine schedule on the new horizon. `max_seconds` limits a
+single session. `forward_in_chunks(model, X, chunk_size=4096)` bounds
+evaluation memory for the $K\times K$ pairwise readouts.
 
 **`benchmarks.ensemble_scores`**, run as
-`python -m benchmarks.ensemble_scores --results-dir DIR [--model M] [--experiment E] [--tolerance T] [--out FILE]`,
-averages the saved class-1 probabilities over every seed of a model and prints
-the ensemble's AUC and background rejection. Before that it recomputes each
-member's metrics from its own scores and stops if they disagree with the stored
-values, or if the members' test labels differ.
+`python -m benchmarks.ensemble_scores --results-dir DIR [DIR ...] [--model M] [--experiment E] [--tolerance T] [--out FILE] [--allow-shared-seed]`,
+averages the saved class-1 probabilities of every
+`<experiment>__<model>__seed<N>__scores.npz` in the given directories (each
+directory must hold at least one, and there must be at least two) and prints the ensemble's AUC and background rejection; its
+rejection is interpolated on the ROC curve, while the runner takes the first
+ROC point that reaches $\varepsilon_S$. Before that it recomputes each member's
+metrics from its own scores and stops if they differ from the stored values by
+more than the tolerance (default $10^{-4}$, relative to $\max(1,\text{value})$),
+or if the members' test labels differ. A seed number appearing twice also stops
+it, unless `--allow-shared-seed` declares the members different runs (the 30-
+and the 60-epoch headline runs are both seed 0); the same file twice, or two
+files with identical scores, always does. `--out FILE` writes `results_dir` (a
+list; a single string in `results_message/beams_k64/ensemble_seeds01.json`,
+written before several directories were accepted), `model`, `experiment`,
+`members` (each with its `source` directory when seeds are shared),
+`ensemble` and `mean_score_correlation`.
 
 ## Examples
 
@@ -227,12 +267,13 @@ import torch
 from so3c import expm_so3c
 from so3c.lift import bivector_lift, random_lorentz_pair
 
+torch.manual_seed(0)
 p = torch.randn(5, 4, dtype=torch.float64)
 q = torch.randn(5, 4, dtype=torch.float64)
 L, a = random_lorentz_pair(boost_scale=1.0)   # 4x4 Lorentz matrix, matching a = rho + i beta
 lhs = bivector_lift(p @ L.T, q @ L.T)
 rhs = (expm_so3c(a) @ bivector_lift(p, q).unsqueeze(-1)).squeeze(-1)
-print((lhs - rhs).abs().max())                # ~1e-15
+print((lhs - rhs).abs().max())                # ~4e-15: round-off
 ```
 
 **A jet tagger forward pass.**

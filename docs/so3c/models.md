@@ -71,11 +71,15 @@ suite, `test_trained_regime_invariance`,
 `test_interaction_set_is_equivariant_when_excited` exercise non-zero
 connections; `test_message_set_beams_are_covariant_inputs`,
 `test_message_set_bundle_is_exactly_covariant`,
+`test_message_set_knn_carries_beams`,
 `test_message_set_vector_channel_is_exactly_covariant`,
 `test_message_set_pair_latent_symmetries` and
 `test_message_set_eq2to2_is_permutation_equivariant` cover the beams and the
 switches. `test_set_lorentz_invariance` and `test_classifier_invariance` use
 freshly built models, so for the flow models they check the readout only.
+`test_message_set_matches_golden` and `test_message_set_matches_reference` hold
+the rewritten forward pass of `so3c_message_set` to its earlier implementation
+([theory.md §10](theory.md#10-covariant-message-passing-so3c_message_set)).
 
 ---
 
@@ -143,7 +147,7 @@ particle and complex channel mixing
 ([theory.md §10](theory.md#10-covariant-message-passing-so3c_message_set)).
 The readout adds the masked mean and max of the scalar state, so its input is
 $11C+C(C+1)+2D+7=87$ features at the defaults. The best configuration measured
-so far is `beams=True, channels=8` at $K=64$
+so far is `beams=True, channels=8` at $K=64$, trained for 60 epochs
 ([experiments.md, table A](experiments.md#a-canonical-top-tagging)).
 
 | Argument | Default | CLI flag | Meaning |
@@ -151,13 +155,13 @@ so far is `beams=True, channels=8` at $K=64$
 | `channels` | 4 | `--channels` | complex channels $C$ |
 | `rounds` | 3 | `--rounds` | message-passing rounds $R$ |
 | `hidden` | 64 | `--hidden` | readout MLP width |
-| `act_hidden` | 16 | `--act-hidden` | edge-network width |
+| `act_hidden` | 16 | `--act-hidden` | width of the tanh edge network, from which the flow weights, the messages and the vector and pair-latent updates are read, and of the scalar node-update MLP |
 | `scalar_dim` | 8 | `--scalar-dim` | scalar state width $D$; 0 removes the scalar channel |
 | `msg_dim` | 8 | `--msg-dim` | edge message width $M$ |
 | `T` | 1.0 | `--flow-T` | flow time |
 | `channel_mixing` | `True` | — | per-round complex mixing matrices |
-| `neighbors` | `None` | `--neighbors` | $k$ strongest partners by $\lvert\operatorname{Re}z_a\cdot z_b\rvert$; `None` is dense |
-| `beams` | `False` | `--beams` | the two beam particles ([theory.md §11](theory.md#11-beams-what-symmetry-survives)); dense graph only |
+| `neighbors` | `None` | `--neighbors` | $k$ strongest partners by $\lvert\operatorname{Re}z_a\cdot z_b\rvert$, plus the two beam nodes when there are beams; `None` is dense |
+| `beams` | `False` | `--beams` | the two beam particles ([theory.md §11](theory.md#11-beams-what-symmetry-survives)) |
 | `beam_energy` | 1.0 | — | energy $E_b$ of each beam, in the normalised input units |
 | `dropout` | 0.0 | `--dropout` | dropout in the readout MLP |
 | `mass_input`, `self_edges`, `relnorm_edge`, `falpha`, `vector_channel`, `pair_latent` | see below | see below | the switches below |
@@ -178,17 +182,26 @@ not change the count):
 | `beams=True` | 15,038 |
 | `beams=True, channels=8` (the headline) | 22,834 |
 | `beams=True, channels=16` | 45,146 |
+| `beams=True, channels=8, rounds=6` | 28,378 |
+| `beams=True, channels=8, act_hidden=64, msg_dim=24, scalar_dim=24` (`w64s24`) | 60,834 |
+| `beams=True, channels=8, act_hidden=128, msg_dim=32, scalar_dim=32` (`w128s32`) | 120,202 |
 
 Note that `rounds=1` is not `so3c_covariant_set` plus a scalar channel: this
 model also bounds the input lift and the connection, and mixes channels.
 `regularization_loss()` is $10^{-3}$ times the squared weights of the flow
-weight heads. A dense round costs $O(CK^2)$ per jet.
+weight heads. A dense round costs $O(CK^2)$ per jet. The dense path is
+evaluated without building the pairwise edge input; that rewrite computes the
+same function and is tested against the earlier implementation
+([theory.md §10](theory.md#10-covariant-message-passing-so3c_message_set)).
 
-### Switches not yet trained
+### Switches screened on the probe protocol
 
-All are off by default, so the defaults reproduce the measured results, and
-none has been trained on the full data.
-[theory.md §12](theory.md#12-switches-implemented-but-not-yet-trained) describes
+All are off by default, so the defaults reproduce the measured results. Each
+was trained on the short probe protocol (`mass_input=False` and
+`self_edges=False` only together) and none showed a resolved gain; none has been
+trained on the full training set
+([experiments.md, table L](experiments.md#l-switch-screen-and-probe-protocol-noise)).
+[theory.md §12](theory.md#12-switches-screened-on-the-probe-protocol) describes
 what each computes. Parameter counts are on the headline configuration
 (`beams=True, channels=8`, 22,834 parameters).
 
@@ -202,12 +215,16 @@ what each computes. Parameter counts are on the headline configuration
 | `pair_latent=8` | `--pair-latent 8` | 26,514 | a rank-2 pair state updated by 7 permutation-equivariant maps; dense graph only |
 | `vector_channel=True, pair_latent=8`, both fixes | all four flags | 26,861 | the architectural changes and the two fixes together |
 
-CPU time per training step relative to the headline, as recorded in
-[`SO3C_STATUS.md`](../../SO3C_STATUS.md): 1.00× for the two fixes, 1.10× for the
-vector channel, 1.30× for the relative-norm edge, 1.56× for the pair latent,
-1.64× for the vector channel, pair latent and both fixes together, and 3.54×
-for `falpha=3`. GPU ratios have not been measured, and CPU ratios have misled
-before.
+GPU time per training step relative to the headline, profiled on a T4 at
+$K=64$ in float32 (`results_profile/t4_47ec4ad`, `results_profile/t4_compile_05f18fb`):
+1.25× for the vector channel and 1.55× for the pair latent, 1.17× and 1.48×
+with `--compile`. For all of them there is also the training wall clock of the
+probe-protocol screen (T4, original forward pass, one run each, per-epoch
+validation included), here relative to the two fixes, which cost the same per step as the
+headline on the CPU: 1.17× for the vector channel, 1.20× for the relative-norm
+edge, 1.42× for `falpha=3`, 1.46× for the pair latent and 1.66× for the vector
+channel, pair latent and both fixes together. A CPU measurement made before any
+GPU run had put `falpha=3` at 3.54×.
 
 ## `so3c_interaction_set`
 

@@ -57,7 +57,7 @@ GPU budget — is in [`SO3C_STATUS.md`](SO3C_STATUS.md).
 More parameters help only a little so far. Widening the network
 (`--act-hidden`, `--msg-dim`, `--scalar-dim`) is the first capacity change
 shown to pay in a paired, multi-seed comparison (the earlier step from 4 to 8
-channels gave +0.0004 AUC on one seed, inside the noise): at K = 32 on the full
+channels gave +0.0004 AUC on one seed, not resolved): at K = 32 on the full
 training set for 60 epochs, the 120,202-parameter `w128s32` gains +0.00048 AUC
 over the 22,834-parameter base, paired by seed over two seeds — about +0.0002
 per doubling of parameters. At K = 64 over 30 epochs the 60,834-parameter
@@ -67,8 +67,8 @@ leave about 0.0026 AUC to PELICAN from the best ensemble, 0.0029 from the best
 single model. Our reading is that closing the gap needs a structural change,
 but none has yet been shown to help: the structural candidates screened so far,
 on a short 20-epoch probe, moved AUC by +0.00012 or less, and none has been run
-at the long schedule. Longer training, width at K = 64 over 60 epochs and other
-weight-decay strengths are also untested
+at the long schedule. Training beyond 60 epochs, width at K = 64 over 60 epochs
+and other weight-decay strengths are also untested
 ([measurements below](#width-and-weight-decay)).
 
 ## How it works
@@ -117,13 +117,14 @@ and by 3×10⁻² when they stay fixed
 | `so3c_equivariant_set` | 9,056 | **not invariant once trained**; kept to reproduce the results measured on it |
 | `so3c`, `so3c_static`, `so3c_multi` | depends on the input width | none: flat tabular models on a learned embedding |
 
-`so3c_message_set` also has six switches, all off by default and none trained
-on the full data yet: `--no-mass-input`, `--no-self-edges`, `--relnorm-edge`,
-`--falpha N`, `--vector-channel` and `--pair-latent N`
-([models](docs/so3c/models.md#switches-not-yet-trained)).
+`so3c_message_set` also has six switches, all off by default:
+`--no-mass-input`, `--no-self-edges`, `--relnorm-edge`, `--falpha N`,
+`--vector-channel` and `--pair-latent N`. Each was screened on a short probe
+protocol and none showed a resolved gain; none has been trained on the full data
+([models](docs/so3c/models.md#switches-screened-on-the-probe-protocol)).
 
-Three width flags scale the model: `--act-hidden` (the connection MLP, default
-16), `--msg-dim` (the edge message, default 8) and `--scalar-dim` (the
+Three width flags scale the model: `--act-hidden` (the edge network that feeds
+the connection, the messages and the node update, default 16), `--msg-dim` (the edge message, default 8) and `--scalar-dim` (the
 per-particle scalar channel, default 8). On `--beams --channels 8`,
 `--act-hidden 64 --msg-dim 24 --scalar-dim 24` (`w64s24`) has 60,834
 parameters and `--act-hidden 128 --msg-dim 32 --scalar-dim 32` (`w128s32`) has
@@ -153,12 +154,8 @@ invariant models moves by at most 0.0001, and so does that of the beams model
 when its beams move with the jet (the spread between transformation draws is up
 to 0.0002), while `so3c_equivariant_set` falls from 0.9424 to 0.4414 ± 0.3284.
 
-Data, protocols, commands and most results through 2026-09-13 are in
-[`docs/so3c/experiments.md`](docs/so3c/experiments.md), whose limitations
-section predates the 60-epoch run. The third headline seed, the 60-epoch run
-and the width and weight-decay results are in this README, in
-[`SO3C_STATUS.md`](SO3C_STATUS.md) and in `results_k64/` and
-`results_long_seeds/`, but not yet in that file.
+The results with their source directories, and the known limitations, are in
+[`docs/so3c/experiments.md`](docs/so3c/experiments.md).
 
 ### Width and weight decay
 
@@ -175,11 +172,12 @@ The K = 32 rows use all 1,211,000 training jets. With dropout off and the same
 torch build, runs that share a seed see the same batch order
 (`train_classifier` reseeds after the model is built), so arms are compared
 paired: `w128s32` beats the base by +0.00047 and +0.00049 on seeds 0 and 1,
-both arms on torch 2.10. Weight decay costs −0.00010 and −0.00012, but those
-two runs used torch 2.11 against 2.10 for their controls, so that pairing rests
-on matching epoch-1 losses rather than a direct check. Two pairs per comparison
-is thin. The two K = 64 rows share one stack (T4, torch 2.11, compiled) and are
-one seed each; their difference is inside the seed spread. The control rerun
+both arms on torch 2.10. Weight decay costs −0.00010 and −0.00012 if those runs
+pair, but they used torch 2.11 against 2.10 for their controls, and whether the
+batch order survives that upgrade is unconfirmed (epoch-1 losses cannot tell).
+Two pairs per comparison is thin. The two K = 64 rows share one stack (T4,
+torch 2.11, compiled) and form one paired seed; their difference, +0.00008, is
+not resolved (the scatter of paired differences at K = 64 is unmeasured). The control rerun
 differs from the original seed-0 headline in torch (2.11 against 2.5.1, as
 pinned in the notebook), card (T4 against P100), `torch.compile` (on against
 off) and forward-pass implementation (equal in float64, rounding differently in
@@ -246,11 +244,12 @@ python -m benchmarks.run_top_tagging --cache-dir data --representation constitue
     --models so3c_message_set --rounds 3 --beams --channels 8 --eval-chunk-size 1024 \
     --compile --results-dir results_beams_k64 --ckpt-dir ckpt_beams_k64 --resume --max-seconds 30000
 
-# Three-seed ensemble of the 30-epoch runs from the saved per-jet scores, no
-# retraining (0.98378 / 1160.4). The four-model ensemble in the table also adds
-# results_k64/headline60, a second seed-0 model, which this script rejects as a
-# duplicate seed; it was averaged by hand from the same score files.
+# Ensembles from the saved per-jet scores, no retraining: the three 30-epoch seeds
+# (0.98378 / 1160.4), then the four-model ensemble of the table (0.98396 / 1231.2),
+# whose members include two seed-0 runs and so need --allow-shared-seed.
 python -m benchmarks.ensemble_scores --results-dir results_message/beams_k64 results_k64/headline
+python -m benchmarks.ensemble_scores --allow-shared-seed \
+    --results-dir results_message/beams_k64 results_k64/headline results_k64/headline60
 ```
 
 ```bash
@@ -282,10 +281,10 @@ in the infrastructure table of [`SO3C_STATUS.md`](SO3C_STATUS.md).
 
 | Page | Contents |
 |---|---|
-| [docs/so3c/theory.md](docs/so3c/theory.md) | The mathematics: realification, the closed-form exponential, why conservation is not equivariance, the covariant connection, the bivector lift, message passing, beams, the untrained switches, numerical precision |
+| [docs/so3c/theory.md](docs/so3c/theory.md) | The mathematics: realification, the closed-form exponential, why conservation is not equivariance, the covariant connection, the bivector lift, message passing, beams, the optional switches, numerical precision |
 | [docs/so3c/models.md](docs/so3c/models.md) | Every tagger: pipeline, parameter counts, switches, and how its symmetry was measured |
 | [docs/so3c/api.md](docs/so3c/api.md) | The `so3c` package, `benchmarks.so3c_models` and the harness, with runnable examples |
-| [docs/so3c/experiments.md](docs/so3c/experiments.md) | Data, protocols, commands, every result through 2026-09-13 with its source, limitations |
+| [docs/so3c/experiments.md](docs/so3c/experiments.md) | Data, protocols, commands, results with their sources, limitations |
 | [SO3C_STATUS.md](SO3C_STATUS.md) | Working status: goal, current best, closed questions, open candidates, compute budget, infrastructure pitfalls |
 | [so3c_notes/](so3c_notes/) | Research notes, such as the gap-to-SOTA survey of 2026-09-13 |
 
@@ -296,7 +295,7 @@ in the infrastructure table of [`SO3C_STATUS.md`](SO3C_STATUS.md).
 | [`so3c/`](so3c/) | Algebra and closed-form exponential, `HermitianMetric`, `SO3CActivation`, `SO3CInteraction`, the bivector lift |
 | [`benchmarks/so3c_models.py`](benchmarks/so3c_models.py) | Taggers, flat models and synthetic-task heads |
 | [`benchmarks/`](benchmarks/), the other files | Data loaders, `build_model`, training loop, runners, `ensemble_scores`, figure scripts, Kaggle tooling |
-| [`tests/`](tests/) | `test_so3c_*.py` (52 tests) and `test_harness.py` (22) |
+| [`tests/`](tests/) | `test_so3c_*.py` (52 tests) and `test_harness.py` (23) |
 | [`notebooks/`](notebooks/) | Generated Kaggle notebooks with the code embedded |
 | [`figures/`](figures/) | Figures, their CSV twins and the published reference values |
 | [`so3c_notes/`](so3c_notes/) | Research notes and the related-work survey |
@@ -314,12 +313,12 @@ pip install pytest
 python -m pytest tests/ -q
 ```
 
-The suite has 74 tests. The 52 SO3C tests cover the algebra (5), the activation
+The suite has 75 tests. The 52 SO3C tests cover the algebra (5), the activation
 (7), the interaction layer (5), the lift (4), the models (25, including the
-forward-pass rewrite guard) and float32 behaviour (6); the 22 harness tests
+forward-pass rewrite guard) and float32 behaviour (6); the 23 harness tests
 cover checkpointing and resume, reproducibility, the training schedules, the
-best-validation weights and the figure scripts. On a CPU-only machine 71 pass
-and three CUDA-only tests are skipped. The equivariance tests that exercise the
+best-validation weights, seed ensembles and the figure scripts. On a CPU-only
+machine 72 pass and three CUDA-only tests are skipped. The equivariance tests that exercise the
 flow (`test_trained_regime_invariance`, the `*_is_equivariant_when_excited`
 tests and the beams and bundle tests) set the zero-initialised weight heads to
 random values first: on a freshly built model the flow is the identity, and an

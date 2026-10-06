@@ -8,7 +8,16 @@ directories are committed except `results/`, which is in `.gitignore`.
 ## 1. Setup
 
 Python ≥ 3.10. The recorded CPU runs used Python 3.10 with torch 2.11 (CPU
-build); the GPU runs ran on Kaggle.
+build); the GPU runs ran on Kaggle. The kernel log committed beside a GPU result
+records its card. Runs with logs from before the switch screen (table L) used a
+Tesla P100; their logs show only that Kaggle's preinstalled torch lacks the
+P100's sm_60 and was replaced, by torch 2.5.1 as pinned in the notebooks' setup
+cell (`benchmarks/build_notebooks.py`). The switch screen and every later run
+used a Tesla T4 with Kaggle's preinstalled torch, which the log prints: 2.10
+through the 60-epoch run and the long-schedule screen, 2.11 for the
+weight-decay runs and the $K=64$ width pair (tables M and N). `results_fixed/`,
+`results_kappa/` and `results_scaling/` have no committed logs, so their card
+is not recorded.
 
 ```bash
 pip install -r requirements.txt
@@ -63,6 +72,7 @@ back to scikit-learn's breast-cancer set.
 | Internal | `--representation constituents --max-samples 100000` | 70,000 / 15,000 / 15,000 | `top_tagging_constituents` |
 | Canonical | `--representation constituents --canonical-splits` | 1,211,000 / 403,000 / 404,000 | `top_tagging_canonical` |
 | Canonical, reduced training set (the probe protocol) | canonical + `--max-train-samples 400000` | 400,000 / 403,000 / 404,000 | `top_tagging_canonical` |
+| Canonical, long schedule at $K=32$ (the long-schedule screen) | canonical + `--n-constituents 32 --epochs 60` | 1,211,000 / 403,000 / 404,000 | `top_tagging_canonical` |
 
 The internal protocol takes the first `--max-samples` jets the loader finds
 and re-splits them at random. Files are read in sorted name order, so with the
@@ -74,17 +84,24 @@ internal-protocol model on the canonical test set.
 `3e-3` (`--lr`), no weight decay (`--weight-decay`), cosine annealing over the
 run's epochs, gradient-norm clipping at 1.0, batch size 128 (`--batch-size`),
 loss = cross-entropy + `model.regularization_loss()`. There is no early
-stopping: the weights after the last epoch are evaluated. The default dtype
+stopping: the weights after the last epoch are evaluated. `--keep-best` also
+tests the weights of the lowest-validation-loss epoch and records them beside
+the final ones. `--compile` runs the model through `torch.compile` on CUDA
+cards of compute capability 7.0 or higher, after checking it against eager
+execution on the first `batch_size` training jets. The default dtype
 is float64 on the CPU; the GPU runs below passed `--device cuda --dtype float32`.
 `--optimizer adamw`, `--schedule lorentznet` (with `--warmup-epochs`) and
 `--dropout` reproduce the training recipe of LorentzNet and PELICAN; on this
-model it lowered AUC (table C).
+model it lowered AUC (table C), and decoupled weight decay 0.002 on the wide
+variant lowered it too (table M).
 
 **Metrics** (`benchmarks.tabular_runner.evaluate_test`): test accuracy, AUC of
 the class-1 softmax score, and background rejection $1/\varepsilon_B$ at signal
 efficiency $\varepsilon_S=0.3$ and $0.5$, taken at the first ROC point whose
 true-positive rate reaches $\varepsilon_S$. Canonical metrics are computed on
-all 404,000 test jets.
+all 404,000 test jets. Of these, 201,914 are background, so at
+$1/\varepsilon_B$ between 1,000 and 1,141 only 177 to 202 background jets pass
+the cut, and one jet moves the rejection by about 0.5%.
 
 ## 4. Commands
 
@@ -135,7 +152,7 @@ python -m benchmarks.run_top_tagging --cache-dir data --representation constitue
 ```
 
 ```bash
-# so3c_message_set with beams and 8 channels at K = 64: the best configuration so far
+# so3c_message_set with beams and 8 channels at K = 64, 30 epochs: seeds 0 and 1
 python -m benchmarks.run_top_tagging --cache-dir data --representation constituents \
     --canonical-splits --epochs 30 --normalize global --seed 0 \
     --device cuda --dtype float32 --batch-size 256 --n-constituents 64 \
@@ -144,17 +161,37 @@ python -m benchmarks.run_top_tagging --cache-dir data --representation constitue
 python -m benchmarks.ensemble_scores --results-dir results_beams_k64
 ```
 
+```bash
+# The best single model: the same configuration for 60 epochs, compiled (T4)
+python -m benchmarks.run_top_tagging --cache-dir data --representation constituents \
+    --canonical-splits --epochs 60 --normalize global --seed 0 \
+    --device cuda --dtype float32 --batch-size 256 --n-constituents 64 \
+    --rounds 3 --beams --channels 8 --eval-chunk-size 1024 --models so3c_message_set \
+    --compile --results-dir results_headline60 --ckpt-dir ckpt_headline60 --resume --max-seconds 39000
+# Ensembles of the committed runs: the three 30-epoch seeds, then all four models
+python -m benchmarks.ensemble_scores --results-dir results_message/beams_k64 results_k64/headline
+python -m benchmarks.ensemble_scores --allow-shared-seed \
+    --results-dir results_message/beams_k64 results_k64/headline results_k64/headline60
+```
+
+The 60-epoch run and seed 0 of the 30-epoch runs share a seed number, so the
+four-model ensemble needs `--allow-shared-seed`.
+
 `--ckpt-dir`, `--resume` and `--max-seconds` checkpoint every epoch, stop the
 session after the given number of seconds and continue on the next invocation
 of the same command; models whose result JSON already exists are skipped. The
 pairwise readouts hold a `(chunk, K, K, hidden)` tensor, so `--eval-chunk-size`
-has to shrink as $K$ grows (4096, 1024 and 256 were used at $K$ = 32, 64 and
-128). The beams configuration needs about 1,270 s per epoch, 10.6 hours for
-30, which does not fit one 12-hour Kaggle session: the recorded runs stopped
-after epoch 24 and a second notebook finished them. A new Kaggle session
-starts with an empty working directory, so that notebook copies the
-checkpoint in first ([`SO3C_STATUS.md`](../../SO3C_STATUS.md), infrastructure
-table).
+has to shrink as $K$ grows: 4096 or 2048 at $K=32$ (2048 for every
+probe-protocol and long-schedule run), 1024 at $K=64$ (one covariant seed used
+4096) and 256 at $K=128$. On a P100 with the original forward pass the beams
+configuration needed about 1,270 s per epoch, 10.6 hours for 30, which does not
+fit one 12-hour Kaggle session: seeds 0 and 1 stopped after epoch 24 and a
+second notebook finished them. A new Kaggle session starts with an empty
+working directory, so that notebook copies the checkpoint in first
+([`SO3C_STATUS.md`](../../SO3C_STATUS.md), infrastructure table). On a T4 with
+the rewritten forward pass the same 30 epochs took 5.18 hours (621 s per
+epoch, seed 2) and 4.10 hours with `--compile` (492 s per epoch); 60 epochs with
+`--compile` took 8.59 hours (515 s per epoch). Each of these fitted one session.
 
 **Probe and capacity sweep, without beams** (canonical split, 400k training
 jets, 20 epochs):
@@ -193,6 +230,43 @@ The tuning rows add `--beams` and, respectively, `--epochs 35`;
 `--epochs 20 --channels 8`; `--epochs 20 --lr 6e-3`;
 `--epochs 20 --dropout 0.05 --weight-decay 1e-4`; and
 `--epochs 20 --channels 16`.
+
+**Switch screen and seed replicates** (probe protocol with beams and 8
+channels, table L):
+
+```bash
+COMMON="--cache-dir data --representation constituents --canonical-splits \
+  --normalize global --max-train-samples 400000 --epochs 20 \
+  --device cuda --dtype float32 --batch-size 256 --n-constituents 32 \
+  --eval-chunk-size 2048 --models so3c_message_set --rounds 3 --beams --channels 8"
+python -m benchmarks.run_top_tagging $COMMON --seed 0 --no-mass-input --no-self-edges --results-dir gap_screen/fixes
+python -m benchmarks.run_top_tagging $COMMON --seed 0 --pair-latent 8 --results-dir gap_screen/pair8
+```
+
+The other screen rows replace the last flags with `--vector-channel`,
+`--relnorm-edge`, `--falpha 3`, `--rounds 6`, or
+`--vector-channel --pair-latent 8 --no-mass-input --no-self-edges`. The seed
+replicates add `--compile` and run seeds 0, 1 and 2 of the base, of
+`--pair-latent 8` and of `--vector-channel`.
+
+**Long-schedule screen** (table M) and **width at $K=64$** (table N):
+
+```bash
+COMMON="--cache-dir data --representation constituents --canonical-splits \
+  --normalize global --epochs 60 --device cuda --dtype float32 --batch-size 256 \
+  --n-constituents 32 --eval-chunk-size 2048 --models so3c_message_set --rounds 3 \
+  --beams --channels 8 --compile"
+python -m benchmarks.run_top_tagging $COMMON --seed 0 --results-dir long/base
+python -m benchmarks.run_top_tagging $COMMON --seed 0 \
+  --act-hidden 128 --msg-dim 32 --scalar-dim 32 --results-dir long/w128s32
+python -m benchmarks.run_top_tagging $COMMON --seed 0 \
+  --act-hidden 128 --msg-dim 32 --scalar-dim 32 \
+  --optimizer adamw --weight-decay 0.002 --keep-best --results-dir long/w128s32wd2
+```
+
+`w64s24` is `--act-hidden 64 --msg-dim 24 --scalar-dim 24`. The $K=64$ width
+pair is the 30-epoch beams command above with `--compile --keep-best`, once
+as it is and once with the `w64s24` flags.
 
 **Parameter-matched generic baseline** (9,053 parameters):
 
@@ -254,7 +328,14 @@ python -m benchmarks.measure_throughput
 python -m benchmarks.aggregate --results-dir results
 python -m benchmarks.build_notebooks
 python -m benchmarks.kaggle_client status
+python -m benchmarks.profile_gpu --config base --k 64 --compile --out profile_out
 ```
+
+`build_notebooks` takes no arguments: any invocation, `--help` included,
+regenerates every notebook it builds (all but the legacy `kaggle_dataprep.ipynb`)
+and the kernel metadata of the $K=64$, probe-seed, long-schedule and
+width-profile kernels from the working tree, uncommitted code included. `profile_gpu` times training steps and evaluation
+of `so3c_message_set` on a GPU and estimates the time per epoch (table O).
 
 The GPU runs were executed through notebooks generated by
 `benchmarks/build_notebooks.py`, which embed the repository code; uploading
@@ -273,11 +354,24 @@ table of [`SO3C_STATUS.md`](../../SO3C_STATUS.md).
 `test_metrics` (`test_acc`, `test_auc`, `bg_rej_30`, `bg_rej_50`), `config`
 (the `TrainConfig`) and `history` (per-epoch training and validation loss and
 accuracy). `so3c_kwargs` and `dtype` were added on 2026-09-13 (commit
-`dbaad54`); every result on this page is older and lacks them, so its
-configuration is the command that produced it, kept in the generated notebook.
-Beside the JSON, `…__scores.npz` holds `scores` (float32 class-1 probabilities
-for the test set) and `labels` (int8), so ROC-based analyses need no
-retraining.
+`dbaad54`, an so33 commit), `compile` on 2026-09-20 and `keep_best` on
+2026-09-27. Results produced by code older than a key lack it (the switch
+screen finished after `compile` was added but ran an older code bundle), and
+for them the configuration is the command that produced it, kept in the
+generated notebook. One exception: `results_k64/headline` seed 2 ran
+without `--compile`, although its committed notebook now carries the flag. With
+`--keep-best` the record also has `best_val_epoch`, `best_val_loss` and
+`test_metrics_best_val`, the same four metrics for the lowest-validation-loss
+weights; `test_metrics` always refers to the final weights. Beside the JSON,
+`…__scores.npz` holds `scores` (float32 class-1 probabilities for the test
+set) and `labels` (int8), so ROC-based analyses need no retraining; with
+`--keep-best`, `…__scores_bestval.npz` holds the same for the
+best-validation weights. Most GPU result directories also keep the training
+checkpoints, in a `checkpoints/` subdirectory
+(`checkpoints/[<run>/]<experiment>__<model>__seed<N>.pt`: model, optimizer, scheduler
+and RNG state, history, and from 2026-09-27 the best weights) and the kernel
+logs; the $K=64$ runs in `results_k64/` add `bundle_sha256.txt`, a hash of the
+code bundle the notebook embedded.
 
 `run_boost_robustness` writes `boost__<model><tag>__seed<N>.json` with a `curve`
 (per scale: `rapidity` — which is the scale $s$ —, `auc`, `auc_std`, `draws`,
@@ -287,14 +381,18 @@ and with beams `auc_beams_moved` and `auc_beams_moved_std`), `drop`, `beams`,
 `so3c_boost_ood__<mode>__<model>__seed<N>.json` with `id_auc`, `id_acc`,
 `ood_auc`, `ood_acc` and `auc_gap`. `ensemble_scores --out FILE` writes
 `ensemble`, `members`, `mean_score_correlation`, `model`, `experiment` and
-`results_dir`.
+`results_dir` (a list; a single string in
+`results_message/beams_k64/ensemble_seeds01.json`, written before several
+directories were accepted); when seeds are shared, each member also records its
+`source` directory.
 
 ## 6. Results
 
 ### A. Canonical top tagging
 
 Published split, full training set. ✗ marks the model that is not
-Lorentz-invariant once trained. GPU runs used float32 according to their
+Lorentz-invariant once trained; bold marks the best single model by AUC and
+the best ensemble. GPU runs used float32 according to their
 notebook commands; `results/` is not committed.
 
 | Model | Params | $K$ | Seeds | Epochs | AUC | Acc. | $1/\varepsilon_B$ @ 0.3 | $1/\varepsilon_B$ @ 0.5 | Hours / seed | Source |
@@ -309,13 +407,21 @@ notebook commands; `results/` is not committed.
 | `so3c_covariant_set` | 9,078 | 128 | 1 | 30 | 0.9781 | 0.9248 | 639 | 183 | 6.02 GPU | `results_kappa/k128/` |
 | `so3c_message_set` | 13,862 | 64 | 2 | 30 | 0.9807 ± 0.0001 | 0.9297 | 850 ± 56 | 233 ± 4 | 7.75 GPU | `results_message/k64/` |
 | `so3c_message_set` + beams, 8 channels | 22,834 | 64 | 2 | 24 | 0.98311 ± 0.00010 | 0.9345 | 1095 ± 21 | 287 ± 8 | 8.49 GPU | `results_message/beams_k64_epoch24/` |
-| `so3c_message_set` + beams, 8 channels | 22,834 | 64 | 2 | 30 | **0.98333 ± 0.00010** | 0.9347 | **1131 ± 22** | 292 ± 7 | 10.62 GPU | `results_message/beams_k64/` |
-| the same two seeds, scores averaged | — | 64 | 2 | 30 | 0.98373 | — | 1174 | 306 | — | `ensemble_scores` on `results_message/beams_k64/` |
+| `so3c_message_set` + beams, 8 channels | 22,834 | 64 | 2 | 30 | 0.98333 ± 0.00010 | 0.9347 | 1131 ± 22 | 292 ± 7 | 10.62 GPU | `results_message/beams_k64/` (seeds 0, 1) |
+| the same, with seed 2 | 22,834 | 64 | 3 | 30 | 0.98326 ± 0.00014 | 0.9346 | 1089 ± 75 | 291 ± 6 | 10.6, 10.6, 5.18 GPU ‡ | + `results_k64/headline/` |
+| `so3c_message_set` + beams, 8 channels | 22,834 | 64 | 1 | 60 | **0.98363** | 0.9355 | **1141** | 315 | 8.59 GPU ‡ | `results_k64/headline60/` |
+| seeds 0 and 1 at 30 epochs, scores averaged | — | 64 | 2 | 30 | 0.98373 | — | 1174 | 306 | — | `results_message/beams_k64/ensemble_seeds01.json` |
+| seeds 0, 1 and 2 at 30 epochs, scores averaged | — | 64 | 3 | 30 | 0.98378 | — | 1160 | 316 | — | `results_k64/headline/ensemble_seeds012.json` |
+| those three and the 60-epoch run, scores averaged | — | 64 | 4 | 30, 60 | **0.98396** | — | **1231** | 328 | — | `results_k64/headline60/ensemble_seeds012_plus_60ep.json` |
 | `relu_mlp` (Deep Sets, matched) | 9,053 | 32 | 1 | 30 | 0.7636 | 0.7129 | 8.5 | 5 | 4.24 CPU | `results_matched_canonical/` |
 | `gelu_mlp` (Deep Sets, matched) | 9,053 | 32 | 1 | 30 | 0.7633 | 0.7123 | 8.6 | 5 | 5.65 CPU | `results_matched_canonical/` |
 
 † Measured before six identically-zero features were removed; the current
 model has 5,122 parameters ([models.md](models.md#so3c_invariant_set)).
+
+‡ Tesla T4 with the rewritten forward pass (seed 2 eager, the 60-epoch run with
+`--compile`). The other GPU rows with committed logs ran on a P100 with the
+original code.
 
 - At $K=32$ and about 9k parameters the exactly invariant covariant model
   matches the non-invariant one (0.9746 against 0.9744); the matched generic
@@ -326,12 +432,28 @@ model has 5,122 parameters ([models.md](models.md#so3c_invariant_set)).
   covariant model at $K=64$, with 1.5× the parameters and 4.6× the time per
   seed. The same two runs checkpointed at epoch 28
   (`results_message/k64_epoch28/`) had already reached 0.9807 and 855.
-- Beams and 8 channels add another 0.0026 AUC and 33% rejection
-  (0.98333 / 1131 against 0.9807 / 850), with 1.6× the parameters and 1.4× the
-  time per seed. The last six epochs, run after the session limit, added
-  0.0002 AUC and 37 rejection.
-- Averaging the two seeds' scores adds 0.0004 AUC and 42.5 rejection; the two
-  members' per-jet scores correlate at 0.994.
+- Beams and 8 channels add another 0.0025 AUC and 28% rejection over three
+  seeds (0.98326 / 1089 against 0.9807 / 850), with 1.6× the parameters. On
+  the P100, seeds 0 and 1 took 1.4× the time of the beamless model, and the
+  last six of their epochs, run after the session limit, added 0.0002 AUC and
+  37 rejection. Their rejection spread was ±22; the third seed, at 1004.5,
+  widened it to ±75, so a rejection difference of ~150 on one seed is not
+  resolved, while the AUC spread grew only from ±0.00010 to ±0.00014.
+- Training the same configuration for 60 epochs gives the best single model by
+  AUC, 0.98363 / 1141 (its rejection is inside the 30-epoch spread; seed 0 at 30
+  epochs reached 1147): +0.00037 AUC over the three-seed 30-epoch mean, 2.2 standard
+  errors with three seeds to compare against, and a final validation loss of
+  0.16276, below all three 30-epoch runs (0.16318 to 0.16455). One seed.
+- Averaging scores helps a little: +0.0004 AUC and 42.5 rejection for seeds 0
+  and 1 (per-jet scores correlating at 0.994), +0.00052 and 71 for all three
+  seeds, and the four-model ensemble with the 60-epoch run reaches
+  0.98396 / 1231.
+- Stacking the jet's constituent multiplicity on the two-seed ensemble's scores
+  (`benchmarks/diag_multiplicity_stacking.py`, fitted on one half of the test
+  set and scored on the other, so a diagnostic only) adds 0.00002 AUC and 65
+  rejection at $\varepsilon_S=0.3$ (6%, positive in both halves): no AUC gain,
+  and a rejection gain within the seed spread
+  (`results_message/beams_k64/multiplicity_stacking.json`).
 - The ODE model is slower and weaker than the closed-form covariant model.
 
 ### B. Probe protocol without beams
@@ -356,8 +478,8 @@ reduced training set lowers every absolute number: compare rows with each other.
 - Three rounds instead of one: +0.0025 AUC, rejection 358 to 585.
 - Removing the scalar channel at three rounds: −0.0025 AUC and 40% lower
   rejection (353 against 585).
-- The $k=16$ neighbour graph: −0.0011 AUC and 16% lower rejection for no
-  measurable time saving (0.57 against 0.58 hours).
+- The $k=16$ neighbour graph: −0.0011 AUC and 16% lower rejection for 1% less
+  wall clock (2064 against 2082 s).
 - The five capacity increases, up to 6.7× the parameters, change AUC by
   −0.0006 to +0.0001: without beams the architecture is saturated at this
   protocol.
@@ -387,13 +509,18 @@ decimals because the differences are small.
   against 0.97859 / 585).
 - The published recipe lowers AUC both without beams (−0.0009) and with them
   (−0.0002).
-- With beams, capacity pays again: 8 channels add 0.0004 AUC and 67
-  rejection. 16 channels are worse than 8 at 1.5× the time.
+- With beams, 8 channels scored 0.0004 AUC and 67 rejection above 4, and 16
+  channels below 8 at 1.5× the time. On one seed each these are not resolved:
+  0.0004 AUC is about 1.7 times the 0.00024 spread of a difference between two
+  single runs, measured later on this protocol (table L), and the rest are
+  inside it.
 - 35 epochs instead of 20: +0.00015 AUC and 14 less rejection for 75% more
   time. A learning rate of 6e-3: −0.0003 AUC. Dropout 0.05 with weight decay
   1e-4: −0.0011 AUC and 133 less rejection, so the model underfits.
-- One seed per row: differences near 0.0004 AUC are at the edge of the seed
-  spread.
+- One seed per row. Three seeds of the 8-channel configuration on this
+  protocol later gave ±0.00017 AUC and ±58 rejection (table L), so a difference
+  between two single runs has a spread of about 0.00024 AUC: no difference in
+  this table below about 0.0005 AUC is resolved.
 
 ### D. Channel scaling of `so3c_equivariant_set` ✗
 
@@ -541,7 +668,7 @@ rows are the parent SO(3,3) models and cannot be rebuilt in this repository
 Measured by `benchmarks/measure_throughput.py` on one CPU (torch 2.11, 6
 threads, $K=32$, training batch 128); committed in
 `figures/throughput.csv`. The covariant and message-passing models are not in
-this table.
+this table; the GPU cost of `so3c_message_set` is in table O.
 
 | Model | Params | ms / training step | Inference jets/s at batch 128 / 512 / 2048 |
 |---|---:|---:|---|
@@ -561,16 +688,145 @@ Values checked against the source tables, from
 | ParticleNet | 366,000 | 0.9858 | 1615 ± 93 |
 | LorentzNet | 224,000 | 0.9868 | 2195 ± 173 |
 | PELICAN | 208,000 | 0.9870 | 2250 ± 75 |
+| L-GATr | 1,100,000 | 0.9870 | 2240 ± 70 |
+| L-GATr, fine-tuned after JetClass pretraining | 1,100,000 | 0.98793 | 2894 ± 84 |
 | PELICAN (own size sweep) | 11,000 | 0.9858 | 1879 ± 103 |
 | | 3,000 | 0.9850 | 1494 ± 43 |
 | | 1,000 | 0.9835 | 1145 ± 74 |
 | | 605 | 0.9823 | 901 ± 59 |
 | | 248 | 0.9780 | 516 ± 52 |
 
-PELICAN at 1,000 parameters (0.9835 / 1145 ± 74) matches the best SO3C model
-(22,834 parameters, 0.98333 / 1131 ± 22); PELICAN from 3,000 parameters up,
-LorentzNet and ParticleNet are ahead on both metrics. LGN has lower AUC than
-every SO3C set model but higher rejection than the $K=32$ SO3C models.
+PELICAN at 1,000 parameters (0.9835 / 1145 ± 74) matches the best SO3C single
+model (22,834 parameters, 60 epochs, 0.98363 / 1141); PELICAN from 3,000
+parameters up, LorentzNet, ParticleNet and L-GATr are ahead on both metrics.
+L-GATr trained from scratch matches PELICAN; its fine-tuned variant, the
+highest entry in the reference table, was pretrained on JetClass and is a
+different comparison class. LGN has lower AUC than every SO3C set model, and
+higher rejection than the $K=32$ models of table A but lower than the models at
+$K=64$ or 128.
+
+### L. Switch screen and probe-protocol noise
+
+Probe protocol (canonical split, 400,000 training jets, 20 epochs, $K=32$) with
+beams and 8 channels, float32 on a T4 with torch 2.10. The screen ran one seed
+per row with the original forward pass and without `--compile`, committed in
+`results_message/gap_screen/`; its reference is the 8-channel row of table C,
+run on a P100. The replicates ran seeds 0, 1 and 2 with the rewritten forward
+pass and `--compile`, committed in `results_message/probe_seeds/`.
+
+| Run | Change | Params | Seeds | AUC | $1/\varepsilon_B$ @ 0.3 | Hours / seed |
+|---|---|---:|---:|---|---|---:|
+| `beams_tuning/c8` (table C) | none | 22,834 | 1 | 0.98128 | 834 | 0.81 |
+| `gap_screen/pair8` | `--pair-latent 8` | 26,514 | 1 | 0.98124 | 828 | 1.35 |
+| `gap_screen/combo` | `--vector-channel --pair-latent 8 --no-mass-input --no-self-edges` | 26,861 | 1 | 0.98115 | 814 | 1.53 |
+| `gap_screen/vector` | `--vector-channel` | 23,365 | 1 | 0.98109 | 817 | 1.08 |
+| `gap_screen/falpha3` | `--falpha 3` | 24,373 | 1 | 0.98105 | 783 | 1.31 |
+| `gap_screen/fixes` | `--no-mass-input --no-self-edges` | 22,634 | 1 | 0.98097 | 740 | 0.92 |
+| `gap_screen/rounds6` | `--rounds 6` | 28,378 | 1 | 0.98092 | 721 | 1.76 |
+| `gap_screen/relnorm` | `--relnorm-edge` | 23,602 | 1 | 0.98084 | 789 | 1.11 |
+| `probe_seeds/base` | none | 22,834 | 3 | 0.98106 ± 0.00017 | 806 ± 58 | 0.44–0.45 |
+| `probe_seeds/pair8` | `--pair-latent 8` | 26,514 | 3 | 0.98118 ± 0.00004 | 835 ± 27 | 0.57–0.61 |
+| `probe_seeds/vector` | `--vector-channel` | 23,365 | 3 | 0.98104 ± 0.00012 | 805 ± 24 | 0.47–0.50 |
+
+- No switch beats the reference, and the whole screen spans 0.0004 AUC. The
+  base's own spread on this protocol, ±0.00017 over three seeds, gives a
+  difference between two single runs a spread of about 0.00024. The largest
+  screen difference, −0.00044 for the relative-norm edge, is 1.8 times that,
+  and the reference itself sits 0.00022 above the three-seed mean. The screen
+  rules out only a large gain that would already show on this short protocol;
+  candidates that add capacity may need the long schedule (table M), where none
+  has been run.
+- Paired seed by seed against the base, the pair latent gains +0.00012 AUC
+  (t = 1.42, two degrees of freedom) and the vector channel −0.00002 (t = −0.59,
+  paired differences spreading by 0.00006). Neither is a demonstrated gain.
+- Base seed 0 with the rewritten forward pass and `--compile` scored 0.98125
+  against 0.98128 for the reference run, which used the original code on a
+  P100: consistent with no shift, but one cross-stack pair cannot test it. The
+  float64 guard tests are what hold the two implementations equal.
+
+### M. Long schedule: width and weight decay
+
+Canonical split, all 1,211,000 training jets, $K=32$, 60 epochs, beams and 8
+channels, float32 with `--compile` on a T4, committed in `results_long_seeds/`.
+`w64s24` adds `--act-hidden 64 --msg-dim 24 --scalar-dim 24`, `w128s32` adds
+`--act-hidden 128 --msg-dim 32 --scalar-dim 32`, and the weight-decay arm adds
+`--optimizer adamw --weight-decay 0.002 --keep-best` to `w128s32`.
+
+| Arm | Params | Seeds | AUC | $1/\varepsilon_B$ @ 0.3 | @ 0.5 | Lowest val. loss at epoch | Val. − train loss at 60 | Hours / seed | torch |
+|---|---:|---:|---|---|---|---|---|---|---|
+| base | 22,834 | 3 | 0.98242 ± 0.00020 | 909 ± 32 | 253 ± 3 | 60, 56, 60 | 0.0047–0.0053 | 3.37–3.52 | 2.10 |
+| `w64s24` | 60,834 | 1 | 0.98286 | 930 | 256 | 50 | 0.0091 | 4.39 | 2.10 |
+| `w128s32` | 120,202 | 2 | 0.98289 ± 0.00027 | 989 ± 65 | 269 ± 12 | 45, 47 | 0.0103–0.0120 | 6.40–7.02 | 2.10 |
+| `w128s32`, weight decay 0.002 | 120,202 | 2 | 0.98278 ± 0.00028 | 955 ± 114 | 264 ± 12 | 50, 52 | 0.0104–0.0133 | 6.30–7.41 | 2.11 |
+
+- Width pays a little, on two pairs. With dropout off and the same torch build,
+  runs that share a seed see the same batch order (`train_classifier` reseeds
+  after the model is built), so they pair:
+  `w128s32` beats the base by +0.00047 and +0.00049 AUC on seeds 0 and 1, and by
+  92 and 62 in rejection. `w64s24`, one seed, sits +0.00025 above base seed 0.
+  That is about +0.0002 AUC per doubling of the parameter count. Two pairs per
+  comparison is thin.
+- The wide models overfit in validation loss, which bottoms at epochs 45 to 52
+  while the gap between validation and training loss grows to about twice the
+  base's. In the two weight-decay runs, the only wide runs that recorded it
+  (`--keep-best`), the lowest-validation-loss weights score only +0.00006 and
+  +0.00001 AUC above the final weights (rejection +0 and +48), so in AUC their
+  discrimination saturates rather than degrades; the unregularised wide runs
+  were not measured this way.
+- Decoupled weight decay 0.002 scores −0.00010 and −0.00012 AUC against
+  `w128s32` of the same seeds and does not narrow the gap. Those two runs used
+  torch 2.11 against 2.10 for their controls, and whether a shared seed gives
+  the same batch order across that upgrade is unknown: epoch-1 losses cannot
+  tell (base seeds 0 and 2, different seeds on one version, agree there to
+  0.00008 in validation loss). Paired, decay costs about 0.0001 AUC; unpaired,
+  −0.00011 is inside the ±0.00027 seed spread.
+
+### N. Width at $K=64$
+
+Canonical split, $K=64$, 30 epochs, beams and 8 channels, seed 0, float32 with
+`--compile --keep-best` on a T4 with torch 2.11, committed in `results_k64/`.
+
+| Run | Params | AUC | Acc. | $1/\varepsilon_B$ @ 0.3 | @ 0.5 | Lowest val. loss at epoch | Hours |
+|---|---:|---|---:|---|---|---:|---:|
+| `headline_t4` (control) | 22,834 | 0.98311 | 0.9345 | 1041 | 288 | 30 | 4.10 |
+| `w64s24` | 60,834 | 0.98319 | 0.9347 | 1035 | 284 | 30 | 6.72 |
+
+- One paired seed gives +0.00008 AUC and −5 rejection: no gain resolved at 30
+  epochs, where neither model overfits. The scatter of paired differences at
+  $K=64$ is unmeasured, and width at $K=64$ over 60 epochs has not been run.
+- The control reruns the original seed-0 headline on a different stack: torch
+  2.11 instead of 2.5.1, a T4 instead of a P100, `--compile`, and the rewritten
+  forward pass. It scored 0.00014 AUC and 106 rejection below the original
+  (0.98326 / 1147), about one seed's spread: across that change of stack, a
+  shared seed behaved like an independent seed.
+
+### O. GPU cost
+
+Estimated seconds per epoch on a T4 (torch 2.10, batch 256, float32) from
+`benchmarks/profile_gpu.py`: timed training steps scaled to the 1,211,000
+training jets plus one pass over the 403,000 validation jets, on synthetic jets.
+Committed in `results_profile/`.
+
+| `so3c_message_set`, $K=64$ | Params | original code (`t4_16302b1`) | rewritten (`t4_47ec4ad`) | rewritten, `--compile` (`t4_compile_05f18fb`) |
+|---|---:|---:|---:|---:|
+| beams, 8 channels | 22,834 | 1219 | 589 | 470 |
+| + `--vector-channel` | 23,365 | 1457 | 738 | 549 |
+| + `--pair-latent 8` | 26,514 | 1894 | 918 | 702 |
+
+At $K=32$ the same configuration went from 389 to 208 s per epoch with the
+rewrite. The width profile (`t4_width_1007eaa`, `--compile`):
+
+| Configuration | Params | $K=32$ | $K=64$ |
+|---|---:|---:|---:|
+| beams, 8 channels | 22,834 | 168 | 485 |
+| `--act-hidden 32` | 27,922 | 178 | 584 |
+| `w64s24` | 60,834 | 243 | 815 |
+| `w128s32` | 120,202 | 361 | 1270 |
+
+The same profile's rows for 16 channels and the pair latent fell back to eager
+execution without warning (compilation took 0 s and the logits matched eager
+exactly), so they are left out. Real runs of table M took 1.05 to 1.26 times
+these estimates.
 
 ## 7. Figures
 
@@ -588,13 +844,16 @@ Figure scripts write a PDF, a CSV twin and (except `figure_scaling`) a PNG to
 
 `figure_binned`, `figure_convergence` and `figure_k_robustness` plot
 `so3c_equivariant_set` ✗, `so3c_invariant_set` and `eta_invariants`, the
-models those experiments were run on. No figure shows the beams results yet.
+models those experiments were run on. No figure shows the beams results or
+anything added after 2026-09-18, and the committed `figure_pareto` output
+predates the L-GATr row of the reference table.
 
 ## 8. Limitations and open issues
 
-1. **Not state of the art.** The best SO3C model is 0.0037 AUC and a factor of
-   2.0 in rejection behind PELICAN, and PELICAN's 1,000-parameter model matches
-   it (table K).
+1. **Not state of the art.** The best SO3C single model is 0.0034 AUC and a
+   factor of 1.97 in rejection behind PELICAN, the best ensemble 0.0030 and
+   1.83, and PELICAN's 1,000-parameter model matches the single model
+   (table K).
 2. **With beams, the output is not Lorentz-invariant**, by design: it is
    covariant together with the beams and invariant only under rotations about
    the beam axis ([theory.md §11](theory.md#11-beams-what-symmetry-survives)).
@@ -611,15 +870,25 @@ models those experiments were run on. No figure shows the beams results yet.
 6. **The internal protocol reads `top_tagging_test.npz` first** (§3).
 7. **The canonical `so3c_invariant_set` result predates** the removal of six
    dead features.
-8. **Few seeds.** Tables B, C, D and F are single-seed and the best result has
-   two; differences below the seed spread of table A (±0.0001 AUC, ±19–56
-   rejection) are not resolved.
-9. **Provenance gaps.** `results/` is not committed. The result JSONs on this
-   page do not record the model's constructor arguments or the dtype (the
-   runner records both from 2026-09-13), nor the GPU type.
-10. **The switches of [theory.md §12](theory.md#12-switches-implemented-but-not-yet-trained)
-    are untested on data**: implemented and covered by unit tests, but not
-    trained.
+8. **Few seeds.** Tables B, C, D, F and N, the screen rows of table L and the
+   `w64s24` arm of table M are single-seed, and so is the best single model.
+   Measured spreads: ±0.00014 AUC and ±75 rejection for the 30-epoch headline
+   (three seeds), ±0.00017 and ±58 on the probe protocol, ±0.00020 and ±32 on
+   the long schedule. Runs that share a seed on the same stack see the same
+   batch order and can be compared pairwise; how much that helps varies
+   (paired differences scattered by 0.00001 for `w128s32`, 0.00006 for the
+   vector channel and 0.00015 for the pair latent, against ±0.00017 unpaired on
+   the probe protocol). Across stacks a shared seed behaved like an independent
+   seed (table N).
+9. **Provenance gaps.** `results/` is not committed. Result JSONs written
+   before 2026-09-13 do not record the model's constructor arguments or the
+   dtype, and no JSON records the GPU or the torch version. The kernel logs give
+   the card for most GPU runs and the torch version for the T4 runs; for the
+   P100 runs it comes from the notebooks' pinned setup, and `results_fixed/`,
+   `results_kappa/` and `results_scaling/` have no logs.
+10. **The switches of [theory.md §12](theory.md#12-switches-screened-on-the-probe-protocol)
+    were screened only on the probe protocol** (table L): none showed a
+    resolved gain there, and none has been trained on the full training set or at $K=64$.
 11. **`SO3CInteraction` is not integrated into LorentzNet.** It was written as
     a candidate replacement for the nonlinearity in LorentzNet's LGEB blocks;
     no such model exists in this repository.
