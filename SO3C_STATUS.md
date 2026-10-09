@@ -1,6 +1,6 @@
 # SO3C status
 
-Last updated 2026-10-06. This is the single place to start from. Commit hashes point at the evidence for every number. Hashes of work from before the snapshot (2026-09-16) are commits in the **so33** repository this one was split from; hashes of later work, some marked **(SO3C)**, are commits in this repository; `git cat-file -t <hash>` tells which (see [Provenance](#provenance)).
+Last updated 2026-10-10. This is the single place to start from. Commit hashes point at the evidence for every number. Hashes of work from before the snapshot (2026-09-16) are commits in the **so33** repository this one was split from; hashes of later work, some marked **(SO3C)**, are commits in this repository; `git cat-file -t <hash>` tells which (see [Provenance](#provenance)).
 
 ## Scope and goal
 
@@ -79,12 +79,20 @@ The 30-epoch seeds, for the record:
 | Time-axis reference particle (1,0,0,0), gap-analysis finding 23 | redundant with beams: b+ + b- = 2 (1,0,0,0), so <p, t> = (<p,b+> + <p,b->)/2 is already available from inputs the model has. Closed by argument, not run | 2026-09-13 |
 | Two-seed ensemble | +0.0004 AUC; member scores correlate at 0.994 | `49e0c61`, `b72437f` |
 | Epochs 25–30 vs 24 (session cap) | +0.00022 AUC | `b72437f` |
-| **Jet multiplicity as an input** (true count, count clipped at 64, energy fraction in the leading 64) | Stacked on the two-seed ensemble's test scores, fit on one half of the test set and scored on the other: **+0.00002 AUC**; rejection +65, inside the ±60 spread between the two halves. The model already carries it. Diagnostic only (fits on test jets) | (SO3C) `benchmarks/diag_multiplicity_stacking.py`, `results_message/beams_k64/multiplicity_stacking.json` |
+| **Jet multiplicity as an input** (true count, count clipped at 64, energy fraction in the leading 64) | Stacked on the two-seed ensemble's test scores, fit on one half of the test set and scored on the other: **+0.00002 AUC**; rejection +65, inside the ±60 spread between the two halves. The model already carries it. Diagnostic only (fits on test jets). **The rejection delta carries no information:** with the logit alone the boosted trees output ~300 distinct scores, which ties the tail, and a pure-noise feature "adds" +125 (`so3c_notes/gap_generic_ml.md` §8.4). Only the AUC delta counts | (SO3C) `benchmarks/diag_multiplicity_stacking.py`, `results_message/beams_k64/multiplicity_stacking.json` |
+| **Rest-frame shape invariants (body order)**: tr S³, det S, sphericity eigenvalues, per-node triangles, linear energy-flow tensor of the raw lift | Stacked as the multiplicity row: −0.00001 to 0.00000 AUC on the 60-epoch model, ≤ +0.00003 on the ensemble, the size of a pure-noise control. Jet-level 3- and 4-body shapes add nothing | (SO3C) `so3c_notes/gap_generic_ml.md` §8.4, 2026-10-05 |
+| **Flow-head L2 penalty** (1e-3·‖w_head‖² inside the loss, plain Adam) | Not binding: in live channels the data gradient is 47–405× the penalty's and the penalty is ≤ 2.5% of Adam's normaliser; the Hessian curvature implies ≤ 9% shrinkage. It pins only heads of collapsed channels. A paired 300-step fine-tune without it changes nothing. Round 0 is quiet because the generator is quadratic in the (small) state, not because of the penalty | (SO3C) `so3c_notes/gap_generic_ml.md` §2 |
+| **Test-time augmentation** over the detector reflections (σ_x, σ_z, beam-slot swap; only 4 views are distinct) | +0.00002 ± 0.00002 AUC on 100k test jets, against +0.00034 for the 4-seed ensemble on the same jets | (SO3C) `so3c_notes/gap_generic_ml.md` §4 |
+| **Width at K=64** (w64s24, seed 0, 30 epochs, paired with a control rerun on the same software) | 0.98319 / 1035.5 against 0.98311 / 1040.8: **+0.00008 AUC** for 1.64× the time (+0.00025 at the K=32 long schedule, one seed) | (SO3C) `results_k64/w64s24`, `results_k64/headline_t4` |
+| **Edge LayerNorm** (`--edge-norm`, per-pair LayerNorm before the edge tanh; probe protocol, 3 seeds paired with a fresh torch-2.11 control) | **ΔAUC −0.00004 ± 0.00010** (t = −0.6); 1/ε_B@0.3 **−41.8 ± 7.8** on every seed; same GPU time. It halves the tanh saturation of rounds 1–2 (34/61% → 15/31% at seed 0) without moving AUC, so saturation is not the limit on this protocol | (SO3C) `results_message/probe_screen/`, `so3c_notes/gap_generic_ml.md` §9.2 |
+| **Log knee** (`--log-knee`, asinh(e^κ x) with learnable κ on the bilinear invariants; same screen) | **ΔAUC +0.00000 ± 0.00008** (t = 0.08); 1/ε_B@0.3 +39.0 ± 30.1, positive on all three seeds (p ≈ 0.08 one-sided), suggestive only; κ barely moves from its initial 4 (3.2–4.4). Free (+7 parameters), so a possible passenger, not an arm | (SO3C) `results_message/probe_screen/`, `so3c_notes/gap_generic_ml.md` §9.3 |
 | Best-validation checkpoint | Validation loss is lowest at the **final** epoch in both headline seeds and both beamless K=64 seeds (cosine schedule), so the best-validation checkpoint is the last one | (SO3C) 2026-09-19, from the stored histories |
 
 **Lesson worth keeping:** a closed question can re-open when the inputs change. Capacity was flat without beams and looked as if it paid once beams supplied the information (one seed, not resolved); width did pay later, paired, at the long schedule. kNN was useless at K=32 and 3.15× faster at K=128.
 
 ## Open — candidates
+
+Ranked literature and generic-ML candidates, every literature number checked against its paper's table: [`so3c_notes/gap_thesis.md`](so3c_notes/gap_thesis.md) and [`so3c_notes/gap_generic_ml.md`](so3c_notes/gap_generic_ml.md), with the 2026-10-06 audit's corrections applied. Their two measured leads were conditioning problems — round-0 inputs in asinh's linear range (about 95% of pair invariants below 0.1) and edge-tanh saturation in rounds 1–2 (61–84% of pre-activations beyond |x| > 2), with no normalisation layer in the network. Both were screened on 2026-10-05 and **neither moves AUC** (Closed table). The plan for the window opening 2026-10-10 is [`so3c_notes/plan_2026-10-10.md`](so3c_notes/plan_2026-10-10.md).
 
 ### Screened on 2026-09-20, none better than the base
 
@@ -102,7 +110,7 @@ Both are now switchable and default to the old behaviour: `--no-mass-input --no-
 - **Rank-2 pair latent** with a reduced Eq2→2 aggregator basis (7 of PELICAN's 15). PELICAN carries a [B,N,N,C] state through its blocks; we collapse pairs to nodes every round. The verified table-2 comparison — 1k PELICAN parameters match our 22.8k — is consistent with this being the dominant carrier. Outcome likely bimodal: a real step toward 1400–1800 rejection, or under +0.0005 if our flow already supplies it. **Implemented** as `--pair-latent N`: 3680 parameters at C_p = 8 on beams + channels 8, CPU cost 1.56x the headline, 1.64x combined with the vector channel and both fixes; on a T4 1.55x per step, an estimated ~7.7 h per 30-epoch seed at K=64 (~5.8 h compiled). Exactly Lorentz covariant (1.7e-16) and permutation invariant (0.0), with the 7 aggregator maps checked for permutation equivariance on their own. Screened on GPU on 2026-09-20 and replicated over three seeds: +0.00012 AUC paired, not resolved. Agent estimate: screen at 20% data × 3 seeds ≈ 11 GPU-h.
 - **A vector channel alongside the bivector.** Two reasons, one measured elsewhere and one structural:
   - arXiv:2606.21790 (abstract, verified) finds that in L-GATr "bivector channels are negligible for top-quark tagging while vector-like channels are dominant". The LLoCa (2505.20280) and slim L-GATr (2512.17011) abstracts do not address grades; their bodies are unchecked.
-  - Our lift `z_a = bivec(p_a, P)` is **unchanged under p_a → p_a + λP**, so it discards each constituent's component along the jet axis. The scalar channel recovers ⟨p_a, P⟩ only as an invariant. A covariant vector v_a = p_a keeps it — the same kind of missing-information problem that beams fixed. **Implemented** as `--vector-channel`: 531 parameters on beams + channels 8, CPU cost 1.10x the headline, exactly covariant to 7e-15 with and without beams, and the vector update moves the logits by 7e-2 to 9e-2. Screened on GPU on 2026-09-20 and replicated over three seeds: −0.00002 AUC paired, bounded near zero.
+  - Our lift `z_a = bivec(p_a, P)` is **unchanged under p_a → p_a + λP**, so it discards each constituent's component along the jet axis (**correction, 2026-10-05:** for the massless constituents of this dataset p_a² = 0 fixes that component, and z_a·z_a = ⟨p_a,P⟩², M² = Σ⟨p_a,P⟩ and Re z_a·z_b recover every ⟨p_a,p_b⟩, so the lift loses no information; `so3c_notes/gap_thesis.md` §3). The scalar channel recovers ⟨p_a, P⟩ only as an invariant. A covariant vector v_a = p_a keeps it — the same kind of missing-information problem that beams fixed. **Implemented** as `--vector-channel`: 531 parameters on beams + channels 8, CPU cost 1.10x the headline, exactly covariant to 7e-15 with and without beams, and the vector update moves the logits by 7e-2 to 9e-2. Screened on GPU on 2026-09-20 and replicated over three seeds: −0.00002 AUC paired, bounded near zero.
 
 ### Cheap candidates (unverified gain)
 
@@ -116,11 +124,15 @@ Both are now switchable and default to the old behaviour: `--no-mass-input --no-
 
 Full agent text: `so3c_notes/gap_to_sota_2026-09-13.md`. Three of the workflow's six agents failed on the usage limit, so the findings there are unranked.
 
-## GPU window 2026-10-03 → 2026-10-10 (in progress): regularising the wide model
+## GPU window 2026-10-10 → 2026-10-17 (in progress)
+
+Plan: [`so3c_notes/plan_2026-10-10.md`](so3c_notes/plan_2026-10-10.md). Its code steps C0–C6 were not done before the window opened; C0 (integrating the gap-notes branch: results, notes with the audit corrections, and this status) is done, and the first run is the 60 → 120-epoch continuation of the K=64 headline (plan §2a).
+
+## GPU window 2026-10-03 → 2026-10-10 (closed): regularising the wide model
 
 **Run:** w128s32 with decoupled weight decay (`--optimizer adamw --weight-decay 0.002`) and `--keep-best`, seeds 0 and 1, long-schedule protocol (`c762616`). Verified before pushing: the notebooks equal the control notebooks plus exactly those flags; same initial weights and same batch order as the control under each seed; AdamW with zero decay reproduces Adam exactly, so the decay is the only knob. Pushed 03:10, 6.30 h and 7.41 h. Results in `results_long_seeds/w128s32wd2`.
 
-**Result: a small, consistent negative.** Paired against the unregularised w128s32 runs of the same seeds:
+**Result: not shown to help** (corrected by the 2026-10-06 audit; it was headed "a small, consistent negative"). Against the unregularised w128s32 runs of the same seeds — paired only if the batch order survived the torch 2.10 → 2.11 upgrade, see below:
 
 | | seed 0 | seed 1 | mean |
 |---|---|---|---|
@@ -151,9 +163,21 @@ Neither model overfits at 30 epochs (validation loss lowest at the final epoch, 
 
 **Kaggle moved from torch 2.10 to 2.11** between 2026-09-27 and 2026-10-03, unannounced. Every log was checked: the long screen (base, w64s24, w128s32), the probe replicates and headline seed 2 ran on 2.10; the weight-decay runs and today's K=64 pair on 2.11. So the weight-decay comparison crossed the upgrade. Whether a shared seed still gives the same batch order across 2.10 → 2.11 cannot be checked directly here (no CUDA locally), and the epoch-1 losses do not settle it: same-seed pairs across the upgrade differ by 0.0008–0.0015 in epoch-1 validation loss, but base seeds 0 and 2, different seeds on one version, differ by only 0.00008. So the weight-decay verdict is paired only if the batch order survived the upgrade; unpaired, −0.00011 is inside the ±0.00027 seed spread. **Trap:** record the torch version of every run (the GPU_SETUP line in each log) and check it before calling two runs paired.
 
-**Budget:** ~25 of 30 GPU-h used this window (resets Saturday 2026-10-10).
+### Conditioning screen (2026-10-05)
 
-**Where this leaves the SOTA question.** Best single model is still the 60-epoch K=64 headline, 0.98363; best ensemble 0.98396; PELICAN 0.9870. Measured levers so far: training length (+0.00037 at K=64), width (+0.00048 at K=32 on 60 epochs, +0.00008 at K=64 on 30 epochs), weight decay (−0.00011), early stopping (~0). The one width test left is K=64 on 60 epochs: w64s24 needs ~13.4 h (two sessions, so a finish kernel), w128s32 ~22 h, and the 60-epoch headline seed 0 can serve as its paired control given the evidence above. Even a full transfer of the K=32 width effect would leave about 0.0026 from the best ensemble (0.0029 from the best single model), so this is the last tuning-scale lever; closing the gap needs a structural change, not more of these.
+The two conditioning switches of the gap notes, on the probe protocol (K=32, 400k training jets, 20 epochs, `--compile`), three seeds per arm, paired seed by seed with a **fresh** control on the same build (T4, torch 2.11.0+cu128, pinned and asserted by the new setup cell; every result JSON now records `env`). Code `2303568`; results `results_message/probe_screen/` (9 runs, 4.16 GPU-h).
+
+| arm | params | ΔAUC vs control | Δ 1/ε_B@0.3 |
+|---|---|---|---|
+| control | 22834 | 0.98112 ± 0.00002 (absolute) | 817.6 ± 11.4 (absolute) |
+| `--edge-norm` | 22930 | −0.00004 ± 0.00010 | −41.8 ± 7.8 |
+| `--log-knee` | 22841 | +0.00000 ± 0.00008 | +39.0 ± 30.1 |
+
+Conditioning, the top-ranked cheap lead, is not where the gap is. A fresh control was the safe design; whether the torch-2.10 baseline would have paired is **not shown** — epoch-1 losses cannot tell same-seed from different-seed runs (audit #6).
+
+**Budget:** ~13.9 h (regularised wide model) + ~11.2 h (the two K=64 runs) + 4.16 h (conditioning screen) ≈ **29.3 of 30 GPU-h** for this window (resets Saturday 2026-10-10).
+
+**Where this leaves the SOTA question.** Best single model is still the 60-epoch K=64 headline, 0.98363; best ensemble 0.98396; PELICAN 0.9870. Measured levers so far: training length (+0.00037 at K=64), width (+0.00048 at K=32 on 60 epochs, +0.00008 at K=64 on 30 epochs), weight decay (−0.00011), early stopping (~0). The one width test left is K=64 on 60 epochs: w64s24 needs ~13.4 h (two sessions, so a finish kernel), w128s32 ~22 h, and it would need a same-stack 60-epoch control (~8.6 h): the 60-epoch headline ran on torch 2.10, and pairing across 2.10 → 2.11 is not established (audit #1). Even a full transfer of the K=32 width effect would leave about 0.0026 from the best ensemble (0.0029 from the best single model), so this is the last tuning-scale lever; closing the gap needs a structural change, not more of these.
 
 ## GPU window 2026-09-26 → 2026-10-03 (closed): width at the long schedule
 
@@ -335,6 +359,12 @@ GPU used this window: ~9.2 h (screen) + 5.2 h (headline seed 2) + ~0.7 h (profil
 | A root-level ignore written as `data/` also matches `tests/data/` | the golden fixture could not be added | anchor root-only ignores: `/data/` (SO3C `2a3b344`) |
 | **Exactly two** Kaggle GPU sessions at once | a third push returns HTTP 200 with "Maximum batch GPU session count of 2 reached." and is refused, not queued; the client printed it as "pushed" | use both slots, push the next kernel when one frees; `kaggle_client push` exits 2 on a refusal (SO3C `8d7dff7`) |
 | A numerical fixture written on one platform, checked on another | the on-card guard failed at 4e-8 on every case; a diagnostic kernel showed even the **old** code on Kaggle's CPU was 4e-8 off, while new vs old on the T4 agreed to 3e-15 (`results_profile/t4_cuda_diag_3a3b10b.txt`). `nn.Linear` initialises in float32 before `.to(float64)`, and float32 init differs at the ulp level between torch versions | draw fixture parameters and inputs from numpy's legacy RandomState straight into float64, and compare against the shipped reference implementation on the same device (SO3C `89d67f3`) |
+| Kaggle's T4 image moved from torch 2.10 to 2.11 between windows (seen 2026-10-04) | seed pairing assumes the same CUDA `randperm` stream, unverified across versions; the probe and long-schedule baselines are on 2.10 | screen notebooks pin and assert the build (`GPU_SETUP_T4_PINNED`, `2303568`); every result JSON records `env`; rerun controls on the same stack rather than reuse old ones |
+| `kaggle_client push` asks for confirmation on stdin | in a non-interactive shell it died with EOFError after printing "about to push" | pass `--yes` once the push is approved |
+| The embedded bundle's sha256 changes on every build | gzip stamps the compression time, so the hash names a blob, not a code state | to tie a notebook to a commit, extract its bundle and compare file contents with the tree |
+| `.double()` on a complex tensor | silently drops the imaginary part (a warning only); a read-only diagnostic briefly reported nonsense jet-frame norms | cast complex tensors with `.to(torch.complex128)` |
+| A Windows Python given a Git Bash `/tmp/...` path | resolves it to `C:\tmp\...`, not the scratch directory | hand Python Windows paths (`cygpath -w`) |
+| A local smoke run with `--canonical-splits` | evaluates all 807k validation and test jets on CPU; it did not finish in 15 min | replay on the internal split with `--max-samples`; the canonical loader is proven on Kaggle |
 | Kaggle's image has a regular top-level `tests` package in site-packages | while our `tests/` was a namespace package, `tests.message_golden` failed to import on the card and the golden guard stopped headline seed 2 after ~5 min (log in `results_k64/headline/`) | `tests/__init__.py` (SO3C `4f397f4`); replay bundles with a fake shadowing `tests` package on PYTHONPATH |
 
 ## Compute and quota facts

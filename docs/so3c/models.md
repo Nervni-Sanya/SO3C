@@ -214,6 +214,8 @@ what each computes. Parameter counts are on the headline configuration
 | `vector_channel=True` | `--vector-channel` | 23,365 | a covariant 4-vector per node beside the bivector; dense graph only |
 | `pair_latent=8` | `--pair-latent 8` | 26,514 | a rank-2 pair state updated by 7 permutation-equivariant maps; dense graph only |
 | `vector_channel=True, pair_latent=8`, both fixes | all four flags | 26,861 | the architectural changes and the two fixes together |
+| `edge_norm=True` | `--edge-norm` | 22,930 | per-pair LayerNorm over the edge units before their tanh |
+| `log_knee=True` | `--log-knee` | 22,841 | $\operatorname{asinh}(e^{\kappa}x)$ with learnable $\kappa$ on the bilinear invariants; not with `falpha` |
 
 GPU time per training step relative to the headline, profiled on a T4 at
 $K=64$ in float32 (`results_profile/t4_47ec4ad`, `results_profile/t4_compile_05f18fb`):
@@ -224,7 +226,13 @@ validation included), here relative to the two fixes, which cost the same per st
 headline on the CPU: 1.17× for the vector channel, 1.20× for the relative-norm
 edge, 1.42× for `falpha=3`, 1.46× for the pair latent and 1.66× for the vector
 channel, pair latent and both fixes together. A CPU measurement made before any
-GPU run had put `falpha=3` at 3.54×.
+GPU run had put `falpha=3` at 3.54×. On the CPU (K=32, batch 256, float32)
+`log_knee` costs 1.03× and `edge_norm` 1.06× the headline per step; on the
+2026-10-05 T4 screen their sessions took the same time as the control's.
+
+Since 2026-10-05 every result JSON also records `env`: torch and CUDA versions,
+Python and the GPU name. Seed pairing between runs holds only on the same
+torch build.
 
 ## `so3c_interaction_set`
 

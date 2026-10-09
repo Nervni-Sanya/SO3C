@@ -259,10 +259,27 @@ vector index, so they commute. With excited weight heads the logits changed by
 at most $4.2\times10^{-14}$ (relative) under Lorentz boosts in float64.
 
 **Why the bound.** The exponential of a complex generator includes boosts, so
-the Hermitian norm $\lvert z\rvert$ can grow from round to round. It cannot be
-normalised away: the only scalars available are the bilinear invariants, and a
-null vector has $z\cdot z=0$ at any magnitude. The invariant soft bound is
-applied to the input lift and to every connection instead.
+the Hermitian norm $\lvert z\rvert$ can grow from round to round. The states'
+own scalars cannot normalise it away: their invariants are bilinear, and a null
+vector has $z\cdot z=0$ at any magnitude. The invariant soft bound is applied
+to the input lift and to every connection instead.
+
+The jet momentum $P$, which the model has, does give a genuine invariant norm.
+It is the Hermitian norm in the jet rest frame. With $u=P/M=(\gamma,\mathbf b)$
+and $z=\mathbf E+i\mathbf B$,
+
+$$\lvert z^*\rvert^2=2\,T^{\mu\nu}(F)\,u_\mu u_\nu=(1+2\lvert\mathbf b\rvert^2)\lvert z\rvert^2-2\lvert\mathbf b\cdot z\rvert^2-2i\gamma\,\mathbf b\cdot(z\times\bar z),$$
+
+that is, twice the Maxwell energy density seen by the jet. It is an exact
+invariant of $(z,P)$, positive for $z\ne0$ (null states included) and equal to
+$\lvert z\cdot z\rvert=\langle p,P\rangle^2$ on the raw lift.
+
+Two measurements bound its usefulness ([`so3c_notes/gap_generic_ml.md`](../../so3c_notes/gap_generic_ml.md) §8.3):
+
+- On the states of the trained headline, $\lvert z^*\rvert$ equals $\lvert z\cdot z\rvert^{1/2}$ to within 20%, so the soft bound already behaves like it.
+- The invariant state size grows 4–8× over the rounds. The flow conserves $z\cdot z$, so that growth comes from the channel mixing.
+
+In float32 the formula above cancels terms of order $\gamma^2\lvert z\rvert^2$. It must be evaluated after boosting the inputs to the jet rest frame, where it is just $\lvert z\rvert^2$.
 
 **Sparse neighbours** (`neighbors=k`). Each particle keeps its $k$ partners
 with the largest $\lvert\operatorname{Re}(z_a\cdot z_b)\rvert$ on the input
@@ -363,7 +380,10 @@ vectors by invariant-weighted linear combinations.
 - **`vector_channel=True`** carries a real 4-vector $v_a$ per node, initialised
   to $p_a$ (beams included). The bivector lift is unchanged under
   $p_a\mapsto p_a+\lambda P$, so it discards each constituent's component along
-  the jet axis; $v_a$ keeps it. Each round adds
+  the jet axis; $v_a$ keeps it. For the massless constituents of this dataset,
+  $p_a^2=0$ fixes that component, so the lift loses no information: $z_a\cdot z_a=\langle p_a,P\rangle^2$, $M^2=\sum_a\langle p_a,P\rangle$ and
+  $\operatorname{Re}z_a\cdot z_b=\langle p_a,P\rangle\langle p_b,P\rangle-\langle p_a,p_b\rangle M^2$ recover every $\langle p_a,p_b\rangle$
+  ([`so3c_notes/gap_thesis.md`](../../so3c_notes/gap_thesis.md) §3). Each round adds
   $\operatorname{asinh}\langle v_a,v_b\rangle$ and
   $\operatorname{asinh}\langle v_a-v_b,v_a-v_b\rangle$ to the edge features and
   updates $v_a\leftarrow v_a+\frac1n\sum_b u_{ab}v_b$ with an invariant weight
@@ -380,8 +400,31 @@ vectors by invariant-weighted linear combinations.
   together with that round's edge hidden state. The readout adds the mean of
   $E$ over real pairs and over its diagonal. $E$ is built from invariants only.
 
+Two more switches, `edge_norm` and `log_knee`, were added on 2026-10-05 and
+screened on the same protocol with three seeds paired against a fresh control;
+neither moved AUC ([`SO3C_STATUS.md`](../../SO3C_STATUS.md), Closed table):
+
+- **`edge_norm=True`** puts a LayerNorm over the `act_hidden` units of each
+  pair between the first edge layer and its tanh. On the trained headline,
+  61–84% of those pre-activations lie beyond $\lvert x\rvert>2$ in rounds 1–2,
+  where $\tanh'\le0.07$ ([`so3c_notes/gap_generic_ml.md`](../../so3c_notes/gap_generic_ml.md) §3.2).
+  It normalises invariant activations pair by pair, so padding cannot enter
+  its statistics. Screened: ΔAUC −0.00004 ± 0.00010; it halves the saturation
+  without moving AUC.
+- **`log_knee=True`** compresses the bilinear invariants with
+  $\operatorname{asinh}(e^{\kappa}x)$ instead of $\operatorname{asinh}(x)$: one
+  learnable $\kappa$ per round for $s_{ab}$, one per round for $s_{aa}$, and one
+  for $\operatorname{Re}/\operatorname{Im}\,z\cdot z$ in the scalar
+  initialisation, all starting at 4. In the global-RMS input units about 95% of
+  the round-0 pair invariants are below 0.1, where asinh is linear
+  ([`so3c_notes/gap_thesis.md`](../../so3c_notes/gap_thesis.md) §2.1); $e^{-4}$ puts
+  the knee near their median. It replaces asinh on the pair invariants, as
+  `falpha` does, so the two cannot be combined. Screened: ΔAUC
+  +0.00000 ± 0.00008.
+
 `vector_channel` and `pair_latent` are the only options that need the dense
-graph: combined with `neighbors`, either raises `ValueError`.
+graph: combined with `neighbors`, either raises `ValueError`. `edge_norm` and
+`log_knee` work on both graphs.
 
 ## 13. Readout features
 
