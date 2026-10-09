@@ -612,6 +612,25 @@ class SO3CMessageSetClassifier(nn.Module):
     with that round's edge hidden state; the readout pools E over real pairs
     and over its diagonal. E is built from invariants only, so covariance is
     exact, and every map is permutation-equivariant. Dense graph only.
+
+    Edge normalisation. ``edge_norm=True`` puts a LayerNorm over the
+    ``act_hidden`` units of each pair between the first edge layer and its
+    tanh. Measured on the trained headline (so3c_notes/gap_generic_ml.md
+    section 3.2): 61-84% of those pre-activations sit beyond |x| > 2 in rounds
+    1-2, where tanh' <= 0.07, because channel mixing grows the states 4-8x and
+    nothing normalises the pair invariants. The LayerNorm acts on invariant
+    activations pair by pair, so covariance is exact and padding cannot leak
+    into the statistics.
+
+    Log knee. ``log_knee=True`` compresses the bilinear invariants with
+    asinh(exp(kappa) x) instead of asinh(x), with a learnable kappa per round
+    for the pair invariants s_ab, per round for the node invariants s_aa, and
+    one for Re/Im z.z in the scalar initialisation. In the global-RMS input
+    units ~95% of the round-0 pair invariants are below 0.1, where asinh is
+    linear (gap_thesis.md section 2.1); kappa starts at 4, which puts the knee
+    near their median. Functions of invariants only, so covariance is exact.
+    It replaces asinh on the pair invariants, as falpha does, so the two
+    cannot be combined.
     """
 
     def __init__(
@@ -635,6 +654,8 @@ class SO3CMessageSetClassifier(nn.Module):
         falpha: int = 0,
         vector_channel: bool = False,
         pair_latent: int = 0,
+        edge_norm: bool = False,
+        log_knee: bool = False,
         dtype: torch.dtype = torch.float64,
     ) -> None:
         super().__init__()
@@ -655,6 +676,11 @@ class SO3CMessageSetClassifier(nn.Module):
             raise ValueError("the pair latent is implemented for the dense graph only")
         if vector_channel and neighbors is not None:
             raise ValueError("the vector channel is implemented for the dense graph only")
+        if log_knee and falpha:
+            raise ValueError("log_knee and falpha both replace asinh on the pair "
+                             "invariants; use one of them")
+        self.edge_norm = edge_norm
+        self.log_knee = log_knee
         if beams:
             # A buffer rather than a constant so a test can move the beams
             # with the jet and check exact covariance.
@@ -745,6 +771,37 @@ class SO3CMessageSetClassifier(nn.Module):
         iu = torch.triu_indices(channels, channels)
         self.register_buffer("pair_rows", iu[0])
         self.register_buffer("pair_cols", iu[1])
+
+        # Registered last and only when switched on, so the default model's
+        # parameters, their order and its random initialisation are unchanged.
+        # Neither consumes random numbers (LayerNorm starts at 1 and 0).
+        self.edge_ln = (nn.ModuleList([nn.LayerNorm(act_hidden).to(dtype)
+                                       for _ in range(rounds)])
+                        if edge_norm else None)
+        if log_knee:
+            k0 = self.KNEE_INIT
+            self.knee_pair = nn.Parameter(torch.full((rounds,), k0, dtype=dtype))
+            self.knee_node = nn.Parameter(torch.full((rounds,), k0, dtype=dtype))
+            self.knee_q = nn.Parameter(torch.full((), k0, dtype=dtype))
+        else:
+            self.register_parameter("knee_pair", None)
+            self.register_parameter("knee_node", None)
+            self.register_parameter("knee_q", None)
+
+    # log_knee: asinh(exp(4) x) turns from linear to logarithmic near
+    # |x| = exp(-4) = 0.018, about the median of the round-0 invariants.
+    KNEE_INIT = 4.0
+
+    def _knee(self, x: torch.Tensor, kappa: torch.Tensor | None) -> torch.Tensor:
+        """asinh(x), or asinh(exp(kappa) x) with log_knee."""
+        return torch.asinh(x if kappa is None else x * kappa.exp())
+
+    def _edge_act(self, pre: torch.Tensor, r: int) -> torch.Tensor:
+        """tanh of the first edge layer's pre-activation, after the per-pair
+        LayerNorm when edge_norm is on."""
+        if self.edge_ln is not None:
+            pre = self.edge_ln[r](pre)
+        return torch.tanh(pre)
 
     @staticmethod
     def _eq2to2(T: torch.Tensor, M: torch.Tensor) -> torch.Tensor:
@@ -903,7 +960,13 @@ class SO3CMessageSetClassifier(nn.Module):
                     minkowski_inner(p4_all, self.beam_p4[0].expand_as(p4_all)),
                     minkowski_inner(p4_all, self.beam_p4[1].expand_as(p4_all)),
                     is_beam]
-            h = self.h_init(torch.asinh(torch.stack(node_inv, dim=-1)))
+            inv = torch.stack(node_inv, dim=-1)
+            if self.knee_q is not None:
+                # the knee acts on Re/Im z.z only; m^2 and <p, b+-> keep asinh
+                h = self.h_init(torch.cat([self._knee(inv[..., :2], self.knee_q),
+                                           torch.asinh(inv[..., 2:])], dim=-1))
+            else:
+                h = self.h_init(torch.asinh(inv))
             h = h * mask_all.unsqueeze(-1)                       # (B, N, D)
         else:
             h = None
@@ -979,29 +1042,33 @@ class SO3CMessageSetClassifier(nn.Module):
                     d_ab = row + col - 2.0 * s_ab
                     pair += [d_ab.real, d_ab.imag]
                 pair = torch.cat(pair, dim=-1)
+                kp = self.knee_pair[r] if self.knee_pair is not None else None
+                kn = self.knee_node[r] if self.knee_node is not None else None
                 pair = (self.falpha_embed(pair) if self.falpha_embed is not None
-                        else torch.asinh(pair))
+                        else self._knee(pair, kp))
                 e = torch.cat([
                     pair,
-                    torch.asinh(row.real), torch.asinh(row.imag),
-                    torch.asinh(col.real), torch.asinh(col.imag),
+                    self._knee(row.real, kn), self._knee(row.imag, kn),
+                    self._knee(col.real, kn), self._knee(col.imag, kn),
                 ] + scal + vfeat, dim=-1)                                # (B,K,k,6C+2D)
-                hid = self.edge[r](e)
+                hid = self._edge_act(self.edge[r][0](e), r)
             else:
                 pair = [s_r, s_i]
                 if self.relnorm_edge:
                     pair += [sd_r.unsqueeze(2) + sd_r.unsqueeze(1) - 2.0 * s_r,
                              sd_i.unsqueeze(2) + sd_i.unsqueeze(1) - 2.0 * s_i]
                 pair = torch.cat(pair, dim=-1)
+                kp = self.knee_pair[r] if self.knee_pair is not None else None
+                kn = self.knee_node[r] if self.knee_node is not None else None
                 pair = (self.falpha_embed(pair) if self.falpha_embed is not None
-                        else torch.asinh(pair))
-                ar, ai = torch.asinh(sd_r), torch.asinh(sd_i)    # (B, K, C)
+                        else self._knee(pair, kp))
+                ar, ai = self._knee(sd_r, kn), self._knee(sd_i, kn)    # (B, K, C)
                 if self.pair_latent and r == 0:
                     E = (self._edge_pre(self.pair_init, pair, ar, ai, h, vfeat)
                          * full_pair.unsqueeze(-1))
-                hid = torch.tanh(self._edge_pre(
+                hid = self._edge_act(self._edge_pre(
                     self.edge[r][0], pair, ar, ai, h, vfeat,
-                    E if self.pair_latent else None))
+                    E if self.pair_latent else None), r)
             wts = self.w_head[r](hid) * emask                    # (B, K, *, C)
             if self.vector_channel:
                 u = self.v_head[r](hid).squeeze(-1) * pair_mask   # (B, K, K)
