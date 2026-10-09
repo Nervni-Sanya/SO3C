@@ -49,6 +49,7 @@ Both are float32, K=64, beams, 8 channels. Both store Adam's moment estimates, w
    3. Distil the ensemble.
 
    EMA and dropping the penalty are passengers, not arms.
+7. **Measured on GPU (§9), 2026-10-05.** Ranked first, edge normalisation gives ΔAUC −0.00004 ± 0.00010 and lower tail rejection. The log-knee gives ΔAUC +0.00000 ± 0.00008, with a suggestive rejection gain of +39 ± 30. Both are paired over three seeds on the probe protocol. **Conditioning does not move AUC.**
 
 ---
 
@@ -237,7 +238,7 @@ On 100k jets, rejection at 30% signal efficiency is decided by about 41 backgrou
 **Speed (prior).**
 - In the eager T4 profile (`results_profile/t4_47ec4ad`, base, K=64), all matrix kernels together (mm, addmm, bmm) are about 31% of CUDA time. The edge Linear is one part of that.
 - Its inner dimension is 16, so it is bandwidth-bound, and fp16 at best halves its memory traffic.
-- Expected step saving ≤ 5–10%, i.e. 3–6 more epochs per 60 at equal wall clock. Through the measured 30 → 60 epoch slope, that is worth about +0.00003–0.00005 (prior).
+- Expected step saving ≤ 5–10%, i.e. 3–6 more epochs per 60 at equal wall clock. Through the 30 → 60 epoch slope (itself only suggestive, audit #3), that is worth about +0.00003–0.00005 (prior).
 
 **Cost and risk.** It needs a GradScaler, and a non-default flag excluded from the float64 golden guard. **Low value.** Revisit only if the input scale is fixed first (`gap_thesis.md` 7.1).
 
@@ -245,20 +246,22 @@ On 100k jets, rejection at 30% signal efficiency is decided by about 41 backgrou
 
 ## 6. Generic candidates, ranked
 
-**Protocol.** Costs are on the K=32 long-schedule screen: all 1.211M training jets, 60 epochs, compiled T4, about 3.4–3.5 h per base seed. Arms are compared seed by seed against `results_long_seeds/base` seeds 0–2, since the same seed gives the same batch order.
+**Protocol.** Costs are on the K=32 long-schedule screen: all 1.211M training jets, 60 epochs, compiled T4, about 3.4–3.5 h per base seed. ~~Arms are compared seed by seed against `results_long_seeds/base` seeds 0–2.~~ **Corrected (audit, plan_2026-10-10 §1 #1):** those bases are torch 2.10 and the card is 2.11; pairing across that change is not established, so every arm needs a **same-stack control** (K=32 long: about +3.5 h per seed on every cost here).
 
 **Gains do not add up.** Ideas 1, 4 and `gap_thesis.md` 7.1 overlap.
 
 | # | candidate | mechanism and fit | expected gain | cost |
 |---|---|---|---|---|
 | 1 | **Normalise the edge pre-activation** (per-pair LayerNorm or learnable gain before tanh), **with readout standardisation and `--no-mass-input`** | Measured: 61–84% saturation in rounds 1–2 (§3.2); readout feature scales spread 250× (§3.3). Acts on invariants only, so exact covariance is kept | **prior** 0 to +0.001 (shared with `gap_thesis.md` 7.1, not additive) | about 1.05–1.10× (estimate), about **7.5 GPU-h** for seeds 0 and 1 |
-| 2 | **Longer schedule, or warmup–stable–decay with branched decays** | In-house: 30 → 60 epochs gave +0.00037 at K=64 with validation loss still falling; the K=32 base's best validation epoch is 56–60. WSD measures the epoch curve in one run | **prior** +0.0001 to +0.0003 for 60 → 120 epochs | 120 epochs is about 7 GPU-h per seed at K=32; WSD with two branch decays about 9 h. Needs a constant-then-decay schedule and branch-from-checkpoint in the harness |
+| 2 | **Longer schedule, or warmup–stable–decay with branched decays** | In-house: 30 → 60 epochs gave +0.00037 at K=64 — 2.2 standard errors (t on 2 df, p ≈ 0.15), **suggestive** (audit #3); a falling validation loss is weak evidence because cosine flattens at the end; the K=32 base's best validation epoch is 56–60 and it does not overfit. WSD measures the epoch curve in one run | **prior** +0.0001 to +0.0003 for 60 → 120 epochs | 120 epochs is about 7 GPU-h per seed at K=32; WSD with two branch decays about 9 h. Needs a constant-then-decay schedule and branch-from-checkpoint in the harness |
 | 3 | **Distil the 4-model ensemble into one student** | Soft targets carry the ensemble's +0.00034 (measured on 100k jets) into a single model. Fits a small, under-fitting model | **prior** +0.0001 to +0.0002 | Teacher scoring of 1.21M training jets is about 8 GPU-min (0.095 s per 1,024 jets per model). The student must be K=64 because the teachers are: 5.2 h for 30 epochs, paired with seed 2 or the running `headline_t4` seed 0. Needs a soft-target loss in the harness |
 | 4 | **EMA of weights** (SWA with a constant-learning-rate tail is similar and overlaps with #2) | Averages along one trajectory. `--keep-best` found the trajectory's end flat (best-validation weights beat the final ones by only +0.00001–0.00006). Trajectory averages are far more correlated than the independent seeds behind the +0.00034 | **prior** 0 to +0.0001 | about 0: a 22.8k-parameter copy per step. A **passenger** on every run, like `--keep-best`, not an arm |
 | 5 | Drop the flow-head penalty | Measured not binding (§2) | **prior** about 0 | free; passenger only |
 | 6 | Test-time augmentation | Measured (§4) | **measured** +0.00002 ± 0.00002 | no training; not worth carrying |
 | 7 | fp16 on the edge Linear | Forward measured harmless; ≤ 5–10% faster (§5) | **prior** +0.00003–0.00005 via more epochs | flag, GradScaler, guard exclusion; low value |
 | 8 | Warmup, or a different clip | Clipping binds on 29% of early steps, irrelevant later (§3.1) | **prior** about 0 | free |
+
+**Update after §9.** #1 is measured null on AUC, and so is its companion, the log-knee. The order below is kept as written, for the record.
 
 **Proposed order.**
 1. Idea #1 as a single arm on seeds 0 and 1, with EMA and penalty 0 as passengers if the harness gets those switches anyway (about 7.5 GPU-h).
@@ -276,7 +279,7 @@ On 100k jets, rejection at 30% signal efficiency is decided by about 41 backgrou
 | AUC or pairwise ranking losses | Cross-entropy is proper, and its minimiser (the likelihood ratio) is already AUC-optimal. At AUC 0.983 the misordered pairs are few, so a pairwise loss trains on a noisy handful. |
 | Mixup | Interpolating the 4-momentum sets of two jets is not a jet, nor covariant unless done on invariants. And it regularises a model that underfits. |
 | SAM | About 2× the cost per step for a flatness regulariser. The model is under-trained (60 epochs beat 30), so the compute is better spent on epochs. |
-| Weight decay, dropout | Measured negative: dropout 0.05 + weight decay 1e-4 gave −0.0011; AdamW 0.002 on w128s32 gave −0.00011 paired; the LorentzNet recipe also lost (SO3C_STATUS.md). |
+| Weight decay, dropout | Measured negative: dropout 0.05 + weight decay 1e-4 gave −0.0011; AdamW 0.002 on w128s32 is **not shown to help** — −0.00011, but decay runs on torch 2.11 against controls on 2.10, so unpaired and inside the ±0.00027 spread (audit #2); the LorentzNet recipe also lost (SO3C_STATUS.md). |
 | Temperature scaling for the over-confident logits (§3.3) | It does not change ranking, so it cannot change AUC or rejection. Calibration only. |
 
 ---
@@ -301,7 +304,7 @@ Both kernels finished on a Tesla T4 and passed the on-card guard ("1 passed"). T
 
 - **Width does not transfer.** At the K=32 long schedule, w64s24 gained +0.00025 over its paired base seed. At K=64 and 30 epochs it gains +0.00008, which is one pair and inside the noise, for 1.64× the time.
 - **Validation loss** is lowest at the final epoch in both runs, so `--keep-best` scores equal the final ones.
-- **Reproducibility across software.** The rerun control scores 0.98311, against 0.98326 for the original seed-0 30-epoch run (P100, torch 2.5.1). The −0.00015 gap is one standard deviation of the 3-seed spread.
+- **Reproducibility across software.** The rerun control scores 0.98311, against 0.98326 for the original seed-0 30-epoch run (P100, torch 2.5.1). The gap is −0.00014 AUC and −106 rejection, unrounded (audit #5): about one standard deviation. Across that stack change a shared seed behaved like an independent seed.
 - **Software change that matters for pairing.** Kaggle's T4 image now ships **torch 2.11.0+cu128**; the probe and long-schedule baselines ran on 2.10. Whether CUDA `randperm` gives the same permutation across that change is unverified, so seed-pairing against `results_message/probe_seeds/base` needs torch 2.10 pinned on the card, or fresh controls (§8.7).
 
 ### 8.1 What our flow is (for the record)
@@ -431,6 +434,104 @@ The growth comes from M_r (§8.1), so constraining M_r is the direct alternative
 **Recommendation:** arm 1 = per-pair LayerNorm before tanh; arm 2 = log-knee.
 
 **Pairing caveat.** The probe baseline `results_message/probe_seeds/base` ran on torch 2.10; the card now has 2.11. Either pin torch==2.10.0 (cu128) in the screen notebooks, about 2–3 minutes of install per kernel, and assert the version on the card; or add three fresh base seeds (about 1.4 GPU-h). Pinning fits the 4.85 h left; fresh controls make it tight (2 arms × 3 seeds × about 0.5 h + 1.4 h ≈ 4.4 h).
+
+*Decided 2026-10-05: fresh controls on torch 2.11 — the safe design; whether reuse would have paired is not shown (audit #6).*
+
+---
+
+## 9. The conditioning screen (GPU, 2026-10-05)
+
+**Setup.**
+- Code: `2303568`.
+- Notebooks: `notebooks/kaggle_probe_screen_{base,edgenorm,logknee}.ipynb`.
+- Protocol: the probe protocol (K=32, 400k training jets, 20 epochs, batch 256, float32, `--compile`), seeds 0–2 per arm.
+- Software, every kernel: Tesla T4, torch 2.11.0+cu128 pinned and recorded in each result's `env`, on-card golden guard "1 passed".
+- Each arm is paired seed by seed with a **fresh** base control on the same build.
+- Results, checkpoints and kernel logs: `results_message/probe_screen/`.
+
+| kernel | session | per seed (h) |
+|---|---|---|
+| base | 1.41 h | 0.424–0.462 |
+| edgenorm | 1.40 h | 0.425–0.448 |
+| logknee | 1.35 h | 0.410–0.435 |
+
+On the GPU, the LayerNorm costs nothing measurable.
+
+### 9.1 The fresh control, and why the old baseline could not be reused
+
+| control | AUC | 1/ε_B @ 0.3 |
+|---|---|---|
+| base, torch 2.11 (this screen) | 0.98112 ± 0.00002 | 817.6 ± 11.4 |
+| base, torch 2.10 (`probe_seeds/base`, 2026-09-20) | 0.98106 ± 0.00017 | 806 ± 58 |
+
+For the same seed, the epoch-1 and epoch-2 training losses differ by up to 1.6e-3 between the two builds. **Corrected (audit #6):** epoch-1 losses cannot tell same-seed from different-seed runs — base seeds 0 and 2 agree to 0.00008 in epoch-1 validation loss — so this does not show that the old runs would not have paired. The fresh control was the safe design; "an old run is not a valid pair" is **not shown**. From now on a batch-order fingerprint in every result (plan C2) settles pairing directly.
+
+### 9.2 Edge LayerNorm (`--edge-norm`): no AUC gain, slightly worse tail rejection
+
+| seed | ΔAUC | Δ 1/ε_B @ 0.3 | Δ 1/ε_B @ 0.5 | Δ final val loss |
+|---|---|---|---|---|
+| 0 | −0.00001 | −39.6 | +3.0 | −0.00007 |
+| 1 | −0.00015 | −50.5 | −6.1 | +0.00028 |
+| 2 | +0.00006 | −35.4 | −3.3 | −0.00009 |
+| **mean ± sd** | **−0.00004 ± 0.00010** (t = −0.6) | **−41.8 ± 7.8** (t = −9.3) | −2.1 | +0.00004 |
+
+**Mechanism check** (measured on CPU from the seed-0 checkpoints, 2,000 test jets; they reproduce the stored scores to 1.5e-4). The share of tanh inputs with |x| > 2:
+
+| round | base | edge-norm |
+|---|---|---|
+| 0 | 4% | 12% |
+| 1 | 34% | 15% |
+| 2 | 61% | 31% |
+
+The LayerNorm halves the saturation in rounds 1–2. It does not remove it: the learned gains scale part of it back up, and round 0 rises.
+
+**Reading.**
+- Halving the saturation leaves AUC unchanged. **Saturation is not what limits the model on this protocol.**
+- The rejection at 30% signal efficiency drops on all three seeds by 35–51, i.e. about 5%. The tail gets slightly worse.
+- **Caveat:** at 20 epochs on 400k jets the base saturates less (4/34/61%) than the 60-epoch K=64 headline (40/67/84%), so a long-schedule effect is not excluded. But a null in AUC and a consistent loss in rejection are no case for spending a long-schedule slot on it.
+- **Verdict: closed** on the probe protocol. It also lowers the prior for state normalisation (§8.3 A) and unitary mixing (§8.6 D), which target the same saturation through the state size.
+
+### 9.3 Log knee (`--log-knee`): no AUC gain; rejection +39 ± 30, suggestive only
+
+| seed | ΔAUC | Δ 1/ε_B @ 0.3 | Δ 1/ε_B @ 0.5 | Δ final val loss |
+|---|---|---|---|---|
+| 0 | +0.00004 | +26.5 | +9.7 | +0.00022 |
+| 1 | +0.00006 | +17.2 | −7.3 | −0.00026 |
+| 2 | −0.00009 | +73.3 | −5.4 | +0.00073 |
+| **mean ± sd** | **+0.00000 ± 0.00008** (t = 0.08) | **+39.0 ± 30.1** (t = 2.25) | −1.0 | +0.00023 ± 0.00050 |
+
+The arm scores 0.98113 ± 0.00009 AUC and 856.5 ± 35.8 rejection, against the control's 0.98112 ± 0.00002 and 817.6 ± 11.4. It ran slightly faster than the control (0.410–0.435 h per seed).
+
+**Learned knees** (initialised at 4.0), read from the three checkpoints:
+
+| | round 0 | round 1 | round 2 |
+|---|---|---|---|
+| κ_pair | 4.24–4.29 | 4.24–4.43 | 3.98–4.03 |
+| κ_node | 3.88–3.98 | 3.41–3.66 | 3.21–3.36 |
+
+κ_q ends at 3.90–4.01. **The knees barely moved:** training is close to indifferent to where they sit.
+
+**Reading.**
+- Moving the compression knee into the data's range does **not move AUC**.
+- The rejection at 30% signal efficiency rises on every seed: +17 to +73, about 5% on average. With t = 2.25 on two degrees of freedom (p ≈ 0.08 one-sided) and a tail statistic decided by about a dozen background jets, this is **suggestive, not established**.
+- It costs nothing (+7 parameters, no measurable time), so it can ride along in a later run. It does not justify a slot of its own, since the target is AUC.
+
+### 9.4 What the screen says about the gap
+
+**Both conditioning hypotheses are measured null on AUC on the probe protocol:**
+- the input knee: `gap_thesis.md` 7.1(a), measured in its §2.1;
+- the edge saturation: 7.1(b), and §3.2.
+
+Each was the mechanism behind the top-ranked cheap idea, and each is real: the knee sits where the data are, and the LayerNorm halves the saturation. Neither changes the ranking power of the model. The two switches also move the high-purity tail in opposite directions (−42 and +39), each about 5%, while AUC stays within ±0.00004. On this protocol, at this size of effect, AUC is insensitive to how the invariants are conditioned.
+
+The remaining candidates from `gap_thesis.md` §7 are capacity and structure, not conditioning:
+- the pair latent at the long schedule (probe +0.00012);
+- depth;
+- Lion as a check on whether training is the limit;
+- a longer schedule;
+- ensemble distillation (§6 here).
+
+**Budget.** About 1.41 + 1.40 + 1.35 = 4.16 GPU-h of the 4.85 h left this window. About 0.7 h remain until the reset on Saturday 2026-10-10.
 
 ---
 

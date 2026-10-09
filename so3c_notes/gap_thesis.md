@@ -67,7 +67,7 @@ The edge layer is `nn.Linear(64, 16)`. Its default initialisation is U(±1/8), w
 | headline seed 2 | 30 | 1.08 / 0.89 / 0.92 | 0.68 / 0.55 / 0.56 | 0.58 / 0.78 / 0.63 |
 | headline60 seed 0 | 60 | 1.63 / 1.26 / 1.42 | 0.95 / 1.05 / 0.80 | 1.03 / 0.91 / 0.86 |
 
-Every block grows 6–23× over initialisation, and is larger again at 60 epochs. The pair block is usually the largest. This is **consistent with** Adam's fixed step size slowly scaling up weights on small inputs. That could be part of why the model kept improving from 30 to 60 epochs. **It is not proof:** the growth is general, not specific to the pair block.
+Every block grows 6–23× over initialisation, and is larger again at 60 epochs. The pair block is usually the largest. This is **consistent with** Adam's fixed step size slowly scaling up weights on small inputs. That could be part of why the model kept improving from 30 to 60 epochs. **It is not proof:** the growth is general, not specific to the pair block. (Audit, plan_2026-10-10 §1 #3: the 30 → 60 gain itself, +0.00037, is 2.2 standard errors, t on 2 df, p ≈ 0.15 — suggestive, not established.)
 
 ### 2.3 The covariant flow is used sparingly
 
@@ -341,7 +341,9 @@ LLoCa is a way to make a non-equivariant backbone equivariant. We already are.
 
 ## 7. Ideas, ranked
 
-**Protocol for every cost below.** The K=32 long-schedule screen: all 1.211M training jets, 60 epochs, compiled, on a T4. A base seed costs about 3.4–3.5 h (STATUS final table). The arms are **paired by seed** against the existing `results_long_seeds/base` seeds 0, 1 and 2. Same seed means the same batch order, so no new control is needed. The paired differences there agreed to ±0.00001 over two pairs; that is fragile, but far tighter than the ±0.00020 unpaired spread.
+**Status after the 2026-10-05 screen (audit, plan_2026-10-10 §1 #8):** 7.1(a) and 7.1(b) are **measured null on AUC** (`gap_generic_ml.md` §9); 7.2, the pair latent, is unresolved at +0.00012 (t = 1.42); 7.3 N^α, 7.4 depth and 7.5 Lion are untested.
+
+**Protocol for every cost below.** The K=32 long-schedule screen: all 1.211M training jets, 60 epochs, compiled, on a T4. A base seed costs about 3.4–3.5 h (STATUS final table). ~~The arms are paired by seed against the existing `results_long_seeds/base` seeds, so no new control is needed.~~ **Corrected (audit, plan_2026-10-10 §1 #1):** those bases ran on torch 2.10 and the card now has 2.11, and pairing across that change is not established. Every arm needs a **same-stack control**, which raises every cost below by the control's cost (K=32 long: about +3.5 h per seed). Within one stack, same seed means the same batch order, and the paired differences there agreed to ±0.00001 over two pairs — fragile, but far tighter than the ±0.00020 unpaired spread.
 
 **Budget.** The current window has used about 13.9 h, plus the two K=64 width kernels pushed at commit 82235c4 (about 7.2 + 4.3 h). That leaves roughly 4–5 h until the reset on Saturday 2026-10-10. This is an estimate; test by pushing.
 
@@ -359,8 +361,8 @@ LLoCa is a way to make a non-equivariant backbone equivariant. We already are.
 
 **Why it fits.** The change touches only invariant features and the hidden activations of the edge MLP, so exact Lorentz covariance and permutation equivariance are untouched. It also offers a mechanism for two things already in STATUS:
 
-- the model's continued improvement from 30 to 60 epochs, with weights growing across the board (§2.2);
-- lr 3e-3 beating 1e-3.
+- the model's continued improvement from 30 to 60 epochs, with weights growing across the board (§2.2) — **suggestive only** (audit #3): +0.00037 is 2.2 standard errors (t on 2 df, p ≈ 0.15), a falling validation loss is weak evidence because cosine flattens at the end, and the K=32 60-epoch base has its lowest validation loss at epochs 56–60 and does not overfit;
+- lr 3e-3 beating 1e-3 — **a single-seed comparison** (audit #4), like the 4 → 8 channel claim; not resolved unless far beyond the ±0.00024 single-run spread.
 
 Neither is proof.
 
@@ -415,7 +417,7 @@ Today we assert mean semantics everywhere by hand.
 
 ### 7.5 Lion, as a check on whether training is the limit
 
-**Evidence.** The slim recipe moved ParT from 0.9858 / 1602 to 0.9865 / 1808 (§6.3). Every L-GATr-family tagger here uses Lion. Our decoupled weight decay at 0.002 was a small, consistent negative: −0.00011 paired (STATUS current window). Lion's sign update is a different optimiser, not that knob.
+**Evidence.** The slim recipe moved ParT from 0.9858 / 1602 to 0.9865 / 1808 (§6.3). Every L-GATr-family tagger here uses Lion. Our decoupled weight decay at 0.002 is **not shown to help** (audit #2): it measured −0.00011, but the decay runs were on torch 2.11 and their controls on 2.10, so the pairing is unconfirmed, and unpaired −0.00011 is inside the ±0.00027 spread. Lion's sign update is a different optimiser, not that knob.
 
 **Expected gain:** 0 to +0.0005. Its main value is diagnostic: it separates a training limit from an architecture limit.
 **Cost:** 1.0× per run, but the Lion learning rate needs at least two values (Adam's 3e-3 divided by 3–10), so about 7 GPU-h for a fair pair.
@@ -486,6 +488,10 @@ The details are in [`gap_generic_ml.md`](gap_generic_ml.md). Every diagnostic th
   3. Distilling the ensemble.
 
   EMA and dropping the penalty ride along as passengers.
+- **Measured on GPU, 2026-10-05** (`gap_generic_ml.md` §9): the probe protocol, three seeds paired with a fresh torch-2.11 control.
+  - **7.1(b), the edge LayerNorm:** ΔAUC −0.00004 ± 0.00010. It halves the saturation it targets, and tail rejection drops about 5%.
+  - **7.1(a), the log-knee:** ΔAUC +0.00000 ± 0.00008. Rejection rises +39 ± 30, suggestive only.
+  - **Conditioning, the top-ranked cheap lead, does not move AUC.** The remaining candidates are structural: the pair latent at the long schedule, depth, a longer schedule, distillation.
 
 ---
 
@@ -523,7 +529,7 @@ Page numbers are physical PDF pages.
 | LLoCa symmetry breaking (JetClass) | 2505.20280v2 | Table 6, p.23 |
 | +10–50% FLOPs, +60–100% training time | 2505.20280v2 | §5.3, p.10 |
 | grade-ablation numbers | 2606.21790v1 | Tables 1, 2, 4, 6, 7; §6.2–6.3; pp.3–19 |
-| vector channel −0.00002, pair latent +0.00012 (t = 1.42), width +0.00048, weight decay −0.00011 | ours | SO3C_STATUS.md |
+| vector channel −0.00002, pair latent +0.00012 (t = 1.42), width +0.00048, weight decay −0.00011 (not shown to help: pairing across torch 2.10 → 2.11 unconfirmed) | ours | SO3C_STATUS.md |
 | §2 numbers | ours | measured 2026-10-04, appendix B |
 
 ## Appendix B. Read-only diagnostic snippets
