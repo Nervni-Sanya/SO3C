@@ -1,0 +1,16 @@
+{
+  "id": "nsanya/so3c-k64-headline120-finish",
+  "title": "SO3C K64 headline120 finish",
+  "code_file": "kaggle_k64_headline120_finish.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "dataset_sources": [],
+  "competition_sources": [],
+  "kernel_sources": [
+    "nsanya/so3c-data-prep-k-128",
+    "nsanya/so3c-k64-headline120-seed0"
+  ]
+}

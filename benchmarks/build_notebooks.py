@@ -2289,6 +2289,237 @@ if len(aucs) > 1:
     return name
 
 
+HEADLINE60_CKPT = ("results_k64/headline60/checkpoints/"
+                   "top_tagging_canonical__so3c_message_set__seed0.pt")
+CONT_TAG = "headline120"
+# The epoch-60 reference the continuation is judged against
+# (results_k64/headline60, f12cd65): AUC, 1/eps_B at 0.3, final val loss.
+CONT_REF = (0.98363, 1140.8, 0.16276)
+
+
+def _k64_headline_base() -> list[str]:
+    """The flags of the 60-epoch headline run, without --epochs and --seed."""
+    return ["--cache-dir", "DATA", "--representation", "constituents",
+            "--canonical-splits", "--normalize", "global",
+            "--device", "cuda", "--dtype", "float32",
+            "--batch-size", "256", "--n-constituents", "64",
+            "--eval-chunk-size", "1024", "--models", "so3c_message_set",
+            "--rounds", "3", "--beams", "--channels", "8", "--compile"]
+
+
+_CONT_RUN = """
+ok = run(["benchmarks.run_top_tagging"] + BASE +
+         ["--epochs", "120", "--seed", "0", "--keep-best", "--resume",
+          "--results-dir", OUT, "--ckpt-dir", CKPT_DIR,
+          "--max-seconds", "39000"])
+assert ok, "continuation run failed"
+"""
+
+_CONT_SUMMARY = """
+import json, glob
+REF_AUC, REF_REJ, REF_VL = %r
+r = json.load(open(glob.glob(OUT + "/*seed0.json")[0]))
+t, h = r["test_metrics"], r["history"]
+print("epochs run %%d of 120, session-cumulative wall clock %%.2f h, env %%s"
+      %% (r["epochs_run"], r["walltime_sec"] / 3600, r.get("env")))
+if r["epochs_run"] < 120:
+    print("INCOMPLETE: stopped on the session cap; push the finish kernel")
+print("final weights:  AUC %%.5f  rej@0.3 %%.1f  rej@0.5 %%.1f  final val loss %%.5f"
+      %% (t["test_auc"], t["bg_rej_30"], t.get("bg_rej_50", float("nan")), h[-1]["val_loss"]))
+b = r.get("test_metrics_best_val")
+if b:
+    print("best-val weights (epoch %%d, val loss %%.5f; epochs 61-120 only):  AUC %%.5f  rej@0.3 %%.1f"
+          %% (r["best_val_epoch"], r["best_val_loss"], b["test_auc"], b["bg_rej_30"]))
+print()
+print("validation curve")
+for e in h:
+    if e["epoch"] in (55, 60) or (e["epoch"] > 60 and e["epoch"] %% 5 == 0) or e["epoch"] == 61:
+        print("  epoch %%3d  train %%.5f  val %%.5f  val_acc %%.5f"
+              %% (e["epoch"], e["train_loss"], e["val_loss"], e["val_acc"]))
+d_auc = t["test_auc"] - REF_AUC
+print()
+print("against epoch 60 of the same model (%%.5f / %%.1f / val %%.5f): dAUC %%+.5f, d rej %%+.1f, d val loss %%+.5f"
+      %% (REF_AUC, REF_REJ, REF_VL, d_auc, t["bg_rej_30"] - REF_REJ, h[-1]["val_loss"] - REF_VL))
+if r["epochs_run"] == 120:
+    if d_auc >= 0.0003 and h[-1]["val_loss"] < REF_VL:
+        print("DECISION (plan 2.4): longer training pays at K=64")
+    elif d_auc <= 0.0001:
+        print("DECISION (plan 2.4): training length exhausted near 60 epochs; close")
+    else:
+        print("DECISION (plan 2.4): unresolved; record it")
+""" % (CONT_REF,)
+
+
+def build_k64_continuation(blob: str) -> str:
+    """60 -> 120 epochs: resume the 60-epoch K=64 headline (plan_2026-10-10 §2a).
+
+    The epoch-60 checkpoint of results_k64/headline60 (torch 2.10, T4) is
+    embedded in the notebook, so the run does not depend on the 2026-09-20
+    kernel's output still existing. It resumes with --epochs 120: the
+    harness re-anchors the cosine schedule on the new horizon (647dd38), so
+    the learning rate restarts at 1.5e-3 -- a warm restart, as the plan
+    says. --keep-best reports the best-validation weights as well; the
+    checkpoint predates keep-best, so those come from epochs 61-120 only.
+
+    Before training, the checkpoint's sha256, epoch and history are checked,
+    and its CUDA RNG state (saved under torch 2.10) is tried on the card: if
+    2.11 rejects it, it is dropped from the copy, since a continuation needs
+    no reproducible batch order. The decision rule of plan §2 is printed at
+    the end, against epoch 60 of the same model.
+    """
+    import base64
+    import hashlib
+    raw = (ROOT / HEADLINE60_CKPT).read_bytes()
+    ckpt_sha = hashlib.sha256(raw).hexdigest()
+    ckpt_b64 = base64.b64encode(raw).decode()
+    bundle_sha = hashlib.sha256(blob.encode()).hexdigest()[:12]
+    base = _k64_headline_base()
+    cells = [
+        md("""
+# K=64 headline, 60 -> 120 epochs (continuation)
+
+Resumes the 60-epoch K=64 headline (0.98363 AUC, 1140.8 rejection at 30%%
+signal efficiency, final validation loss 0.16276) from its epoch-60
+checkpoint, embedded here, to 120 epochs. The cosine schedule is re-anchored
+on the 120-epoch horizon, so the learning rate restarts at 1.5e-3.
+Decision rule (plan_2026-10-10 §2), on the final weights against epoch 60:
+dAUC >= +0.0003 with a lower final validation loss -> longer training pays;
+dAUC <= +0.0001 -> training length exhausted near 60 epochs.
+"""),
+        code("""
+import subprocess
+print(subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total",
+                      "--format=csv,noheader"], capture_output=True,
+                     text=True).stdout.strip())
+"""),
+        code(UNPACK.format(blob=blob)),
+        code(RUNNER),
+        code(GPU_SETUP),
+        code("""
+import glob, pathlib
+cands = glob.glob("/kaggle/input/**/top_tagging_train.npz", recursive=True)
+assert cands, "attach the K=128 data-prep kernel output"
+DATA = str(pathlib.Path(cands[0]).parent)
+TAG = %r
+OUT = "/kaggle/working/results_k64/" + TAG
+CKPT_DIR = "/kaggle/working/checkpoints/" + TAG
+BASE = %r
+BASE[BASE.index("DATA")] = DATA
+pathlib.Path(OUT).mkdir(parents=True, exist_ok=True)
+pathlib.Path(OUT, "bundle_sha256.txt").write_text(%r + chr(10))
+print("data:", DATA, "| bundle", %r)
+""" % (CONT_TAG, base, bundle_sha, bundle_sha)),
+        code("""
+# On-card guard: the forward pass must be the published function here too.
+import subprocess, sys
+g = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
+                    "tests/test_so3c_models.py", "-k", "golden_cuda"],
+                   cwd="/kaggle/working/repo", capture_output=True, text=True)
+print(g.stdout[-1200:], g.stderr[-800:])
+assert "1 passed" in g.stdout, "golden guard did not pass on the card"
+"""),
+        code("""
+# The embedded epoch-60 checkpoint: write it where --resume looks, verify it,
+# and make sure this torch accepts its CUDA RNG state.
+import base64, hashlib, pathlib, torch
+CKPT_B64 = "%s"
+raw = base64.b64decode(CKPT_B64)
+assert hashlib.sha256(raw).hexdigest() == %r, "checkpoint corrupted in transit"
+ck_path = pathlib.Path(CKPT_DIR) / "top_tagging_canonical__so3c_message_set__seed0.pt"
+ck_path.parent.mkdir(parents=True, exist_ok=True)
+ck_path.write_bytes(raw)
+state = torch.load(ck_path, map_location="cpu", weights_only=False)
+assert state["epoch"] == 60 and len(state["history"]) == 60, (state["epoch"], len(state["history"]))
+assert abs(state["history"][-1]["val_loss"] - 0.16276) < 1e-5, state["history"][-1]["val_loss"]
+print("checkpoint ok: epoch", state["epoch"], "| val loss %%.5f" %% state["history"][-1]["val_loss"],
+      "| torch here", torch.__version__)
+try:
+    torch.cuda.set_rng_state(state["cuda_rng"].cpu(), 0)
+    print("CUDA RNG state from torch 2.10 accepted")
+except Exception as exc:
+    print("CUDA RNG state rejected (%%s); dropping it from the copy" %% str(exc)[:200])
+    state["cuda_rng"] = None
+    torch.save(state, ck_path)
+del state, raw, CKPT_B64
+""" % (ckpt_b64, ckpt_sha)),
+        code("""
+# Smoke: one epoch on 20k jets with the real configuration (a fresh model,
+# separate directories), to prove the data path and the compiled model
+# before the session commits hours.
+import glob
+run(["benchmarks.run_top_tagging"] + BASE +
+    ["--epochs", "1", "--max-train-samples", "20000", "--seed", "0",
+     "--results-dir", "/kaggle/working/smoke"])
+assert glob.glob("/kaggle/working/smoke/*.json"), "smoke run wrote no result"
+"""),
+        code(_CONT_RUN),
+        code(_CONT_SUMMARY),
+    ]
+    name = "kaggle_k64_%s_seed0.ipynb" % CONT_TAG
+    _finalise(cells, NB_DIR / name)
+    k64_metadata(CONT_TAG, 0)
+    return name
+
+
+def build_k64_continuation_finish(blob: str) -> str:
+    """Finish the 60 -> 120 continuation if it stops on the session cap.
+
+    Prepared, not to be pushed unless the continuation reports INCOMPLETE.
+    It mounts that kernel's output, copies its last checkpoint and resumes
+    with the same --epochs 120, so the schedule horizon is unchanged and
+    resume is bit-exact apart from the GPU's own nondeterminism.
+    """
+    import hashlib
+    bundle_sha = hashlib.sha256(blob.encode()).hexdigest()[:12]
+    base = _k64_headline_base()
+    cells = [
+        md("""
+# Finish: K=64 headline 60 -> 120 continuation
+
+Resumes `nsanya/so3c-k64-headline120-seed0` from its last checkpoint, with
+the same 120-epoch horizon. Push only if that run stopped on the session cap.
+"""),
+        code(UNPACK.format(blob=blob)),
+        code(RUNNER),
+        code(GPU_SETUP),
+        code("""
+import glob, pathlib, shutil
+cands = glob.glob("/kaggle/input/**/top_tagging_train.npz", recursive=True)
+assert cands, "attach the K=128 data-prep kernel output"
+DATA = str(pathlib.Path(cands[0]).parent)
+TAG = %r
+OUT = "/kaggle/working/results_k64/" + TAG
+CKPT_DIR = "/kaggle/working/checkpoints/" + TAG
+BASE = %r
+BASE[BASE.index("DATA")] = DATA
+prev = glob.glob("/kaggle/input/**/checkpoints/" + TAG + "/*.pt", recursive=True)
+assert prev, "attach the output of nsanya/so3c-k64-headline120-seed0"
+pathlib.Path(CKPT_DIR).mkdir(parents=True, exist_ok=True)
+shutil.copy(prev[0], CKPT_DIR)
+import torch
+st = torch.load(prev[0], map_location="cpu", weights_only=False)
+print("resuming from epoch", st["epoch"], "| bundle", %r)
+assert st["epoch"] < 120, "the continuation already finished"
+""" % (CONT_TAG, base, bundle_sha)),
+        code(_CONT_RUN),
+        code(_CONT_SUMMARY),
+    ]
+    name = "kaggle_k64_%s_finish.ipynb" % CONT_TAG
+    _finalise(cells, NB_DIR / name)
+    meta = {
+        "id": "nsanya/so3c-k64-%s-finish" % CONT_TAG,
+        "title": "SO3C K64 %s finish" % CONT_TAG,
+        "code_file": name, "language": "python", "kernel_type": "notebook",
+        "is_private": True, "enable_gpu": True, "enable_internet": True,
+        "dataset_sources": [], "competition_sources": [],
+        "kernel_sources": ["nsanya/so3c-data-prep-k-128",
+                           "nsanya/so3c-k64-%s-seed0" % CONT_TAG],
+    }
+    (NB_DIR / ("kernel-metadata-k64-%s-finish.json" % CONT_TAG)).write_text(
+        json.dumps(meta, indent=2) + chr(10), encoding="utf-8")
+    return name
+
+
 def build_message(blob: str, seed: int = 0, k: int = 64) -> None:
     """Tier-2 item 5: covariant message passing on the canonical protocol.
 
