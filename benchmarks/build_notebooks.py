@@ -2399,6 +2399,13 @@ LONG_RUNS_PINNED = [
     # base on the probe protocol (torch 2.10, compiled): ~4.7 h per seed here.
     ("pairlat211", ["--keep-best", "--pair-latent", "8"], 0),
     ("pairlat211", ["--keep-best", "--pair-latent", "8"], 1),
+    # Phase 2, the branch taken: R3 (--pair-lab) was promoted on the probe
+    # protocol (+0.00055 by seed against base1010, every seed positive;
+    # +0.00051 against the pooled six-run control, Welch t = 5.9). Plan
+    # section 4: the arm at the long schedule on seeds 0 and 1 against
+    # base211. It cost 1.05-1.13x the control per seed on the probe protocol.
+    ("pairlab211", ["--keep-best", "--pair-lab"], 0),
+    ("pairlab211", ["--keep-best", "--pair-lab"], 1),
 ]
 
 

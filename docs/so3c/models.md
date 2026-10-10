@@ -147,8 +147,8 @@ particle and complex channel mixing
 ([theory.md §10](theory.md#10-covariant-message-passing-so3c_message_set)).
 The readout adds the masked mean and max of the scalar state, so its input is
 $11C+C(C+1)+2D+7=87$ features at the defaults. The best configuration measured
-so far is `beams=True, channels=8` at $K=64$, trained for 60 epochs
-([experiments.md, table A](experiments.md#a-canonical-top-tagging)).
+so far is `beams=True, channels=8` at $K=64$, trained for 60 epochs and
+continued to 120 (0.98392; [experiments.md, table A](experiments.md#a-canonical-top-tagging)).
 
 | Argument | Default | CLI flag | Meaning |
 |---|---|---|---|
@@ -243,7 +243,7 @@ there same-seed comparisons are read as unpaired. Across torch builds the
 batch order was not checked directly, though the long-schedule weight-decay
 runs (2.11) tracked their 2.10 counterparts seed by seed.
 
-### Lab-frame features (added 2026-10-10, screen pending)
+### Lab-frame features (added and screened 2026-10-10)
 
 Off by default; both need `beams=True`
 ([theory.md §12](theory.md#12-switches-screened-on-the-probe-protocol)).
@@ -256,7 +256,11 @@ Parameter counts are on the headline configuration.
 | both | both flags | 23,082 | |
 
 On the CPU (K=32, batch 256, float32) `lab_scalars` costs 0.98×, `pair_lab`
-1.50× and both 1.53× the headline per step; not yet timed on the card.
+1.50× and both 1.53× the headline per step. On the T4 (probe protocol)
+`lab_scalars` took 0.97–0.98× and `pair_lab` 1.04–1.13× the control's training
+time. Screened on the probe protocol: `lab_scalars` closed (ΔAUC +0.00004 ±
+0.00009), `pair_lab` promoted to the long schedule (+0.00055 ± 0.00009 by seed,
++0.00051 unpaired against the pooled control; `SO3C_STATUS.md`).
 
 ## `so3c_interaction_set`
 

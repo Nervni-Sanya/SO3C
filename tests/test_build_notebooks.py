@@ -109,8 +109,9 @@ def test_pinned_long_control_is_the_long_base_plus_keep_best(nb_dir) -> None:
     import json
     base = _assigned_list(ROOT / "notebooks" / "kaggle_long_seeds_base_s0.ipynb", "BASE")
     assert base and "--compile" in base
-    runs = [(t, s, ["--pair-latent", "8"] if t == "pairlat211" else [])
-            for t in ("base211", "pairlat211") for s in (0, 1)]
+    extras = {"base211": [], "pairlat211": ["--pair-latent", "8"],
+              "pairlab211": ["--pair-lab"]}
+    runs = [(t, s, extras[t]) for t in extras for s in (0, 1)]
     for tag, seed, extra in runs:
         assert B.main(["--only", "long_seeds_%s_s%d" % (tag, seed)]) == 0
         nb = nb_dir / ("kaggle_long_seeds_%s_s%d.ipynb" % (tag, seed))

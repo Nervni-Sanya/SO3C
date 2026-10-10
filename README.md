@@ -25,24 +25,28 @@ training, 403,000 validation and 404,000 test jets. It has not been reached.
 
 | Model | Parameters | AUC | 1/ε_B at ε_S = 0.3 |
 |---|---:|---|---|
-| **SO3C**, `so3c_message_set --beams --channels 8`, K = 64, 60 epochs, 1 seed | 22,834 | **0.98363** | **1140.8** |
+| **SO3C**, `so3c_message_set --beams --channels 8`, K = 64, 60 epochs continued to 120, 1 seed | 22,834 | **0.98392** | **1201.9** |
+| the same run at 60 epochs | 22,834 | 0.98363 | 1140.8 |
 | the same configuration, mean of 3 seeds at 30 epochs | 22,834 | 0.98326 ± 0.00014 | 1089 ± 75 |
-| ensemble: those 3 seeds plus the 60-epoch model | 4 × 22,834 | **0.98396** | **1231.2** |
+| ensemble: those 3 seeds plus the 60-epoch model | 4 × 22,834 | 0.98396 | 1231.2 |
+| ensemble: those 4 plus the 120-epoch model (two snapshots of one run) | 5 × 22,834 | **0.98413** | **1269.9** |
 | PELICAN | 208,000 | 0.9870 | 2250 ± 75 |
 | LorentzNet | 224,000 | 0.9868 | 2195 ± 173 |
 | L-GATr, trained from scratch | 1,100,000 | 0.9870 ± 0.0001 | 2240 ± 70 |
 | PELICAN, its own size sweep | 11,000 | 0.9858 | 1879 ± 103 |
 | PELICAN, its own size sweep | 1,000 | 0.9835 | 1145 ± 74 |
 
-Training longer appears to have helped: 60 epochs beats the 30-epoch mean by
+Training longer appears to have helped: 60 epochs beat the 30-epoch mean by
 +0.00037 AUC, 2.2 standard errors with only three 30-epoch seeds to compare
 against (t ≈ 2.2 on two degrees of freedom, p ≈ 0.15) — suggestive, not
 established. Its final validation loss, 0.16276, is below all three complete
-30-epoch runs. The gap to PELICAN from the best ensemble is 0.0030 AUC and a
-factor of 1.83 in background rejection; it is 0.0032 and 1.94 for the
+30-epoch runs. Continuing that run to 120 epochs (a warm restart of the cosine
+schedule) added +0.00029 AUC and 61 rejection against its own epoch 60. The gap
+to PELICAN from the best ensemble is 0.0029 AUC and a factor of 1.77 in
+background rejection; 0.0031 and 1.87 for the best single model; it is 0.0032 and 1.94 for the
 three-seed 30-epoch ensemble, and 0.0037 and 2.07 for a single 30-epoch
-model. PELICAN's 1,000-parameter model still matches SO3C's best single
-model, which points to architecture rather than size, though that rests on
+model. PELICAN's 1,000-parameter model still matches SO3C's 60-epoch model
+and is 0.0004 AUC below the 120-epoch one, which points to architecture rather than size, though that rests on
 one point of PELICAN's own sweep, trained with its own recipe. Every published
 number above this band that we have found comes from fine-tuning after
 JetClass pretraining; the highest in the reference table is L-GATr fine-tuned
@@ -63,12 +67,14 @@ over the 22,834-parameter base, paired by seed over two seeds — about +0.0002
 per doubling of parameters. At K = 64 over 30 epochs the 60,834-parameter
 `w64s24` gains only +0.00008 (one seed), and weight decay 0.002 on the wide
 model costs −0.00011 (two seeds). Even a full transfer of the K = 32 gain would
-leave about 0.0026 AUC to PELICAN from the best ensemble, 0.0029 from the best
+leave about 0.0024 AUC to PELICAN from the best ensemble, 0.0026 from the best
 single model. Our reading is that closing the gap needs a structural change,
 but none has yet been shown to help: the structural candidates screened so far,
 on a short 20-epoch probe, moved AUC by +0.00012 or less, and none has been run
-at the long schedule. Training beyond 60 epochs, width at K = 64 over 60 epochs
-and other weight-decay strengths are also untested
+at the long schedule (on 2026-10-10 a lab-frame pair-feature arm gained
++0.00051 on that probe and went to the long schedule). Training beyond 60 epochs
+was tried once (continued to 120: +0.00029 AUC, unresolved); width at K = 64 over
+60 epochs and other weight-decay strengths are untested
 ([measurements below](#width-and-weight-decay)).
 
 ## How it works
@@ -235,8 +241,9 @@ python -m benchmarks.run_top_tagging --cache-dir data --representation constitue
 
 ```bash
 # The headline configuration, one seed: 4.1 hours on a Kaggle T4 with --compile.
-# For the current best single model use --epochs 60 (8.6 hours) and raise
-# --max-seconds to about 39000. A P100 falls back to eager; its time with the
+# For the 60-epoch model use --epochs 60 (8.6 hours) and raise --max-seconds to
+# about 39000; the current best single model continues that run to 120 epochs
+# (notebooks/kaggle_k64_headline120_seed0.ipynb: --epochs 120 --resume on its checkpoint). A P100 falls back to eager; its time with the
 # rewritten forward pass has not been measured.
 # --max-seconds ends a session; rerunning the same command resumes from the checkpoint.
 python -m benchmarks.run_top_tagging --cache-dir data --representation constituents \
@@ -247,10 +254,14 @@ python -m benchmarks.run_top_tagging --cache-dir data --representation constitue
 
 # Ensembles from the saved per-jet scores, no retraining: the three 30-epoch seeds
 # (0.98378 / 1160.4), then the four-model ensemble of the table (0.98396 / 1231.2),
-# whose members include two seed-0 runs and so need --allow-shared-seed.
+# whose members include two seed-0 runs and so need --allow-shared-seed, then the
+# five-model ensemble with the 120-epoch run (0.98413 / 1269.9).
 python -m benchmarks.ensemble_scores --results-dir results_message/beams_k64 results_k64/headline
 python -m benchmarks.ensemble_scores --allow-shared-seed \
     --results-dir results_message/beams_k64 results_k64/headline results_k64/headline60
+python -m benchmarks.ensemble_scores --allow-shared-seed \
+    --results-dir results_message/beams_k64 results_k64/headline results_k64/headline60 \
+    results_k64/headline120
 ```
 
 ```bash

@@ -162,16 +162,21 @@ python -m benchmarks.ensemble_scores --results-dir results_beams_k64
 ```
 
 ```bash
-# The best single model: the same configuration for 60 epochs, compiled (T4)
+# The 60-epoch model: the same configuration for 60 epochs, compiled (T4).
+# The best single model continues this run to 120 epochs:
+# notebooks/kaggle_k64_headline120_seed0.ipynb (--epochs 120 --resume on its checkpoint).
 python -m benchmarks.run_top_tagging --cache-dir data --representation constituents \
     --canonical-splits --epochs 60 --normalize global --seed 0 \
     --device cuda --dtype float32 --batch-size 256 --n-constituents 64 \
     --rounds 3 --beams --channels 8 --eval-chunk-size 1024 --models so3c_message_set \
     --compile --results-dir results_headline60 --ckpt-dir ckpt_headline60 --resume --max-seconds 39000
-# Ensembles of the committed runs: the three 30-epoch seeds, then all four models
+# Ensembles of the committed runs: the three 30-epoch seeds, then four, then five models
 python -m benchmarks.ensemble_scores --results-dir results_message/beams_k64 results_k64/headline
 python -m benchmarks.ensemble_scores --allow-shared-seed \
     --results-dir results_message/beams_k64 results_k64/headline results_k64/headline60
+python -m benchmarks.ensemble_scores --allow-shared-seed \
+    --results-dir results_message/beams_k64 results_k64/headline results_k64/headline60 \
+    results_k64/headline120
 ```
 
 The 60-epoch run and seed 0 of the 30-epoch runs share a seed number, so the
@@ -409,10 +414,12 @@ notebook commands; `results/` is not committed.
 | `so3c_message_set` + beams, 8 channels | 22,834 | 64 | 2 | 24 | 0.98311 ± 0.00010 | 0.9345 | 1095 ± 21 | 287 ± 8 | 8.49 GPU | `results_message/beams_k64_epoch24/` |
 | `so3c_message_set` + beams, 8 channels | 22,834 | 64 | 2 | 30 | 0.98333 ± 0.00010 | 0.9347 | 1131 ± 22 | 292 ± 7 | 10.62 GPU | `results_message/beams_k64/` (seeds 0, 1) |
 | the same, with seed 2 | 22,834 | 64 | 3 | 30 | 0.98326 ± 0.00014 | 0.9346 | 1089 ± 75 | 291 ± 6 | 10.6, 10.6, 5.18 GPU ‡ | + `results_k64/headline/` |
-| `so3c_message_set` + beams, 8 channels | 22,834 | 64 | 1 | 60 | **0.98363** | 0.9355 | **1141** | 315 | 8.59 GPU ‡ | `results_k64/headline60/` |
+| `so3c_message_set` + beams, 8 channels | 22,834 | 64 | 1 | 60 | 0.98363 | 0.9355 | 1141 | 315 | 8.59 GPU ‡ | `results_k64/headline60/` |
+| the same run continued to 120 (warm restart) | 22,834 | 64 | 1 | 120 | **0.98392** | 0.9361 | **1202** | 322 | +7.91 GPU | `results_k64/headline120/` |
 | seeds 0 and 1 at 30 epochs, scores averaged | — | 64 | 2 | 30 | 0.98373 | — | 1174 | 306 | — | `results_message/beams_k64/ensemble_seeds01.json` |
 | seeds 0, 1 and 2 at 30 epochs, scores averaged | — | 64 | 3 | 30 | 0.98378 | — | 1160 | 316 | — | `results_k64/headline/ensemble_seeds012.json` |
-| those three and the 60-epoch run, scores averaged | — | 64 | 4 | 30, 60 | **0.98396** | — | **1231** | 328 | — | `results_k64/headline60/ensemble_seeds012_plus_60ep.json` |
+| those three and the 60-epoch run, scores averaged | — | 64 | 4 | 30, 60 | 0.98396 | — | 1231 | 328 | — | `results_k64/headline60/ensemble_seeds012_plus_60ep.json` |
+| those four and the 120-epoch run, scores averaged | — | 64 | 5 | 30, 60, 120 | **0.98413** | — | **1270** | 340 | — | `results_k64/headline120/ensemble_seeds012_plus_60ep_120ep.json` |
 | `relu_mlp` (Deep Sets, matched) | 9,053 | 32 | 1 | 30 | 0.7636 | 0.7129 | 8.5 | 5 | 4.24 CPU | `results_matched_canonical/` |
 | `gelu_mlp` (Deep Sets, matched) | 9,053 | 32 | 1 | 30 | 0.7633 | 0.7123 | 8.6 | 5 | 5.65 CPU | `results_matched_canonical/` |
 
@@ -439,15 +446,18 @@ original code.
   37 rejection. Their rejection spread was ±22; the third seed, at 1004.5,
   widened it to ±75, so a rejection difference of ~150 on one seed is not
   resolved, while the AUC spread grew only from ±0.00010 to ±0.00014.
-- Training the same configuration for 60 epochs gives the best single model by
-  AUC, 0.98363 / 1141 (its rejection is inside the 30-epoch spread; seed 0 at 30
+- Training the same configuration for 60 epochs gives 0.98363 / 1141 (its rejection is inside the 30-epoch spread; seed 0 at 30
   epochs reached 1147): +0.00037 AUC over the three-seed 30-epoch mean, 2.2 standard
   errors with three seeds to compare against, and a final validation loss of
   0.16276, below all three 30-epoch runs (0.16318 to 0.16455). One seed.
+- Continuing that run to 120 epochs (the cosine schedule re-anchored, a warm
+  restart at learning rate 1.5e-3) gives the best single model, 0.98392 / 1202:
+  +0.00029 AUC and +61 rejection against its own epoch 60, final validation
+  loss 0.16184 against 0.16276.
 - Averaging scores helps a little: +0.0004 AUC and 42.5 rejection for seeds 0
   and 1 (per-jet scores correlating at 0.994), +0.00052 and 71 for all three
   seeds, and the four-model ensemble with the 60-epoch run reaches
-  0.98396 / 1231.
+  0.98396 / 1231; adding the 120-epoch run gives 0.98413 / 1270.
 - Stacking the jet's constituent multiplicity on the two-seed ensemble's scores
   (`benchmarks/diag_multiplicity_stacking.py`, fitted on one half of the test
   set and scored on the other, so a diagnostic only) adds 0.00002 AUC and 65
@@ -696,8 +706,9 @@ Values checked against the source tables, from
 | | 605 | 0.9823 | 901 ± 59 |
 | | 248 | 0.9780 | 516 ± 52 |
 
-PELICAN at 1,000 parameters (0.9835 / 1145 ± 74) matches the best SO3C single
-model (22,834 parameters, 60 epochs, 0.98363 / 1141); PELICAN from 3,000
+PELICAN at 1,000 parameters (0.9835 / 1145 ± 74) matches the 60-epoch SO3C
+model (22,834 parameters, 0.98363 / 1141) and is 0.0004 AUC below the best
+single model (120 epochs, 0.98392 / 1202); PELICAN from 3,000
 parameters up, LorentzNet, ParticleNet and L-GATr are ahead on both metrics.
 L-GATr trained from scratch matches PELICAN; its fine-tuned variant, the
 highest entry in the reference table, was pretrained on JetClass and is a
@@ -853,10 +864,10 @@ predates the L-GATr row of the reference table.
 
 ## 8. Limitations and open issues
 
-1. **Not state of the art.** The best SO3C single model is 0.0034 AUC and a
-   factor of 1.97 in rejection behind PELICAN, the best ensemble 0.0030 and
-   1.83, and PELICAN's 1,000-parameter model matches the single model
-   (table K).
+1. **Not state of the art.** The best SO3C single model (60 epochs continued to
+   120) is 0.0031 AUC and a factor of 1.87 in rejection behind PELICAN, the best
+   ensemble (five models) 0.0029 and 1.77, and PELICAN's 1,000-parameter model
+   matches the 60-epoch model (table K).
 2. **With beams, the output is not Lorentz-invariant**, by design: it is
    covariant together with the beams and invariant only under rotations about
    the beam axis ([theory.md §11](theory.md#11-beams-what-symmetry-survives)).
