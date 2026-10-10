@@ -100,3 +100,19 @@ def test_representation_screen_pairs_with_the_stored_control(nb_dir) -> None:
 def test_pairing_check_needs_the_control(nb_dir) -> None:
     with pytest.raises(ValueError):
         B.build_probe_screen("", "x", [], (0,), 1.0, pairing_check=True)
+
+
+def test_pinned_long_control_is_the_long_base_plus_keep_best(nb_dir) -> None:
+    """Plan phase 2: the same-stack long control is the committed long base's
+    command plus --keep-best, on the pinned T4 / torch 2.11 setup."""
+    base = _assigned_list(ROOT / "notebooks" / "kaggle_long_seeds_base_s0.ipynb", "BASE")
+    assert base and "--compile" in base
+    for seed in (0, 1):
+        assert B.main(["--only", "long_seeds_base211_s%d" % seed]) == 0
+        nb = nb_dir / ("kaggle_long_seeds_base211_s%d.ipynb" % seed)
+        assert _assigned_list(nb, "BASE") == base + ["--keep-best"]
+        import json
+        text = "".join("".join(c["source"]) for c in
+                       json.loads(nb.read_text(encoding="utf-8"))["cells"])
+        assert 'WANT = "2.11.0+cu128"' in text, "not the pinned setup"
+        assert "ensure_torch_for_this_gpu" not in text, "the unpinned setup is still there"

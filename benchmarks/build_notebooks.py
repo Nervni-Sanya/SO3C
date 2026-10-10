@@ -2325,8 +2325,20 @@ LONG_RUNS = [
 ]
 
 
+# Plan_2026-10-10 phase 2: whichever way phase 1 goes, the long-schedule arms
+# need a control on their own stack (the results_long_seeds bases ran on torch
+# 2.10, and pairing across 2.10 -> 2.11 is not shown). Base configuration plus
+# --keep-best (free: a CPU copy of the best-validation weights), seeds 0 and 1,
+# T4 / torch 2.11 pinned. The 2.10 base took 3.37-3.52 h per seed.
+LONG_RUNS_PINNED = [
+    ("base211", ["--keep-best"], 0),
+    ("base211", ["--keep-best"], 1),
+]
+
+
 def build_long_seeds(blob: str, tag: str, flags: list[str],
-                     seeds: tuple[int, ...], part: str = "") -> str:
+                     seeds: tuple[int, ...], part: str = "",
+                     pinned: bool = False) -> str:
     """The long-schedule screen: K=32 on the FULL training set, 60 epochs.
 
     Why this protocol. 60 epochs at K=64 beat the 30-epoch mean by +0.00037
@@ -2341,6 +2353,10 @@ def build_long_seeds(blob: str, tag: str, flags: list[str],
     run the notebook gives it what is left of an 11.2 h budget as
     --max-seconds, minus a margin for the final evaluation. A run that would
     overrun stops cleanly with a checkpoint and is reported as incomplete.
+
+    With `pinned`, the T4 / torch 2.11.0+cu128 setup of the probe screens
+    replaces GPU_SETUP, and a last cell asserts the stack of every result and
+    prints its batch-order fingerprint, so later arms can be paired with it.
     """
     base = ["--cache-dir", "DATA", "--representation", "constituents",
             "--canonical-splits", "--normalize", "global", "--epochs", "60",
@@ -2353,9 +2369,10 @@ def build_long_seeds(blob: str, tag: str, flags: list[str],
         md("""
 # Long-schedule screen: %s, seeds %s
 
-K=32, all 1.211M training jets, 60 epochs, beams + channels 8%s, compiled.
+K=32, all 1.211M training jets, 60 epochs, beams + channels 8%s, compiled.%s
 """ % (tag, ", ".join(str(s) for s in seeds),
-       (" + " + " ".join(flags)) if flags else "")),
+       (" + " + " ".join(flags)) if flags else "",
+       " T4 with torch 2.11.0+cu128 pinned and asserted." if pinned else "")),
         code("""
 import subprocess, time
 T0 = time.time()
@@ -2365,7 +2382,7 @@ print(subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total",
 """),
         code(UNPACK.format(blob=blob)),
         code(RUNNER),
-        code(GPU_SETUP),
+        code(GPU_SETUP_T4_PINNED if pinned else GPU_SETUP),
         code("""
 import glob, pathlib
 cands = glob.glob("/kaggle/input/**/top_tagging_train.npz", recursive=True)
@@ -2431,6 +2448,18 @@ if len(aucs) > 1:
              statistics.mean(rejs), statistics.stdev(rejs)))
 """),
     ]
+    if pinned:
+        cells.append(code("""
+# The stack every result ran on, and its batch order: a later arm pairs with
+# this run seed by seed only if both match.
+import json, glob
+for seed in SEEDS:
+    for f in sorted(glob.glob(OUT + "/seed%d/*.json" % seed)):
+        r = json.load(open(f)); env = r["env"]; bo = r["batch_order"]
+        print("seed %d: torch %s on %s | batch order epoch 1 %s, chain %s"
+              % (seed, env["torch"], env.get("gpu"), bo["epoch1"], bo["chain"]))
+        assert env["torch"] == "2.11.0+cu128" and "T4" in env.get("gpu", ""), env
+"""))
     name = "kaggle_long_seeds_%s%s.ipynb" % (tag, suffix)
     _finalise(cells, NB_DIR / name)
     slug = ("long-seeds-%s%s" % (tag, ("-" + part) if part else "")).replace("_", "-")
@@ -2927,6 +2956,10 @@ def _registry() -> dict:
     for tag, flags, seed in LONG_RUNS:
         reg["long_seeds_%s_s%d" % (tag, seed)] = (
             lambda b, t=tag, f=flags, s=seed: build_long_seeds(b, t, f, (s,), part="s%d" % s))
+    for tag, flags, seed in LONG_RUNS_PINNED:
+        reg["long_seeds_%s_s%d" % (tag, seed)] = (
+            lambda b, t=tag, f=flags, s=seed: build_long_seeds(
+                b, t, f, (s,), part="s%d" % s, pinned=True))
     for tag, flags, seeds in PROBE_SEED_RUNS:
         reg["probe_seeds_%s" % tag] = (
             lambda b, t=tag, f=flags, s=seeds: build_probe_seeds(b, t, f, s))

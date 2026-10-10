@@ -138,7 +138,9 @@ Plan: [`so3c_notes/plan_2026-10-10.md`](so3c_notes/plan_2026-10-10.md). Its code
 | C4, C5 | `06c68bc` | `--lab-scalars` (R2) and `--pair-lab` (R3), ParT's lab-frame particle and pair features written in invariants of {p, P, b±}; CPU cost 0.98× and 1.50× |
 | C6 | this commit | slot B notebooks: `probe_screen_{beame002,labscalars,pairlab}`, each the 10-05 control's command plus one flag (tested against the committed control notebook), seeds 0–2, paired summary with the plan §3 decision rule. R1 starts with the pairing check: control seed 0 rerun for two epochs of its 20-epoch schedule (two one-epoch sessions), compared with the stored history; pass within 1e-5, otherwise a fresh control |
 
-Slot B is pushed after the diff and the notebooks have been reviewed (plan §5).
+Slot B: R1 (`nsanya/so3c-probe-screen-beame002`) pushed 06:54 after a direct review of the diff and the notebooks; R2 and R3 follow one at a time as the slot frees.
+
+Phase 2 needs a K=32 long-schedule control on its own stack in either branch (plan §4; the `results_long_seeds` bases ran on torch 2.10). Prepared: `long_seeds_base211_s{0,1}`, the committed long base's command plus `--keep-best`, T4 / torch 2.11 pinned, each result's stack asserted and its batch order printed (the 2.10 base took 3.37–3.52 h per seed).
 
 ## GPU window 2026-10-03 → 2026-10-10 (closed): regularising the wide model
 
