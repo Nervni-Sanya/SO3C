@@ -104,14 +104,17 @@ def test_pairing_check_needs_the_control(nb_dir) -> None:
 
 def test_pinned_long_control_is_the_long_base_plus_keep_best(nb_dir) -> None:
     """Plan phase 2: the same-stack long control is the committed long base's
-    command plus --keep-best, on the pinned T4 / torch 2.11 setup."""
+    command plus --keep-best, and the pair-latent arm is that plus exactly
+    --pair-latent 8, both on the pinned T4 / torch 2.11 setup."""
+    import json
     base = _assigned_list(ROOT / "notebooks" / "kaggle_long_seeds_base_s0.ipynb", "BASE")
     assert base and "--compile" in base
-    for seed in (0, 1):
-        assert B.main(["--only", "long_seeds_base211_s%d" % seed]) == 0
-        nb = nb_dir / ("kaggle_long_seeds_base211_s%d.ipynb" % seed)
-        assert _assigned_list(nb, "BASE") == base + ["--keep-best"]
-        import json
+    runs = [(t, s, ["--pair-latent", "8"] if t == "pairlat211" else [])
+            for t in ("base211", "pairlat211") for s in (0, 1)]
+    for tag, seed, extra in runs:
+        assert B.main(["--only", "long_seeds_%s_s%d" % (tag, seed)]) == 0
+        nb = nb_dir / ("kaggle_long_seeds_%s_s%d.ipynb" % (tag, seed))
+        assert _assigned_list(nb, "BASE") == base + ["--keep-best"] + extra
         text = "".join("".join(c["source"]) for c in
                        json.loads(nb.read_text(encoding="utf-8"))["cells"])
         assert 'WANT = "2.11.0+cu128"' in text, "not the pinned setup"

@@ -2393,6 +2393,12 @@ LONG_RUNS = [
 LONG_RUNS_PINNED = [
     ("base211", ["--keep-best"], 0),
     ("base211", ["--keep-best"], 1),
+    # Phase 2 if no representation arm is promoted: the pair latent, the one
+    # structural candidate with a hint (+0.00012 by seed on the probe
+    # protocol, unpaired t = 1.2), against base211 above. It cost 1.34x the
+    # base on the probe protocol (torch 2.10, compiled): ~4.7 h per seed here.
+    ("pairlat211", ["--keep-best", "--pair-latent", "8"], 0),
+    ("pairlat211", ["--keep-best", "--pair-latent", "8"], 1),
 ]
 
 

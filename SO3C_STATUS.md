@@ -87,6 +87,7 @@ The 30-epoch seeds, for the record:
 | **Edge LayerNorm** (`--edge-norm`, per-pair LayerNorm before the edge tanh; probe protocol, 3 seeds by seed against a fresh torch-2.11 control; same-seed runs on this stack turned out not to pair, 2026-10-10) | **ΔAUC −0.00004 ± 0.00010** (t = −0.6), +0.00000 unpaired against the pooled six-run control; 1/ε_B@0.3 **−41.8 ± 7.8** by seed, lower on every seed, and −33 read unpaired against the pooled six-run control (t = −2.6); same GPU time. It halves the tanh saturation of rounds 1–2 (34/61% → 15/31% at seed 0) without moving AUC, so saturation is not the limit on this protocol | (SO3C) `results_message/probe_screen/`, `so3c_notes/gap_generic_ml.md` §9.2 |
 | **Log knee** (`--log-knee`, asinh(e^κ x) with learnable κ on the bilinear invariants; same screen) | **ΔAUC +0.00000 ± 0.00008** (t = 0.08), +0.00004 unpaired against the pooled six-run control (t = 0.7); 1/ε_B@0.3 +39.0 ± 30.1 by seed, positive on all three (p ≈ 0.08 one-sided), +48 read unpaired against the pooled control (t = 2.1), suggestive only; κ barely moves from its initial 4 (3.2–4.4). Free (+7 parameters), so a possible passenger, not an arm | (SO3C) `results_message/probe_screen/`, `so3c_notes/gap_generic_ml.md` §9.3 |
 | **Beam energy 0.02** (`--beam-energy 0.02`, R1 of the representation screen; probe protocol, 3 seeds against a fresh same-stack control) | **ΔAUC −0.00025 ± 0.00018** by seed, every seed negative; −0.00028 against the pooled six-run control (t = −2.8); all three runs below all six control runs; 1/ε_B@0.3 765.9 against 808.9; best validation loss worse on every seed. Unresolved by the plan's rule; closed by judgment | (SO3C) `results_message/repr_screen/` |
+| **Lab-frame particle features** (`--lab-scalars`, R2: ParT's log E, log pT, their ratios to the jet's, y − y_J, \|Δφ_J\|, ΔR_J in the scalar initialisation, written in invariants of {p, P, b±}; probe protocol, 3 seeds against a fresh same-stack control) | **ΔAUC +0.00004 ± 0.00009** by seed, mixed signs; +0.00000 against the pooled six-run control (t = 0.05); 1/ε_B@0.3 796.2 against 808.9; free (+56 parameters, 0.98× the time). Closed by the plan's rule | (SO3C) `results_message/repr_screen/labscalars` |
 | Best-validation checkpoint | Validation loss is lowest at the **final** epoch in both headline seeds and both beamless K=64 seeds (cosine schedule), so the best-validation checkpoint is the last one | (SO3C) 2026-09-19, from the stored histories |
 
 **Lesson worth keeping:** a closed question can re-open when the inputs change. Capacity was flat without beams and looked as if it paid once beams supplied the information (one seed, not resolved); width did pay later, paired, at the long schedule. kNN was useless at K=32 and 3.15× faster at K=128.
@@ -143,7 +144,7 @@ Slot B, one kernel at a time:
 - R1 (`nsanya/so3c-probe-screen-beame002`), pushed 06:54 after a direct review of the diff and the notebooks;
 - the fresh control `base1010`, pushed 08:43, because R1's pairing check failed;
 - R2 (`labscalars`), pushed 11:20;
-- R3 (`pairlab`) next.
+- R3 (`pairlab`), pushed 12:57.
 
 ### Representation screen (probe protocol, slot B)
 
@@ -179,7 +180,27 @@ So at the probe protocol on this stack **arms are read as unpaired**, against th
 
 The cost cannot be pinned on one mechanism. At E_b = 0.02, asinh⟨p,b±⟩ is entirely linear (scaled from the plan's measurement at E_b = 1), and the beam nodes' soft bound 1+⟨b,P⟩, saturated at E_b = 1, no longer is; one arm cannot say which change costs. Kernel time (log span): R1 1.50 h including the check; fresh control 1.37 h.
 
+**R2 (`--lab-scalars`, ParT's seven particle features in the scalar initialisation): closed at the probe level.**
+
+| | seed 0 | seed 1 | seed 2 | mean ± sd |
+|---|---|---|---|---|
+| R2, AUC | 0.98105 | 0.98102 | 0.98119 | 0.98109 ± 0.00009 |
+| fresh control, AUC | 0.98097 | 0.98108 | 0.98109 | 0.98105 ± 0.00006 |
+| Δ by seed (the plan's rule) | +0.00007 | −0.00006 | +0.00011 | +0.00004 ± 0.00009 |
+| R2, 1/ε_B@0.3 | 779.6 | 810.9 | 798.1 | 796.2 (pooled control 808.9 ± 25.9) |
+| best validation loss, R2 / fresh control | 0.17335 / 0.17363 | 0.17288 / 0.17345 | 0.17236 / 0.17299 | |
+
+- The plan's rule closes it: the signs are mixed and |mean| < 0.0001.
+- Against the pooled six-run control it is +0.00000 (Welch t = 0.05).
+- The best validation loss is lower than the fresh control's on every seed, but against the pooled six-run control the difference is unresolved (−0.00029, Welch t = −0.9), and R2's seed 0 (0.17335) lies above all three 10-05 control runs (0.17287–0.17307).
+- Each seed's batch order equals the fresh control's.
+- Cost: 22,890 parameters (+56); training time 0.97–0.98× the fresh control's per seed (mean 0.98×); kernel 1.34 h (log span).
+
+This agrees with L-GATr's Table 3: lab-frame particle features add nothing once the network has reference vectors, which the beams already are here.
+
 **Reading R2 and R3.** Their notebooks print deltas against the stored 10-05 control by seed. The plan's letter reads them against `base1010` by seed, and the fingerprint confirms the batch order. On this stack that is an unpaired comparison too, so the pooled six-run control is read alongside it.
+
+Also prepared, for phase 2 if no arm is promoted: `long_seeds_pairlat211_s{0,1}`, the same command plus `--pair-latent 8` (the pair latent cost 1.34× the base on the probe protocol, so ~4.7 h per seed).
 
 Phase 2 needs a K=32 long-schedule control on its own stack in either branch (plan §4; the `results_long_seeds` bases ran on torch 2.10). Prepared: `long_seeds_base211_s{0,1}`, the committed long base's command plus `--keep-best`, T4 / torch 2.11 pinned, each result's stack asserted and its batch order printed (the 2.10 base took 3.37–3.52 h per seed).
 
