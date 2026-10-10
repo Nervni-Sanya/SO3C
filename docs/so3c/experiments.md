@@ -738,7 +738,8 @@ pass and `--compile`, committed in `results_message/probe_seeds/`.
   has been run.
 - Paired seed by seed against the base, the pair latent gains +0.00012 AUC
   (t = 1.42, two degrees of freedom) and the vector channel −0.00002 (t = −0.59,
-  paired differences spreading by 0.00006). Neither is a demonstrated gain.
+  paired differences spreading by 0.00006). Read unpaired: +0.00012 (t = 1.2)
+  and −0.00002 (t = −0.2). Neither is a demonstrated gain.
 - Base seed 0 with the rewritten forward pass and `--compile` scored 0.98125
   against 0.98128 for the reference run, which used the original code on a
   P100: consistent with no shift, but one cross-stack pair cannot test it. The
@@ -761,7 +762,7 @@ channels, float32 with `--compile` on a T4, committed in `results_long_seeds/`.
 
 - Width pays a little, on two pairs. With dropout off and the same torch build,
   runs that share a seed see the same batch order (`train_classifier` reseeds
-  after the model is built), so they pair:
+  after the model is built), and here they behaved as pairs:
   `w128s32` beats the base by +0.00047 and +0.00049 AUC on seeds 0 and 1, and by
   92 and 62 in rejection. `w64s24`, one seed, sits +0.00025 above base seed 0.
   That is about +0.0002 AUC per doubling of the parameter count. Two pairs per
@@ -791,7 +792,9 @@ Canonical split, $K=64$, 30 epochs, beams and 8 channels, seed 0, float32 with
 | `headline_t4` (control) | 22,834 | 0.98311 | 0.9345 | 1041 | 288 | 30 | 4.10 |
 | `w64s24` | 60,834 | 0.98319 | 0.9347 | 1035 | 284 | 30 | 6.72 |
 
-- One paired seed gives +0.00008 AUC and −5 rejection: no gain resolved at 30
+- One run each, same seed, gives +0.00008 AUC and −5 rejection, an unpaired
+  difference (whether same-seed runs pair at $K=64$ is unmeasured; at the probe
+  protocol on this stack they did not, `SO3C_STATUS.md`): no gain resolved at 30
   epochs, where neither model overfits. The scatter of paired differences at
   $K=64$ is unmeasured, and width at $K=64$ over 60 epochs has not been run.
 - The control reruns the original seed-0 headline on a different stack: torch
@@ -875,10 +878,12 @@ predates the L-GATr row of the reference table.
    Measured spreads: ±0.00014 AUC and ±75 rejection for the 30-epoch headline
    (three seeds), ±0.00017 and ±58 on the probe protocol, ±0.00020 and ±32 on
    the long schedule. Runs that share a seed on the same stack see the same
-   batch order and can be compared pairwise; how much that helps varies
-   (paired differences scattered by 0.00001 for `w128s32`, 0.00006 for the
-   vector channel and 0.00015 for the pair latent, against ±0.00017 unpaired on
-   the probe protocol). Across stacks a shared seed behaved like an independent
+   batch order, but whether they pair has to be measured: paired differences
+   scattered by 0.00001 for `w128s32` (torch 2.10, long schedule), 0.00006 for
+   the vector channel and 0.00015 for the pair latent, against ±0.00017
+   unpaired on the probe protocol; and at the probe protocol on torch 2.11 a
+   same-seed rerun of the control lands as far off as a different seed
+   (`SO3C_STATUS.md`, representation screen). Across stacks a shared seed behaved like an independent
    seed (table N).
 9. **Provenance gaps.** `results/` is not committed. Result JSONs written
    before 2026-09-13 do not record the model's constructor arguments or the

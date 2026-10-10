@@ -170,14 +170,15 @@ The results with their source directories, and the known limitations, are in
 
 The K = 32 rows use all 1,211,000 training jets. With dropout off and the same
 torch build, runs that share a seed see the same batch order
-(`train_classifier` reseeds after the model is built), so arms are compared
-paired: `w128s32` beats the base by +0.00047 and +0.00049 on seeds 0 and 1,
+(`train_classifier` reseeds after the model is built), and here the arms
+tracked each other as pairs: `w128s32` beats the base by +0.00047 and +0.00049 on seeds 0 and 1,
 both arms on torch 2.10. Weight decay costs −0.00010 and −0.00012 if those runs
 pair, but they used torch 2.11 against 2.10 for their controls, and whether the
 batch order survives that upgrade is unconfirmed (epoch-1 losses cannot tell).
 Two pairs per comparison is thin. The two K = 64 rows share one stack (T4,
-torch 2.11, compiled) and form one paired seed; their difference, +0.00008, is
-not resolved (the scatter of paired differences at K = 64 is unmeasured). The control rerun
+torch 2.11, compiled) and one seed, one run each; their difference, +0.00008,
+is not resolved (whether same-seed runs pair at K = 64 is unmeasured; at the
+probe protocol on this stack they did not, `SO3C_STATUS.md`). The control rerun
 differs from the original seed-0 headline in torch (2.11 against 2.5.1, as
 pinned in the notebook), card (T4 against P100), `torch.compile` (on against
 off) and forward-pass implementation (equal in float64, rounding differently in

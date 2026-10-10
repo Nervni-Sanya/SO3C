@@ -26,7 +26,7 @@ reference.
 | [`so3c/lift.py`](../../so3c/lift.py) | Bivector lift of 4-momenta, Lorentz matrices matched to `expm_so3c`. |
 | [`benchmarks/so3c_models.py`](../../benchmarks/so3c_models.py) | Set taggers, flat (tabular) models, synthetic-task heads. |
 | [`benchmarks/models.py`](../../benchmarks/models.py) | `build_model` registry: the `--models` names. |
-| [`benchmarks/train.py`](../../benchmarks/train.py), [`benchmarks/tabular_runner.py`](../../benchmarks/tabular_runner.py) | Training loop with checkpoint and exact resume, optional `torch.compile` and best-validation weights; training, evaluation and result files. |
+| [`benchmarks/train.py`](../../benchmarks/train.py), [`benchmarks/tabular_runner.py`](../../benchmarks/tabular_runner.py) | Training loop with checkpoint and resume (exact on the CPU), optional `torch.compile` and best-validation weights; training, evaluation and result files. |
 | [`benchmarks/run_top_tagging.py`](../../benchmarks/run_top_tagging.py) | Top-tagging runner (internal and canonical protocols). |
 | [`benchmarks/ensemble_scores.py`](../../benchmarks/ensemble_scores.py) | Seed ensembles from the saved per-jet scores, across directories and, with `--allow-shared-seed`, across runs that share a seed number. |
 | [`benchmarks/run_boost_robustness.py`](../../benchmarks/run_boost_robustness.py) | Re-evaluates a trained tagger on Lorentz-transformed test jets, with the beams fixed or moved along. |

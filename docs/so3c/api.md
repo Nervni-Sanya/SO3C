@@ -177,7 +177,12 @@ split as well: the record gains `best_val_epoch`, `best_val_loss` and
 `test_metrics_best_val` (null otherwise), and `…__scores_bestval.npz` holds
 their per-example scores. `test_metrics` always refers to the final weights.
 The global seed is set before each model is built, so identical commands
-reproduce each other. The file layout is described in
+start from the same weights and see the same batch order. Compiled CUDA runs
+in different Kaggle kernels are still not bitwise identical: on the T4 with
+torch 2.11 their epoch-1 losses differ at equal batch order, and the
+compiled-vs-eager check already differs at step 0, most likely because each
+kernel compiles and autotunes afresh
+([`SO3C_STATUS.md`](../../SO3C_STATUS.md), representation screen). The file layout is described in
 [experiments.md](experiments.md#5-output-files).
 
 **`benchmarks.train.TrainConfig`** fields and defaults: `epochs=30`,
@@ -212,7 +217,9 @@ compiled model is first checked against the eager one on the first
 raised if the logits differ by more than
 $10^{-3}$ or the gradients by more than $10^{-2}$, relative to their largest
 values. A checkpoint stores model, optimizer, scheduler and RNG state and the
-best weights kept so far, so a resumed run continues exactly; the weights are
+best weights kept so far, so a resumed run continues exactly (tested on the
+CPU); a compiled CUDA resume in a fresh Kaggle kernel recompiles and need not
+be bitwise identical to an uninterrupted run; the weights are
 saved through the uncompiled module, so compiled and eager runs share
 checkpoints. Resuming with a larger `epochs` than the run started with
 re-anchors the cosine schedule on the new horizon. `max_seconds` limits a

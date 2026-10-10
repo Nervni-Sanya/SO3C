@@ -354,9 +354,9 @@ Each defaults to the behaviour the results in [experiments.md](experiments.md)
 were measured with. All six were trained on the short probe protocol ($K=32$,
 400,000 training jets, 20 epochs, with beams and 8 channels; `mass_input=False`
 and `self_edges=False` only together), and the vector channel and the pair
-latent three more times, paired with three runs of the base. None showed a
+latent three more times, against three runs of the base seed by seed. None showed a
 resolved gain: the best, the pair latent, came out +0.00012 AUC above the base
-over the three paired seeds ($t=1.42$). None has been trained on the full
+over the three seeds ($t=1.42$ paired, $1.2$ unpaired). None has been trained on the full
 training set or at $K=64$
 ([experiments.md, table L](experiments.md#l-switch-screen-and-probe-protocol-noise)).
 Each keeps exact covariance: it adds or recompresses invariants, or updates covariant
@@ -401,7 +401,7 @@ vectors by invariant-weighted linear combinations.
   $E$ over real pairs and over its diagonal. $E$ is built from invariants only.
 
 Two more switches, `edge_norm` and `log_knee`, were added on 2026-10-05 and
-screened on the same protocol with three seeds paired against a fresh control;
+screened on the same protocol with three seeds against a fresh control;
 neither moved AUC ([`SO3C_STATUS.md`](../../SO3C_STATUS.md), Closed table):
 
 - **`edge_norm=True`** puts a LayerNorm over the `act_hidden` units of each

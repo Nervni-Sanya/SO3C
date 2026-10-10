@@ -231,11 +231,17 @@ GPU run had put `falpha=3` at 3.54×. On the CPU (K=32, batch 256, float32)
 2026-10-05 T4 screen their sessions took the same time as the control's.
 
 Since 2026-10-05 every result JSON also records `env`: torch and CUDA versions,
-Python and the GPU name. Seed pairing between runs is established only on the same
-torch build; across builds it is not shown either way. Since 2026-10-10 it
-also records `batch_order`: the sha256 of epoch 1's permutation and a running
-hash over all epochs, carried through checkpoints. Two runs saw the same batch
-order exactly when these agree, whatever the architecture.
+Python and the GPU name. Since 2026-10-10 it also records `batch_order`: the
+sha256 of epoch 1's permutation and a running hash over all epochs, carried
+through checkpoints. Two runs saw the same batch order exactly when these agree,
+whatever the architecture. A shared batch order is not a shared trajectory:
+same-seed runs in different Kaggle kernels on the T4 with torch 2.11, compiled,
+with the same default-path code, do not reproduce each other (epoch-1 losses
+4.5e-3 apart at equal fingerprints; final AUC up to 0.00018 apart between two
+controls). At the probe protocol that is as far apart as different seeds, so
+there same-seed comparisons are read as unpaired. Across torch builds the
+batch order was not checked directly, though the long-schedule weight-decay
+runs (2.11) tracked their 2.10 counterparts seed by seed.
 
 ### Lab-frame features (added 2026-10-10, screen pending)
 

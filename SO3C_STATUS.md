@@ -83,9 +83,10 @@ The 30-epoch seeds, for the record:
 | **Rest-frame shape invariants (body order)**: tr S³, det S, sphericity eigenvalues, per-node triangles, linear energy-flow tensor of the raw lift | Stacked as the multiplicity row: −0.00001 to 0.00000 AUC on the 60-epoch model, ≤ +0.00003 on the ensemble, the size of a pure-noise control. Jet-level 3- and 4-body shapes add nothing | (SO3C) `so3c_notes/gap_generic_ml.md` §8.4, 2026-10-05 |
 | **Flow-head L2 penalty** (1e-3·‖w_head‖² inside the loss, plain Adam) | Not binding: in live channels the data gradient is 47–405× the penalty's and the penalty is ≤ 2.5% of Adam's normaliser; the Hessian curvature implies ≤ 9% shrinkage. It pins only heads of collapsed channels. A paired 300-step fine-tune without it changes nothing. Round 0 is quiet because the generator is quadratic in the (small) state, not because of the penalty | (SO3C) `so3c_notes/gap_generic_ml.md` §2 |
 | **Test-time augmentation** over the detector reflections (σ_x, σ_z, beam-slot swap; only 4 views are distinct) | +0.00002 ± 0.00002 AUC on 100k test jets, against +0.00034 for the 4-seed ensemble on the same jets | (SO3C) `so3c_notes/gap_generic_ml.md` §4 |
-| **Width at K=64** (w64s24, seed 0, 30 epochs, paired with a control rerun on the same software) | 0.98319 / 1035.5 against 0.98311 / 1040.8: **+0.00008 AUC** for 1.64× the time (+0.00025 at the K=32 long schedule, one seed) | (SO3C) `results_k64/w64s24`, `results_k64/headline_t4` |
-| **Edge LayerNorm** (`--edge-norm`, per-pair LayerNorm before the edge tanh; probe protocol, 3 seeds paired with a fresh torch-2.11 control) | **ΔAUC −0.00004 ± 0.00010** (t = −0.6); 1/ε_B@0.3 **−41.8 ± 7.8** on every seed; same GPU time. It halves the tanh saturation of rounds 1–2 (34/61% → 15/31% at seed 0) without moving AUC, so saturation is not the limit on this protocol | (SO3C) `results_message/probe_screen/`, `so3c_notes/gap_generic_ml.md` §9.2 |
-| **Log knee** (`--log-knee`, asinh(e^κ x) with learnable κ on the bilinear invariants; same screen) | **ΔAUC +0.00000 ± 0.00008** (t = 0.08); 1/ε_B@0.3 +39.0 ± 30.1, positive on all three seeds (p ≈ 0.08 one-sided), suggestive only; κ barely moves from its initial 4 (3.2–4.4). Free (+7 parameters), so a possible passenger, not an arm | (SO3C) `results_message/probe_screen/`, `so3c_notes/gap_generic_ml.md` §9.3 |
+| **Width at K=64** (w64s24, seed 0, 30 epochs, against a same-seed control rerun on the same software; one run each, unpaired) | 0.98319 / 1035.5 against 0.98311 / 1040.8: **+0.00008 AUC** for 1.64× the time (+0.00025 at the K=32 long schedule, one seed) | (SO3C) `results_k64/w64s24`, `results_k64/headline_t4` |
+| **Edge LayerNorm** (`--edge-norm`, per-pair LayerNorm before the edge tanh; probe protocol, 3 seeds by seed against a fresh torch-2.11 control; same-seed runs on this stack turned out not to pair, 2026-10-10) | **ΔAUC −0.00004 ± 0.00010** (t = −0.6), +0.00000 unpaired against the pooled six-run control; 1/ε_B@0.3 **−41.8 ± 7.8** by seed, lower on every seed, and −33 read unpaired against the pooled six-run control (t = −2.6); same GPU time. It halves the tanh saturation of rounds 1–2 (34/61% → 15/31% at seed 0) without moving AUC, so saturation is not the limit on this protocol | (SO3C) `results_message/probe_screen/`, `so3c_notes/gap_generic_ml.md` §9.2 |
+| **Log knee** (`--log-knee`, asinh(e^κ x) with learnable κ on the bilinear invariants; same screen) | **ΔAUC +0.00000 ± 0.00008** (t = 0.08), +0.00004 unpaired against the pooled six-run control (t = 0.7); 1/ε_B@0.3 +39.0 ± 30.1 by seed, positive on all three (p ≈ 0.08 one-sided), +48 read unpaired against the pooled control (t = 2.1), suggestive only; κ barely moves from its initial 4 (3.2–4.4). Free (+7 parameters), so a possible passenger, not an arm | (SO3C) `results_message/probe_screen/`, `so3c_notes/gap_generic_ml.md` §9.3 |
+| **Beam energy 0.02** (`--beam-energy 0.02`, R1 of the representation screen; probe protocol, 3 seeds against a fresh same-stack control) | **ΔAUC −0.00025 ± 0.00018** by seed, every seed negative; −0.00028 against the pooled six-run control (t = −2.8); all three runs below all six control runs; 1/ε_B@0.3 765.9 against 808.9; best validation loss worse on every seed. Unresolved by the plan's rule; closed by judgment | (SO3C) `results_message/repr_screen/` |
 | Best-validation checkpoint | Validation loss is lowest at the **final** epoch in both headline seeds and both beamless K=64 seeds (cosine schedule), so the best-validation checkpoint is the last one | (SO3C) 2026-09-19, from the stored histories |
 
 **Lesson worth keeping:** a closed question can re-open when the inputs change. Capacity was flat without beams and looked as if it paid once beams supplied the information (one seed, not resolved); width did pay later, paired, at the long schedule. kNN was useless at K=32 and 3.15× faster at K=128.
@@ -107,10 +108,10 @@ Both are now switchable and default to the old behaviour: `--no-mass-input --no-
 
 ### Best-motivated architectural candidates
 
-- **Rank-2 pair latent** with a reduced Eq2→2 aggregator basis (7 of PELICAN's 15). PELICAN carries a [B,N,N,C] state through its blocks; we collapse pairs to nodes every round. The verified table-2 comparison — 1k PELICAN parameters match our 22.8k — is consistent with this being the dominant carrier. Outcome likely bimodal: a real step toward 1400–1800 rejection, or under +0.0005 if our flow already supplies it. **Implemented** as `--pair-latent N`: 3680 parameters at C_p = 8 on beams + channels 8, CPU cost 1.56x the headline, 1.64x combined with the vector channel and both fixes; on a T4 1.55x per step, an estimated ~7.7 h per 30-epoch seed at K=64 (~5.8 h compiled). Exactly Lorentz covariant (1.7e-16) and permutation invariant (0.0), with the 7 aggregator maps checked for permutation equivariance on their own. Screened on GPU on 2026-09-20 and replicated over three seeds: +0.00012 AUC paired, not resolved. Agent estimate: screen at 20% data × 3 seeds ≈ 11 GPU-h.
+- **Rank-2 pair latent** with a reduced Eq2→2 aggregator basis (7 of PELICAN's 15). PELICAN carries a [B,N,N,C] state through its blocks; we collapse pairs to nodes every round. The verified table-2 comparison — 1k PELICAN parameters match our 22.8k — is consistent with this being the dominant carrier. Outcome likely bimodal: a real step toward 1400–1800 rejection, or under +0.0005 if our flow already supplies it. **Implemented** as `--pair-latent N`: 3680 parameters at C_p = 8 on beams + channels 8, CPU cost 1.56x the headline, 1.64x combined with the vector channel and both fixes; on a T4 1.55x per step, an estimated ~7.7 h per 30-epoch seed at K=64 (~5.8 h compiled). Exactly Lorentz covariant (1.7e-16) and permutation invariant (0.0), with the 7 aggregator maps checked for permutation equivariance on their own. Screened on GPU on 2026-09-20 and replicated over three seeds: +0.00012 AUC by seed (paired t = 1.42; unpaired t = 1.2), not resolved. Agent estimate: screen at 20% data × 3 seeds ≈ 11 GPU-h.
 - **A vector channel alongside the bivector.** Two reasons, one measured elsewhere and one structural:
   - arXiv:2606.21790 (abstract, verified) finds that in L-GATr "bivector channels are negligible for top-quark tagging while vector-like channels are dominant". The LLoCa (2505.20280) and slim L-GATr (2512.17011) abstracts do not address grades; their bodies are unchecked.
-  - Our lift `z_a = bivec(p_a, P)` is **unchanged under p_a → p_a + λP**, so it discards each constituent's component along the jet axis (**correction, 2026-10-05:** for the massless constituents of this dataset p_a² = 0 fixes that component, and z_a·z_a = ⟨p_a,P⟩², M² = Σ⟨p_a,P⟩ and Re z_a·z_b recover every ⟨p_a,p_b⟩, so the lift loses no information; `so3c_notes/gap_thesis.md` §3). The scalar channel recovers ⟨p_a, P⟩ only as an invariant. A covariant vector v_a = p_a keeps it — the same kind of missing-information problem that beams fixed. **Implemented** as `--vector-channel`: 531 parameters on beams + channels 8, CPU cost 1.10x the headline, exactly covariant to 7e-15 with and without beams, and the vector update moves the logits by 7e-2 to 9e-2. Screened on GPU on 2026-09-20 and replicated over three seeds: −0.00002 AUC paired, bounded near zero.
+  - Our lift `z_a = bivec(p_a, P)` is **unchanged under p_a → p_a + λP**, so it discards each constituent's component along the jet axis (**correction, 2026-10-05:** for the massless constituents of this dataset p_a² = 0 fixes that component, and z_a·z_a = ⟨p_a,P⟩², M² = Σ⟨p_a,P⟩ and Re z_a·z_b recover every ⟨p_a,p_b⟩, so the lift loses no information; `so3c_notes/gap_thesis.md` §3). The scalar channel recovers ⟨p_a, P⟩ only as an invariant. A covariant vector v_a = p_a keeps it — the same kind of missing-information problem that beams fixed. **Implemented** as `--vector-channel`: 531 parameters on beams + channels 8, CPU cost 1.10x the headline, exactly covariant to 7e-15 with and without beams, and the vector update moves the logits by 7e-2 to 9e-2. Screened on GPU on 2026-09-20 and replicated over three seeds: −0.00002 AUC by seed, bounded near zero if those runs pair (paired differences sd 0.00006; read unpaired, the 95% bound is about ±0.00035).
 
 ### Cheap candidates (unverified gain)
 
@@ -136,31 +137,49 @@ Plan: [`so3c_notes/plan_2026-10-10.md`](so3c_notes/plan_2026-10-10.md). Its code
 | C2 | `86ca67a` | batch-order fingerprint in every result JSON (`batch_order`: epoch 1's permutation and a running hash, carried through checkpoints) |
 | C3 | `c9dd235` | `build_notebooks` builds nothing unless named: `--list`, `--only NAME...`, `--all` |
 | C4, C5 | `06c68bc` | `--lab-scalars` (R2) and `--pair-lab` (R3), ParT's lab-frame particle and pair features written in invariants of {p, P, b±}; CPU cost 0.98× and 1.50× |
-| C6 | this commit | slot B notebooks: `probe_screen_{beame002,labscalars,pairlab}`, each the 10-05 control's command plus one flag (tested against the committed control notebook), seeds 0–2, paired summary with the plan §3 decision rule. R1 starts with the pairing check: control seed 0 rerun for two epochs of its 20-epoch schedule (two one-epoch sessions), compared with the stored history; pass within 1e-5, otherwise a fresh control |
+| C6 | `227bf53` | slot B notebooks: `probe_screen_{beame002,labscalars,pairlab}`, each the 10-05 control's command plus one flag (tested against the committed control notebook), seeds 0–2, paired summary with the plan §3 decision rule. R1 starts with the pairing check: control seed 0 rerun for two epochs of its 20-epoch schedule (two one-epoch sessions), compared with the stored history; pass within 1e-5, otherwise a fresh control |
 
-Slot B: R1 (`nsanya/so3c-probe-screen-beame002`) pushed 06:54 after a direct review of the diff and the notebooks; R2 and R3 follow one at a time as the slot frees.
+Slot B, one kernel at a time:
+- R1 (`nsanya/so3c-probe-screen-beame002`), pushed 06:54 after a direct review of the diff and the notebooks;
+- the fresh control `base1010`, pushed 08:43, because R1's pairing check failed;
+- R2 (`labscalars`), pushed 11:20;
+- R3 (`pairlab`) next.
 
 ### Representation screen (probe protocol, slot B)
 
-**R1 ran (1.50 h; results, checkpoints and log in `results_message/repr_screen/`). The pairing check failed.** The check reran control seed 0 for two epochs. It differs from the stored 10-05 history by 2.1e-3 (train) and 4.3e-3 (val) in epoch 1, and by 1.2e-3 and 2.5e-3 in epoch 2. That is as large as the gap between different seeds (3.7e-3 to 6.1e-2), so the arms cannot be read against the 10-05 control.
+**Same-seed runs in different kernels do not reproduce (measured 2026-10-10).** Control seed 0 ran three times with the same default-path code on the same stack (T4, torch 2.11.0+cu128, compiled), each in its own Kaggle kernel:
 
-Ruled out:
-- **Code.** Diffing the code embedded in both notebooks shows the same default path: the new options are off, `--beam-energy` is not passed unless set, and `train.py` only hashes the permutation.
-- **Stack.** Both runs used the same torch build (2.11.0+cu128) and the same card type (T4).
-- **The resume.** Epoch 1 already differs, and epoch 1 involves no resume.
+| run of control seed 0 | batch order, epoch 1 | epoch-1 val loss | final AUC |
+|---|---|---|---|
+| 10-05 control | not recorded (before C2) | 0.20259 | 0.98115 |
+| R1's pairing check (two epochs) | `a36497dc…` | 0.19830 | — |
+| fresh control `base1010` | `a36497dc…`, the same | 0.20283 | 0.98097 |
 
-What is left is that training on this stack is not bitwise reproducible, or that something outside the code differed. A fresh control (`probe_screen_base1010`, the 10-05 command exactly) is pushed next. Its seed 0 repeats the check's rerun and prints which of the two it is.
+- The check and the fresh control have equal batch-order fingerprints and, by the code (`torch.manual_seed` before the model is built), the same initial weights. Their epoch-1 losses still differ by up to 4.5e-3.
+- **The likely cause is per-kernel compilation.** Each run prints a compiled-vs-eager check on its first batch, before any optimiser step. For seed 0 it gives 8.1e-5 (10-05), 5.3e-5 (the check) and 4.8e-5 (`base1010`), so the compiled forward pass already differs between kernels at step 0. The check's two sessions ran in one kernel, sharing its compile cache, and agree to the printed precision (5.3e-5 and 2.9e-7 in both). Inductor choosing among kernel configurations by timing would do this. Atomic adds would not explain it: the step-0 numbers quoted are the logit difference, computed from forward passes before the check compares gradients, and the only indexed operation on the default path is the readout's `T_cc[:, pair_rows, pair_cols]`, whose upper-triangle indices are unique, so its accumulating backward has no colliding writes. No run was repeated inside one kernel, so reproducibility within a kernel is untested.
+- **A shared seed still shares part of the trajectory.** Seed 1's epoch-1 validation loss is the outlier in all five runs (0.23–0.27, against 0.19–0.20 for seeds 0 and 2). Over epochs 1–20, same-seed control runs differ in validation loss by 0.0009–0.0015 on average, against 0.0017–0.0052 for different seeds. Their per-jet test scores correlate at 0.9955–0.9959, above every different-seed control pair (0.9944–0.9953).
+- **It does not pair the final AUC at this protocol.** The same seed run twice (`base1010` − 10-05, seeds 0–2) gives final AUCs −0.00018, −0.00003 and −0.00002 apart, and rejections up to 62 apart. Different seeds within one control differ by up to 0.00004 (10-05) and 0.00011 (`base1010`) in AUC, and by up to 20 and 72 in rejection, so a same-seed rerun lands as far off as a different seed. R1's per-jet scores are no closer to the same-seed control run (0.9929–0.9937) than to other seeds' runs (0.9927–0.9935).
 
-**R1 itself (`--beam-energy 0.02`), unpaired for now:**
+So at the probe protocol on this stack **arms are read as unpaired**, against the controls pooled. The six control runs pool to 0.98108 ± 0.00006 AUC and 808.9 ± 25.9 rejection. The 10-05 screen's "paired sd 0.00008–0.00010" is the size of this run-to-run noise: same-seed control reruns differ with sd 0.00009, and √2 × 0.00006 ≈ 0.00008. Its deltas are consistent with unpaired draws, and its AUC verdicts stand when read unpaired: against the pooled six-run control the edge norm is ΔAUC +0.00000 (t = 0.0) and the log knee +0.00004 (t = 0.7). Other settings behaved differently, and not consistently by torch version. At the K=32 long schedule the two `w128s32` − base differences (torch 2.10) agreed to ±0.00001 while the seeds swung 0.0004, and the torch-2.11 weight-decay runs tracked their 2.10 counterparts as closely (−0.00010 and −0.00012). At the probe protocol on torch 2.10 the vector channel tracked the base seed by seed (paired differences sd 0.00006, against a base seed spread of 0.00017), but the pair latent did not (paired sd 0.00015). On torch 2.11 the probe seeds barely differ (sd 0.00002–0.00006) and a same-seed rerun moves as much, so pairing has nothing to remove. Whether a shared seed pairs the final metric depends on the stack and the protocol, and has to be measured, not assumed.
+
+**R1 (`--beam-energy 0.02`): unresolved by the plan's rule and not a candidate; treated as closed, a judgment beyond the rule.**
 
 | | seed 0 | seed 1 | seed 2 | mean ± sd |
 |---|---|---|---|---|
 | R1, AUC | 0.98081 | 0.98097 | 0.98063 | 0.98080 ± 0.00017 |
-| 10-05 control, AUC | 0.98115 | 0.98111 | 0.98111 | 0.98112 ± 0.00002 |
-| R1, 1/ε_B@0.3 | 761.9 | 779.6 | 756.2 | 765.9 ± 12.2 (control 817.6 ± 11.4) |
-| best validation loss, R1 / control | 0.17408 / 0.17287 | 0.17360 / 0.17307 | 0.17477 / 0.17293 | worse on every seed |
+| fresh control, AUC | 0.98097 | 0.98108 | 0.98109 | 0.98105 ± 0.00006 |
+| Δ by seed (the plan's rule) | −0.00017 | −0.00012 | −0.00046 | −0.00025 ± 0.00018 |
+| R1, 1/ε_B@0.3 | 761.9 | 779.6 | 756.2 | 765.9 (pooled control 808.9 ± 25.9) |
+| best validation loss, R1 / fresh control | 0.17408 / 0.17363 | 0.17360 / 0.17345 | 0.17477 / 0.17299 | worse on every seed |
 
-All three seeds sit below every control seed, on AUC, rejection and validation loss. The final verdict waits for the fresh control.
+- By the letter of plan §3 this is "unresolved": |mean| ≥ 0.0001 and the signs agree, and the rule has no row for a consistent loss. The kernel printed the same verdict.
+- Against the pooled six-run control it is −0.00028 (Welch t = −2.8, df ≈ 2.2).
+- All three R1 runs lie below all six control runs (best R1 0.980966, worst control 0.980974). If the beam energy made no difference, that ordering would have probability 1/84.
+- Each seed's batch order equals the fresh control's.
+
+The cost cannot be pinned on one mechanism. At E_b = 0.02, asinh⟨p,b±⟩ is entirely linear (scaled from the plan's measurement at E_b = 1), and the beam nodes' soft bound 1+⟨b,P⟩, saturated at E_b = 1, no longer is; one arm cannot say which change costs. Kernel time (log span): R1 1.50 h including the check; fresh control 1.37 h.
+
+**Reading R2 and R3.** Their notebooks print deltas against the stored 10-05 control by seed. The plan's letter reads them against `base1010` by seed, and the fingerprint confirms the batch order. On this stack that is an unpaired comparison too, so the pooled six-run control is read alongside it.
 
 Phase 2 needs a K=32 long-schedule control on its own stack in either branch (plan §4; the `results_long_seeds` bases ran on torch 2.10). Prepared: `long_seeds_base211_s{0,1}`, the committed long base's command plus `--keep-best`, T4 / torch 2.11 pinned, each result's stack asserted and its batch order printed (the 2.10 base took 3.37–3.52 h per seed).
 
@@ -191,7 +210,7 @@ w64s24 and a control rerun of the headline configuration, both seed 0, K=64, 30 
 |---|---|---|---|---|---|---|---|
 | control (`results_k64/headline_t4`) | 22834 | 0.98311 | 1040.8 | 287.6 | 0.16483 (30) | 0.0030 | 4.10 |
 | w64s24 (`results_k64/w64s24`) | 60834 | 0.98319 | 1035.5 | 284.4 | 0.16448 (30) | 0.0039 | 6.72 |
-| Δ, paired | 2.7× | **+0.00008** | −5 | −3 | −0.00035 | | |
+| Δ (one run each, unpaired) | 2.7× | **+0.00008** | −5 | −3 | −0.00035 | | |
 
 Neither model overfits at 30 epochs (validation loss lowest at the final epoch, so `--keep-best` returns the final weights). At K=32 the width gain appeared on the **60-epoch** schedule; at K=64 on 30 epochs it is +0.00008. That is consistent with capacity needing the long schedule, so width at K=64 on 60 epochs is still untested — not refuted.
 
@@ -201,7 +220,7 @@ Neither model overfits at 30 epochs (validation loss lowest at the final epoch, 
 
 ### Conditioning screen (2026-10-05)
 
-The two conditioning switches of the gap notes, on the probe protocol (K=32, 400k training jets, 20 epochs, `--compile`), three seeds per arm, paired seed by seed with a **fresh** control on the same build (T4, torch 2.11.0+cu128, pinned and asserted by the new setup cell; every result JSON now records `env`). Code `2303568`; results `results_message/probe_screen/` (9 runs, 4.16 GPU-h).
+The two conditioning switches of the gap notes, on the probe protocol (K=32, 400k training jets, 20 epochs, `--compile`), three seeds per arm, read seed by seed against a **fresh** control on the same build (T4, torch 2.11.0+cu128, pinned and asserted by the new setup cell; every result JSON now records `env`). Code `2303568`; results `results_message/probe_screen/` (9 runs, 4.16 GPU-h). On 2026-10-10 same-seed runs on this stack turned out not to pair; read unpaired, the AUC verdicts below stand (representation screen section).
 
 | arm | params | ΔAUC vs control | Δ 1/ε_B@0.3 |
 |---|---|---|---|
@@ -242,7 +261,7 @@ The same profile's rows for c16, pair8 and pair16w32 are eager, not compiled: dy
 | w64s24 | 60834 | 0 | 0.98286 | 930 | 50 | 0.009 | 4.4 |
 | **w128s32** | 120202 | 0, 1 | **0.98289 ± 0.00027** | **989 ± 65** | 45–47 | 0.010–0.012 | 6.4–7.0 |
 
-**w128s32 − base = +0.00048 AUC, +81 rejection (+9%).** Paired by seed (same batch order, see below): +0.00047 and +0.00049. Unpaired against three base seeds: t = 2.34, df 3, p ≈ 0.05 one-sided. The midpoint (w64s24, one seed) is +0.00025 over base seed 0, so AUC rises monotonically with width at roughly +0.0002 per doubling of parameters, while overfitting rises just as steadily.
+**w128s32 − base = +0.00048 AUC, +81 rejection (+9%).** By seed (same batch order; here the pairs tracked, see below): +0.00047 and +0.00049. Unpaired against three base seeds: t = 2.34, df 3, p ≈ 0.05 one-sided. The midpoint (w64s24, one seed) is +0.00025 over base seed 0, so AUC rises monotonically with width at roughly +0.0002 per doubling of parameters, while overfitting rises just as steadily.
 
 **What it means for the SOTA gap.** Width is the first capacity axis that pays for this model, but at ~+0.0002 per doubling it cannot close 0.0030 on its own, and the wide models are **overfit-limited** — the next lever is regularisation for them, not more width. Also measured here: this protocol's base spread is ±0.00020 AUC, ±32 rejection over three seeds.
 
@@ -266,9 +285,9 @@ The curves change the picture more than the numbers do. The wide model **overfit
 | mean ± sd | 0.98241 ± 0.00028 | 0.98289 ± 0.00027 | **+0.00048 ± 0.00001** |
 | 1/ε_B@0.3 | 913 ± 44 | 989 ± 65 | +77 |
 
-Unpaired, +0.00048 is only t = 1.76 (df 2). But **runs with the same seed see the same batch order across architectures**: `train_classifier` calls `torch.manual_seed(cfg.seed)` after the model is built, so model initialisation, whatever RNG it consumes, cannot shift the shuffle; checked directly by capturing the permutations of two different architectures under seed 1 (identical). The seed-to-seed swing of ~0.0004 is therefore data-order noise **shared** between the arms, and the paired differences agree to ±0.00001 (paired t ≈ 48, df 1, p ≈ 0.007 one-sided). Two pairs make that variance estimate fragile, so the honest reading is *strong, pending more pairs* — but the unpaired test badly understates it. The commit message of the w128s32 seed-1 result said a shared seed does not pair runs; that was wrong.
+Unpaired, +0.00048 is only t = 1.76 (df 2). But **runs with the same seed see the same batch order across architectures**: `train_classifier` calls `torch.manual_seed(cfg.seed)` after the model is built, so model initialisation, whatever RNG it consumes, cannot shift the shuffle; checked directly by capturing the permutations of two different architectures under seed 1 (identical). The paired differences agree to ±0.00001 (paired t ≈ 48, df 1, p ≈ 0.007 one-sided) while the seeds swing ~0.0004, so here that swing behaved as noise **shared** between the arms. A shared batch order alone does not guarantee this: at the probe protocol on torch 2.11 it did not (2026-10-10). Two pairs make that variance estimate fragile, so the honest reading is *strong, pending more pairs* — but the unpaired test badly understates it. The commit message of the w128s32 seed-1 result said a shared seed does not pair runs; at this protocol on torch 2.10 that was wrong.
 
-**Methodological consequence:** every comparison in this harness should be designed and analysed paired by seed. At this protocol the data-order component (~0.0004) is an order of magnitude larger than the architecture effect's own scatter, so pairing is worth far more than extra seeds.
+**Methodological consequence:** design every comparison paired by seed, which costs nothing, but analyse it paired only where runs that share a seed are shown to track each other better than different seeds do. Here, at the long schedule on torch 2.10, the two `w128s32` − base differences agreed to ±0.00001 while the seeds swung 0.0004; there was no same-seed rerun. At the probe protocol on torch 2.11, same-seed reruns did not track (representation screen, 2026-10-10). At the long schedule the data-order component (~0.0004) is an order of magnitude larger than the architecture effect's own scatter, so there pairing is worth far more than extra seeds.
 
 **Cost correction:** real runs are 1.06× (w128s32) to 1.26× (base) the synthetic profile — fixed per-epoch overheads weigh more on the small model. The full two-seed curve no longer fits; w128s32 seed 1 runs now to replicate, base seed 1 follows w64s24 seed 0, and w64s24 seed 1 is the likely cut.
 
@@ -328,7 +347,7 @@ Not one improves on the base, and the whole table spans 0.0004 AUC. Note that ev
 | vector channel | 0.98104 ± 0.00012 | 805 ± 24 | −0.00002 (t = −0.59) | 0.48 |
 
 - **Pair latent:** the screen's −0.00004 becomes +0.00012 once it is paired against three base seeds instead of one high one. Not significant (p ≈ 0.14 one-sided), but the sign is reversed and its run-to-run spread is four times smaller than the base's. The one candidate worth carrying into the long-schedule regime.
-- **Vector channel:** paired differences with sd 0.00006, so it is bounded to |Δ| < ~0.00015 at 95% — a real negative, and much sharper than the screen's single seed. Feeding ⟨p_a, p_b⟩ directly, which the bivector lift exposes only through combinations with ⟨p_a, P⟩ and ⟨P, P⟩, does not pay. The regime excuse is weak here: it adds information, not parameters.
+- **Vector channel:** paired differences with sd 0.00006, so if the runs pair it is bounded to |Δ| < ~0.00015 at 95% (they tracked the base by seed; read unpaired the bound is about ±0.00035) — a real negative at that level, and much sharper than the screen's single seed. Feeding ⟨p_a, p_b⟩ directly, which the bivector lift exposes only through combinations with ⟨p_a, P⟩ and ⟨P, P⟩, does not pay. The regime excuse is weak here: it adds information, not parameters.
 
 **Rule for future screens on this protocol:** one seed per row resolves nothing below about 0.0005 AUC. Compare against a multi-seed base, not a single row, and budget three seeds per arm (about 1.4 GPU-h at 0.45 h per row) — or screen where the effect is expected to be larger.
 
@@ -395,12 +414,13 @@ GPU used this window: ~9.2 h (screen) + 5.2 h (headline seed 2) + ~0.7 h (profil
 | A root-level ignore written as `data/` also matches `tests/data/` | the golden fixture could not be added | anchor root-only ignores: `/data/` (SO3C `2a3b344`) |
 | **Exactly two** Kaggle GPU sessions at once | a third push returns HTTP 200 with "Maximum batch GPU session count of 2 reached." and is refused, not queued; the client printed it as "pushed" | use both slots, push the next kernel when one frees; `kaggle_client push` exits 2 on a refusal (SO3C `8d7dff7`) |
 | A numerical fixture written on one platform, checked on another | the on-card guard failed at 4e-8 on every case; a diagnostic kernel showed even the **old** code on Kaggle's CPU was 4e-8 off, while new vs old on the T4 agreed to 3e-15 (`results_profile/t4_cuda_diag_3a3b10b.txt`). `nn.Linear` initialises in float32 before `.to(float64)`, and float32 init differs at the ulp level between torch versions | draw fixture parameters and inputs from numpy's legacy RandomState straight into float64, and compare against the shipped reference implementation on the same device (SO3C `89d67f3`) |
-| Kaggle's T4 image moved from torch 2.10 to 2.11 between windows (seen 2026-10-04) | seed pairing assumes the same CUDA `randperm` stream, unverified across versions; the probe and long-schedule baselines are on 2.10 | screen notebooks pin and assert the build (`GPU_SETUP_T4_PINNED`, `2303568`); every result JSON records `env`; rerun controls on the same stack rather than reuse old ones |
+| Kaggle's T4 image moved from torch 2.10 to 2.11 between windows (seen 2026-10-04) | seed pairing assumes the same CUDA `randperm` stream, unverified across versions; the probe and long-schedule baselines are on 2.10 | screen notebooks pin and assert the build (`GPU_SETUP_T4_PINNED`, `2303568`); every result JSON records `env`; rerun controls on the same stack rather than reuse old ones (a same-stack control fixes the batch order, not the trajectory: see the trap on same-seed training below) |
 | `kaggle_client push` asks for confirmation on stdin | in a non-interactive shell it died with EOFError after printing "about to push" | pass `--yes` once the push is approved |
 | The embedded bundle's sha256 changes on every build | gzip stamps the compression time, so the hash names a blob, not a code state | to tie a notebook to a commit, extract its bundle and compare file contents with the tree |
 | `.double()` on a complex tensor | silently drops the imaginary part (a warning only); a read-only diagnostic briefly reported nonsense jet-frame norms | cast complex tensors with `.to(torch.complex128)` |
 | A Windows Python given a Git Bash `/tmp/...` path | resolves it to `C:\tmp\...`, not the scratch directory | hand Python Windows paths (`cygpath -w`) |
 | A local smoke run with `--canonical-splits` | evaluates all 807k validation and test jets on CPU; it did not finish in 15 min | replay on the internal split with `--max-samples`; the canonical loader is proven on Kaggle |
+| Same-seed training in different Kaggle kernels (T4 / torch 2.11, compiled) is not bitwise reproducible | with the same default-path code: epoch-1 losses 4.5e-3 apart at equal batch-order fingerprints (R1's check against `base1010`); final AUC up to 0.00018 and rejection up to 62 apart between the 10-05 and 10-10 controls (the 10-05 batch order is assumed: it predates the fingerprint), as large as the differences between seeds. The compiled-vs-eager check on the first batch already differs between kernels | read same-seed comparisons as unpaired unless same-seed reruns are shown to agree better than different seeds; pool the controls; the fingerprint verifies the batch order, not the trajectory |
 | `--resume` skips a run whose result JSON already exists, even one written by a run that stopped early | a second session pointed at the same results directory does nothing | a finish or second session writes to its own results directory and finds the run through the checkpoint (the pairing check uses `session1/`, `session2/`) |
 | Kaggle's image has a regular top-level `tests` package in site-packages | while our `tests/` was a namespace package, `tests.message_golden` failed to import on the card and the golden guard stopped headline seed 2 after ~5 min (log in `results_k64/headline/`) | `tests/__init__.py` (SO3C `4f397f4`); replay bundles with a fake shadowing `tests` package on PYTHONPATH |
 
@@ -417,7 +437,7 @@ GPU used this window: ~9.2 h (screen) + 5.2 h (headline seed 2) + ~0.7 h (profil
 | K=128 kNN(16) (from 100k jets) | ~2313 | 19.3 h |
 
 - The K=32 probe protocol (400k train jets, 20 epochs) costs 0.6–1.2 h per row.
-- Quota is 30 GPU-h per week, resetting on Saturday. The current window is [2026-10-03 → 2026-10-10](#gpu-window-2026-10-03--2026-10-10-in-progress-regularising-the-wide-model).
+- Quota is 30 GPU-h per week, resetting on Saturday. The current window is [2026-10-10 → 2026-10-17](#gpu-window-2026-10-10--2026-10-17-in-progress).
 - Rows not marked T4 are P100 wall clock on the old forward pass. Since `47ec4ad` the per-epoch cost is about half; the T4 profiles are in the 2026-09-19 GPU-window section and in `docs/so3c/experiments.md` (table O).
 
 ## Provenance
