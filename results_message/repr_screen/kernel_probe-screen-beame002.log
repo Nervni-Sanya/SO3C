@@ -1,0 +1,81 @@
+[{"stream_name":"stderr","time":7.501228838,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":7.5012744300000005,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":7.501282158,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":7.5012875690000005,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stderr","time":8.130876851,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":8.130908272,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":8.130914463,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":8.130918763,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stdout","time":9.361338615,"data":"Tesla T4, 15360 MiB\n"}
+,{"stream_name":"stdout","time":9.361381612,"data":"Tesla T4, 15360 MiB\n"}
+,{"stream_name":"stdout","time":9.561919,"data":"device: Tesla T4\n"}
+,{"stream_name":"stdout","time":9.561966005,"data":"Tesla T4\n"}
+,{"stream_name":"stdout","time":19.275575889,"data":"torch 2.11.0+cu128 on Tesla T4\n"}
+,{"stream_name":"stdout","time":19.275613428,"data":"Tesla T4\n"}
+,{"stream_name":"stdout","time":24.145044601,"data":"['benchmarks', 'so3c', 'tests']\n"}
+,{"stream_name":"stderr","time":24.146316491,"data":"/tmp/ipykernel_22/3379716270.py:3: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n"}
+,{"stream_name":"stderr","time":24.146344635,"data":"  tarfile.open(fileobj=io.BytesIO(base64.b64decode(CODE_B64)), mode=\"r:gz\").extractall(\"/kaggle/working/repo\")\n"}
+,{"stream_name":"stderr","time":24.14634841,"data":"\n"}
+,{"stream_name":"stderr","time":24.146351031,"data":"/tmp/ipykernel_22/3379716270.py:3: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n"}
+,{"stream_name":"stderr","time":24.146354021,"data":"  tarfile.open(fileobj=io.BytesIO(base64.b64decode(CODE_B64)), mode=\"r:gz\").extractall(\"/kaggle/working/repo\")\n"}
+,{"stream_name":"stdout","time":24.22223806,"data":"data: /kaggle/input/notebooks/nsanya/so3c-data-prep-k-128/data | bundle 638abc237aa6\n"}
+,{"stream_name":"stdout","time":37.304330938,"data":".                                                                        [100%]\n"}
+,{"stream_name":"stdout","time":37.304394933,"data":"1 passed, 30 deselected in 10.08s\n"}
+,{"stream_name":"stdout","time":37.304400033,"data":" \n"}
+,{"stream_name":"stdout","time":364.592539087,"data":"[top_tagging_canonical] top_tagging_constituents(k=32,norm=global,split=canonical) | features=4 classes=2 | train=400000 val=403000 test=404000\n"}
+,{"stream_name":"stdout","time":364.592613105,"data":"[top_tagging_canonical] so3c_message_set (equivariant_set) | train ...\n"}
+,{"stream_name":"stdout","time":364.592619308,"data":"[compile] backend=inductor, first batch: max |d logit| 5.3e-05, max |d grad| 2.9e-07 (relative)\n"}
+,{"stream_name":"stdout","time":364.592624342,"data":"[train] stopping at epoch 1: this session ran 169s, over max_seconds=0. Rerun with --resume.\n"}
+,{"stream_name":"stdout","time":364.592628967,"data":"   val_acc=0.920  test_acc=0.921 auc=0.975 1/eB@0.3=329  (168.8s)\n"}
+,{"stream_name":"stdout","time":364.592633579,"data":"\n"}
+,{"stream_name":"stdout","time":530.035677956,"data":"[top_tagging_canonical] top_tagging_constituents(k=32,norm=global,split=canonical) | features=4 classes=2 | train=400000 val=403000 test=404000\n"}
+,{"stream_name":"stdout","time":530.035711115,"data":"[top_tagging_canonical] so3c_message_set (equivariant_set) | train ...\n"}
+,{"stream_name":"stdout","time":530.035717032,"data":"[compile] backend=inductor, first batch: max |d logit| 5.3e-05, max |d grad| 2.9e-07 (relative)\n"}
+,{"stream_name":"stdout","time":530.035723287,"data":"[train] resumed from top_tagging_canonical__so3c_message_set__seed0.pt at epoch 2\n"}
+,{"stream_name":"stdout","time":530.035729156,"data":"[train] stopping at epoch 2: this session ran 83s, over max_seconds=0. Rerun with --resume.\n"}
+,{"stream_name":"stdout","time":530.035734666,"data":"   val_acc=0.923  test_acc=0.924 auc=0.977 1/eB@0.3=492  (252.2s)\n"}
+,{"stream_name":"stdout","time":530.03573929,"data":"\n"}
+,{"stream_name":"stdout","time":530.035743565,"data":"epoch  loss         stored       rerun    |diff|\n"}
+,{"stream_name":"stdout","time":530.035748035,"data":"1      train     0.2215723   0.2194409   2.1e-03\n"}
+,{"stream_name":"stdout","time":530.035752372,"data":"1      val       0.2025882   0.1982963   4.3e-03\n"}
+,{"stream_name":"stdout","time":530.035756771,"data":"2      train     0.1964456   0.1952584   1.2e-03\n"}
+,{"stream_name":"stdout","time":530.035761102,"data":"2      val       0.1904924   0.1930267   2.5e-03\n"}
+,{"stream_name":"stdout","time":530.035765586,"data":"pairing check FAILED: max |diff| 4.3e-03 (pass if \u003c= 1e-5)\n"}
+,{"stream_name":"stdout","time":530.03577044,"data":"  the arms cannot be read against the 10-05 control: push a fresh control\n"}
+,{"stream_name":"stdout","time":530.035775044,"data":"batch order, seed 0: epoch 1 a36497dc29abc0b250012432cf2daccaca5f6cf0a33f52e3805901a8063c28b3, chain a60294e665f7d1d20bc48089aaef7faf95b4c8d677ccf853a9412744992dd776\n"}
+,{"stream_name":"stdout","time":530.05084432,"data":"=== seed 0: 1.54 h of kernel budget left ===\n"}
+,{"stream_name":"stdout","time":2147.708530571,"data":"[top_tagging_canonical] top_tagging_constituents(k=32,norm=global,split=canonical) | features=4 classes=2 | train=400000 val=403000 test=404000\n"}
+,{"stream_name":"stdout","time":2147.708569997,"data":"[top_tagging_canonical] so3c_message_set (equivariant_set) | train ...\n"}
+,{"stream_name":"stdout","time":2147.708576826,"data":"[compile] backend=inductor, first batch: max |d logit| 5.7e-05, max |d grad| 2.8e-07 (relative)\n"}
+,{"stream_name":"stdout","time":2147.70858231,"data":"   val_acc=0.930  test_acc=0.931 auc=0.981 1/eB@0.3=762  (1536.3s)\n"}
+,{"stream_name":"stdout","time":2147.708588044,"data":"\n"}
+,{"stream_name":"stdout","time":2147.708593016,"data":"=== seed 1: 1.09 h of kernel budget left ===\n"}
+,{"stream_name":"stdout","time":3772.222298208,"data":"[top_tagging_canonical] top_tagging_constituents(k=32,norm=global,split=canonical) | features=4 classes=2 | train=400000 val=403000 test=404000\n"}
+,{"stream_name":"stdout","time":3772.222344822,"data":"[top_tagging_canonical] so3c_message_set (equivariant_set) | train ...\n"}
+,{"stream_name":"stdout","time":3772.222362136,"data":"[compile] backend=inductor, first batch: max |d logit| 4.5e-05, max |d grad| 4.8e-07 (relative)\n"}
+,{"stream_name":"stdout","time":3772.222370311,"data":"   val_acc=0.930  test_acc=0.931 auc=0.981 1/eB@0.3=780  (1541.5s)\n"}
+,{"stream_name":"stdout","time":3772.222373519,"data":"\n"}
+,{"stream_name":"stdout","time":3772.222376358,"data":"=== seed 2: 0.64 h of kernel budget left ===\n"}
+,{"stream_name":"stdout","time":5405.15201141,"data":"[top_tagging_canonical] top_tagging_constituents(k=32,norm=global,split=canonical) | features=4 classes=2 | train=400000 val=403000 test=404000\n"}
+,{"stream_name":"stdout","time":5405.152084133,"data":"[top_tagging_canonical] so3c_message_set (equivariant_set) | train ...\n"}
+,{"stream_name":"stdout","time":5405.152090062,"data":"[compile] backend=inductor, first batch: max |d logit| 3.9e-05, max |d grad| 3.4e-07 (relative)\n"}
+,{"stream_name":"stdout","time":5405.152094114,"data":"   val_acc=0.929  test_acc=0.930 auc=0.981 1/eB@0.3=756  (1550.5s)\n"}
+,{"stream_name":"stdout","time":5405.152098281,"data":"\n"}
+,{"stream_name":"stdout","time":5405.152102272,"data":"kernel time 1.50 h\n"}
+,{"stream_name":"stdout","time":5405.175457027,"data":"seed        AUC      dAUC  rej@0.3    drej  epochs  hours   batch order\n"}
+,{"stream_name":"stdout","time":5405.175487706,"data":"0       0.98081  -0.00034    761.9   -42.5      20   0.43  a36497dc29ab\n"}
+,{"stream_name":"stdout","time":5405.17549286,"data":"1       0.98097  -0.00014    779.6   -44.5      20   0.43  09d9670e766a\n"}
+,{"stream_name":"stdout","time":5405.175497315,"data":"2       0.98063  -0.00048    756.2   -67.9      20   0.43  c01c912ed06c\n"}
+,{"stream_name":"stdout","time":5405.175501316,"data":"seed 0 batch order equals the pairing check's\n"}
+,{"stream_name":"stdout","time":5405.17550525,"data":"paired dAUC -0.00034 -0.00014 -0.00048: mean -0.00032 sd 0.00017 | drej mean -51.7\n"}
+,{"stream_name":"stdout","time":5405.175509343,"data":"verdict: UNRESOLVED by the rule, but every seed is negative: not a candidate\n"}
+,{"stream_name":"stdout","time":5405.175513009,"data":"(valid only if the pairing check in probe-screen-beame002 passed; rejection is reported, never decides)\n"}
+,{"stream_name":"stderr","time":5407.936588344,"data":"/usr/local/lib/python3.13/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\\|'\n"}
+,{"stream_name":"stderr","time":5407.936635322,"data":"  cells[i][c] = re.sub('\\\\\\\\\\|', '|', cell)\n"}
+,{"stream_name":"stderr","time":5408.118235286,"data":"/usr/local/lib/python3.13/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\\_'\n"}
+,{"stream_name":"stderr","time":5408.118267384,"data":"  text = re.sub(r'_', '\\_', text) # Escape underscores in display text\n"}
+,{"stream_name":"stderr","time":5408.90194027,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to notebook\n"}
+,{"stream_name":"stderr","time":5408.991485006,"data":"[NbConvertApp] Writing 281985 bytes to __notebook__.ipynb\n"}
+,{"stream_name":"stderr","time":5411.704621372,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to html\n"}
+,{"stream_name":"stderr","time":5412.336805354,"data":"[NbConvertApp] Writing 587813 bytes to __results__.html\n"}
+]

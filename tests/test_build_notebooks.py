@@ -116,3 +116,18 @@ def test_pinned_long_control_is_the_long_base_plus_keep_best(nb_dir) -> None:
                        json.loads(nb.read_text(encoding="utf-8"))["cells"])
         assert 'WANT = "2.11.0+cu128"' in text, "not the pinned setup"
         assert "ensure_torch_for_this_gpu" not in text, "the unpinned setup is still there"
+
+
+def test_fresh_control_is_the_stored_controls_command(nb_dir) -> None:
+    """The fresh control (R1's pairing check failed) runs exactly the 10-05
+    control's command, and compares its seed 0 with the check's rerun."""
+    import json
+    control = _assigned_list(ROOT / "notebooks" / "kaggle_probe_screen_base.ipynb", "BASE")
+    assert B.main(["--only", "probe_screen_base1010"]) == 0
+    nb = nb_dir / "kaggle_probe_screen_base1010.ipynb"
+    assert _assigned_list(nb, "BASE") == control
+    rerun = _assigned_list(nb, "CHECK_RERUN")
+    assert rerun and len(rerun) == 2
+    text = "".join("".join(c["source"]) for c in
+                   json.loads(nb.read_text(encoding="utf-8"))["cells"])
+    assert "Pairing check" not in text and "CONTROL_TEST" not in text

@@ -1,0 +1,15 @@
+{
+  "id": "nsanya/so3c-probe-screen-base1010",
+  "title": "SO3C probe screen base1010",
+  "code_file": "kaggle_probe_screen_base1010.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "dataset_sources": [],
+  "competition_sources": [],
+  "kernel_sources": [
+    "nsanya/so3c-data-prep-k-128"
+  ]
+}

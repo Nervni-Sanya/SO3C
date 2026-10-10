@@ -1,0 +1,85 @@
+{
+  "experiment": "top_tagging_canonical",
+  "dataset": "top_tagging_constituents(k=32,norm=global,split=canonical)",
+  "model": "so3c_message_set",
+  "family": "equivariant_set",
+  "so3c_kwargs": {
+    "channels": 8,
+    "rounds": 3,
+    "beams": true
+  },
+  "dtype": "float32",
+  "compile": true,
+  "keep_best": false,
+  "seed": 0,
+  "n_params": 22834,
+  "n_train": 400000,
+  "n_val": 403000,
+  "n_test": 404000,
+  "n_features": 4,
+  "walltime_sec": 252.182729779,
+  "env": {
+    "torch": "2.11.0+cu128",
+    "cuda": "12.8",
+    "python": "3.13.15",
+    "device": "cuda",
+    "gpu": "Tesla T4"
+  },
+  "batch_order": {
+    "epoch1": "a36497dc29abc0b250012432cf2daccaca5f6cf0a33f52e3805901a8063c28b3",
+    "chain": "a60294e665f7d1d20bc48089aaef7faf95b4c8d677ccf853a9412744992dd776"
+  },
+  "epochs_run": 2,
+  "train_metrics": {
+    "final_train_acc": 0.922195,
+    "final_val_acc": 0.9232680201530457,
+    "best_val_acc": 0.9232680201530457
+  },
+  "test_metrics": {
+    "test_acc": 0.9242500066757202,
+    "test_auc": 0.9772081936435595,
+    "bg_rej_30": 492.4731707317073,
+    "bg_rej_50": 146.3144927536232
+  },
+  "best_val_epoch": null,
+  "best_val_loss": null,
+  "test_metrics_best_val": null,
+  "config": {
+    "epochs": 20,
+    "batch_size": 256,
+    "lr": 0.003,
+    "weight_decay": 0.0,
+    "grad_clip": 1.0,
+    "cosine_schedule": true,
+    "optimizer": "adam",
+    "schedule": "cosine",
+    "warmup_epochs": 4,
+    "early_stop_patience": null,
+    "seed": 0,
+    "device": "cuda",
+    "eval_chunk_size": 2048,
+    "ckpt_path": "/kaggle/working/checkpoints/pairing_check/top_tagging_canonical__so3c_message_set__seed0.pt",
+    "ckpt_every": 1,
+    "resume": true,
+    "max_seconds": 0.0,
+    "compile": true,
+    "compile_backend": "inductor",
+    "keep_best": false
+  },
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 0.2194409173345566,
+      "train_acc": 0.91319,
+      "val_loss": 0.19829629361629486,
+      "val_acc": 0.920357346534729
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.1952584108686447,
+      "train_acc": 0.922195,
+      "val_loss": 0.19302673637866974,
+      "val_acc": 0.9232680201530457
+    }
+  ]
+}

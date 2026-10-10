@@ -140,6 +140,28 @@ Plan: [`so3c_notes/plan_2026-10-10.md`](so3c_notes/plan_2026-10-10.md). Its code
 
 Slot B: R1 (`nsanya/so3c-probe-screen-beame002`) pushed 06:54 after a direct review of the diff and the notebooks; R2 and R3 follow one at a time as the slot frees.
 
+### Representation screen (probe protocol, slot B)
+
+**R1 ran (1.50 h; results, checkpoints and log in `results_message/repr_screen/`). The pairing check failed.** The check reran control seed 0 for two epochs. It differs from the stored 10-05 history by 2.1e-3 (train) and 4.3e-3 (val) in epoch 1, and by 1.2e-3 and 2.5e-3 in epoch 2. That is as large as the gap between different seeds (3.7e-3 to 6.1e-2), so the arms cannot be read against the 10-05 control.
+
+Ruled out:
+- **Code.** Diffing the code embedded in both notebooks shows the same default path: the new options are off, `--beam-energy` is not passed unless set, and `train.py` only hashes the permutation.
+- **Stack.** Both runs used the same torch build (2.11.0+cu128) and the same card type (T4).
+- **The resume.** Epoch 1 already differs, and epoch 1 involves no resume.
+
+What is left is that training on this stack is not bitwise reproducible, or that something outside the code differed. A fresh control (`probe_screen_base1010`, the 10-05 command exactly) is pushed next. Its seed 0 repeats the check's rerun and prints which of the two it is.
+
+**R1 itself (`--beam-energy 0.02`), unpaired for now:**
+
+| | seed 0 | seed 1 | seed 2 | mean ± sd |
+|---|---|---|---|---|
+| R1, AUC | 0.98081 | 0.98097 | 0.98063 | 0.98080 ± 0.00017 |
+| 10-05 control, AUC | 0.98115 | 0.98111 | 0.98111 | 0.98112 ± 0.00002 |
+| R1, 1/ε_B@0.3 | 761.9 | 779.6 | 756.2 | 765.9 ± 12.2 (control 817.6 ± 11.4) |
+| best validation loss, R1 / control | 0.17408 / 0.17287 | 0.17360 / 0.17307 | 0.17477 / 0.17293 | worse on every seed |
+
+All three seeds sit below every control seed, on AUC, rejection and validation loss. The final verdict waits for the fresh control.
+
 Phase 2 needs a K=32 long-schedule control on its own stack in either branch (plan §4; the `results_long_seeds` bases ran on torch 2.10). Prepared: `long_seeds_base211_s{0,1}`, the committed long base's command plus `--keep-best`, T4 / torch 2.11 pinned, each result's stack asserted and its batch order printed (the 2.10 base took 3.37–3.52 h per seed).
 
 ## GPU window 2026-10-03 → 2026-10-10 (closed): regularising the wide model

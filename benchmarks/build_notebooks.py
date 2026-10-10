@@ -1990,6 +1990,59 @@ REPR_SCREEN_RUNS = [
 ]
 SCREEN_CONTROL_DIR = "results_message/probe_screen/base"
 
+# R1's pairing check failed (max |diff| 4.3e-3 in the first two epochs, as
+# large as the gap between seeds), so the arms are read against a fresh
+# control on the same stack, plan section 3. Its seed 0 repeats the check's
+# rerun of control seed 0 with the same default-path code, which measures
+# whether training on this stack reproduces itself.
+FRESH_CONTROL_RUNS = [
+    ("base1010", [], (0, 1, 2), 1.6),
+]
+REPR_CHECK_DIR = "results_message/repr_screen/beame002/pairing_check"
+
+
+def _check_rerun() -> dict:
+    """R1's pairing-check rerun of control seed 0: its losses and batch order."""
+    f = next((ROOT / REPR_CHECK_DIR / "session2").glob("*seed0.json"))
+    r = json.loads(f.read_text())
+    assert r["env"]["torch"] == "2.11.0+cu128" and "T4" in r["env"]["gpu"], r["env"]
+    assert r["epochs_run"] == 2 and not r["so3c_kwargs"].get("beam_energy"), f
+    return {"history": [(h["train_loss"], h["val_loss"]) for h in r["history"]],
+            "order": r["batch_order"]["epoch1"]}
+
+
+REPRODUCIBILITY = """
+# Same-stack reproducibility. The pairing check in probe-screen-beame002 ran
+# control seed 0 for two epochs on this stack (T4, torch 2.11.0+cu128) with the
+# same default-path code, and did not reproduce the 2026-10-05 control (max
+# |diff| 4.3e-3). Seed 0 here repeats that rerun. The same batch order with
+# epoch-1 losses within 1e-5 means this stack reproduces itself and the 10-05
+# control differed for another reason; the same batch order with different
+# losses means training here is not bitwise reproducible, so a shared seed
+# shares the initialisation and the batch order but not the trajectory. Epoch 2
+# of the check came from a resumed session, so epoch 1 decides.
+import json, glob
+for seed in SEEDS:
+    for f in sorted(glob.glob(OUT + "/seed%d/*.json" % seed)):
+        r = json.load(open(f)); env = r["env"]; bo = r["batch_order"]
+        print("seed %d: torch %s on %s | batch order epoch 1 %s, chain %s"
+              % (seed, env["torch"], env.get("gpu"), bo["epoch1"], bo["chain"]))
+f0 = sorted(glob.glob(OUT + "/seed0/*.json"))
+if f0:
+    r = json.load(open(f0[0])); h = r["history"]
+    same = r["batch_order"]["epoch1"] == CHECK_ORDER
+    diff = [max(abs(h[i]["train_loss"] - CHECK_RERUN[i][0]),
+                abs(h[i]["val_loss"] - CHECK_RERUN[i][1])) for i in range(2)]
+    print("seed 0 against the R1 check's rerun: batch order %s; max |diff| epoch 1 %.1e, epoch 2 %.1e"
+          % ("the same" if same else "DIFFERENT", diff[0], diff[1]))
+    if not same:
+        print("  different batch order under one seed on one stack: the fingerprint or the RNG is broken")
+    elif diff[0] <= 1e-5:
+        print("  this stack reproduces itself; the 10-05 control differed for another reason")
+    else:
+        print("  same batch order, different trajectory: training here is not bitwise reproducible")
+"""
+
 
 def _screen_control() -> dict:
     """The 10-05 control: every seed's test result, seed 0's first two epochs."""
@@ -2100,7 +2153,8 @@ else:
 def build_probe_screen(blob: str, tag: str, flags: list[str],
                        seeds: tuple[int, ...], budget_h: float,
                        pairing_check: bool = False,
-                       control: dict | None = None) -> str:
+                       control: dict | None = None,
+                       reproduce: dict | None = None) -> str:
     """One arm of a probe-protocol screen: seeds 0-2.
 
     Protocol as build_probe_seeds (K=32, canonical splits, 400k training
@@ -2113,6 +2167,8 @@ def build_probe_screen(blob: str, tag: str, flags: list[str],
     With `control` (from _screen_control) the arm is read against that stored
     control seed by seed and the summary applies the plan's decision rule;
     `pairing_check` first reruns the control's seed 0 for two epochs.
+    `reproduce` (from _check_rerun) adds a last cell that compares seed 0
+    with that rerun.
     """
     import hashlib
     bundle_sha = hashlib.sha256(blob.encode()).hexdigest()[:12]
@@ -2232,6 +2288,10 @@ if len(aucs) > 1:
           % (statistics.mean(aucs), statistics.stdev(aucs),
              statistics.mean(rejs), statistics.stdev(rejs)))
 """))
+    if reproduce is not None:
+        cells.append(code(
+            "CHECK_RERUN = %r" % reproduce["history"] + chr(10)
+            + "CHECK_ORDER = %r" % reproduce["order"] + chr(10) + REPRODUCIBILITY))
     name = "kaggle_probe_screen_%s.ipynb" % tag
     _finalise(cells, NB_DIR / name)
     meta = {
@@ -2966,6 +3026,10 @@ def _registry() -> dict:
     for tag, flags, seeds, budget_h in PROBE_SCREEN_RUNS:
         reg["probe_screen_%s" % tag] = (
             lambda b, t=tag, f=flags, s=seeds, h=budget_h: build_probe_screen(b, t, f, s, h))
+    for tag, flags, seeds, budget_h in FRESH_CONTROL_RUNS:
+        reg["probe_screen_%s" % tag] = (
+            lambda b, t=tag, f=flags, s=seeds, h=budget_h: build_probe_screen(
+                b, t, f, s, h, reproduce=_check_rerun()))
     for tag, flags, seeds, budget_h, check in REPR_SCREEN_RUNS:
         reg["probe_screen_%s" % tag] = (
             lambda b, t=tag, f=flags, s=seeds, h=budget_h, c=check: build_probe_screen(
