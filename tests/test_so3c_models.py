@@ -1055,6 +1055,146 @@ def test_beam_energy_keeps_parameters_default_and_covariance() -> None:
     assert (moved(xb) - out_low).abs().max() < 1e-10 * max(1.0, out_low.abs().max().item())
 
 
+def _lab_jets(B=4, K=9, seed=5):
+    """Massless jets along a random-ish axis, float64, with padding."""
+    g = torch.Generator().manual_seed(seed)
+    n = torch.tensor([K, 7, 4, K - 2][:B])
+    mask = (torch.arange(K)[None, :] < n[:, None]).double()
+    pv = (torch.randn(B, K, 3, dtype=torch.float64, generator=g) * 0.3
+          + torch.tensor([1.5, -0.7, 0.9], dtype=torch.float64))
+    E = pv.norm(dim=-1, keepdim=True)
+    p4 = torch.cat([E, pv], -1) * mask[..., None]
+    return p4, mask, g
+
+
+def _lorentz(rapidity_vec, angle_z=0.0):
+    """4x4 Lorentz matrix: a rotation about z, then a boost along a vector."""
+    eta = torch.as_tensor(rapidity_vec, dtype=torch.float64)
+    r = eta.norm()
+    n = eta / r
+    ch, sh = torch.cosh(r), torch.sinh(r)
+    L = torch.eye(4, dtype=torch.float64)
+    L[0, 0] = ch
+    L[0, 1:] = sh * n
+    L[1:, 0] = sh * n
+    L[1:, 1:] = torch.eye(3, dtype=torch.float64) + (ch - 1) * torch.outer(n, n)
+    a = torch.tensor(angle_z, dtype=torch.float64)   # float32 here broke orthogonality at 1e-8
+    c, s_ = torch.cos(a), torch.sin(a)
+    Rz = torch.eye(4, dtype=torch.float64)
+    Rz[1, 1], Rz[1, 2], Rz[2, 1], Rz[2, 2] = c, -s_, s_, c
+    return L @ Rz
+
+
+def test_lab_features_match_direct_lab_frame() -> None:
+    """Plan C4/C5: the invariant formulas reproduce ParT's features computed
+    directly from the lab-frame components, at two beam energies."""
+    from benchmarks.so3c_models import _lab_node_features, _lab_pair_features
+    p4, mask, _ = _lab_jets()
+    P = (p4 * mask[..., None]).sum(1, keepdim=True)
+    E, px, py, pz = p4.unbind(-1)
+    EJ, pxJ, pyJ, pzJ = P.unbind(-1)
+    pt, ptJ = torch.hypot(px, py), torch.hypot(pxJ, pyJ)
+    y = 0.5 * torch.log((E + pz) / (E - pz))
+    yJ = 0.5 * torch.log((EJ + pzJ) / (EJ - pzJ))
+    dphi = torch.remainder(torch.atan2(py, px) - torch.atan2(pyJ, pxJ) + torch.pi,
+                           2 * torch.pi) - torch.pi
+    want_node = torch.stack([torch.log(E), torch.log(pt), torch.log(E / EJ),
+                             torch.log(pt / ptJ), y - yJ, dphi.abs(),
+                             torch.sqrt((y - yJ) ** 2 + dphi ** 2)], -1)
+    phi = torch.atan2(py, px)
+    dphi_ab = torch.remainder(phi[:, :, None] - phi[:, None, :] + torch.pi, 2 * torch.pi) - torch.pi
+    dy_ab = y[:, :, None] - y[:, None, :]
+    delta = torch.sqrt(dy_ab ** 2 + dphi_ab ** 2)
+    ptmin = torch.minimum(pt[:, :, None], pt[:, None, :])
+    m2 = 2 * (E[:, :, None] * E[:, None, :] - p4[..., 1:] @ p4[..., 1:].transpose(-1, -2))
+    want_pair = torch.stack([torch.log(delta), torch.log(ptmin * delta),
+                             torch.log(ptmin / (pt[:, :, None] + pt[:, None, :])),
+                             torch.log(m2)], -1)
+    K = p4.shape[1]
+    off = (mask[:, :, None] * mask[:, None, :] * (1 - torch.eye(K, dtype=torch.float64))).bool()
+    for eb in (1.0, 0.02):
+        beams = torch.tensor([[eb, 0, 0, eb], [eb, 0, 0, -eb]], dtype=torch.float64)
+        got = _lab_node_features(p4, P, beams, mask)
+        assert torch.allclose(got[mask.bool()], want_node[mask.bool()], atol=1e-6), eb
+        got_pair = _lab_pair_features(p4, beams, mask)
+        assert torch.allclose(got_pair[off], want_pair[off], atol=1e-6), eb
+        assert got_pair[~off].abs().max() == 0.0
+
+
+def _lab_model(**kw):
+    from benchmarks.so3c_models import SO3CMessageSetClassifier
+    torch.manual_seed(0)
+    m = SO3CMessageSetClassifier(channels=4, rounds=2, beams=True,
+                                 dtype=torch.float64, **kw)
+    g = torch.Generator().manual_seed(3)
+    with torch.no_grad():
+        for head in m.w_head:
+            head.weight.copy_(0.4 * torch.randn(head.weight.shape, dtype=torch.float64, generator=g))
+    return m
+
+
+def test_lab_switches_exactly_covariant_and_beam_axis_invariant() -> None:
+    """With the beams moved along, a general Lorentz transformation leaves
+    the logits unchanged; with the beams fixed, so does a rotation about the
+    beam axis. The flow heads are excited so the checks are not vacuous."""
+    p4, mask, _ = _lab_jets()
+    x = torch.cat([p4, mask[..., None]], -1)
+    for kw in ({"lab_scalars": True}, {"pair_lab": True},
+               {"lab_scalars": True, "pair_lab": True}):
+        m = _lab_model(**kw)
+        out = m(x)
+        assert out.abs().max() > 1e-3
+        L = _lorentz([0.6, -0.4, 0.9], angle_z=0.7)
+        moved = _lab_model(**kw)
+        moved.load_state_dict(m.state_dict())
+        with torch.no_grad():
+            moved.beam_p4.copy_(m.beam_p4 @ L.T)
+        xb = x.clone()
+        xb[..., :4] = (p4 @ L.T) * mask[..., None]
+        assert (moved(xb) - out).abs().max() < 1e-9 * max(1.0, out.abs().max().item()), kw
+        Rz = _lorentz([0.0, 0.0, 1e-30], angle_z=1.3)        # pure rotation about z
+        xr = x.clone()
+        xr[..., :4] = (p4 @ Rz.T) * mask[..., None]
+        assert (m(xr) - out).abs().max() < 1e-9 * max(1.0, out.abs().max().item()), kw
+
+
+def test_lab_switches_finite_at_zero_pt_and_wired_in() -> None:
+    """A constituent along the beam axis (pT = 0) keeps logits and gradients
+    finite; the new inputs reach trainable weights; parameter counts grow by
+    7 x scalar_dim (lab_scalars) and 4 x act_hidden per round (pair_lab)."""
+    p4, mask, _ = _lab_jets()
+    p4[0, 1] = torch.tensor([2.0, 0.0, 0.0, 2.0], dtype=torch.float64)   # pT = 0
+    x = torch.cat([p4, mask[..., None]], -1)
+    base = _lab_model()
+    count = lambda m: sum(q.numel() for q in m.parameters())
+    lab, pair = _lab_model(lab_scalars=True), _lab_model(pair_lab=True)
+    assert count(lab) - count(base) == 7 * 8                  # scalar_dim 8
+    assert count(pair) - count(base) == 4 * 16 * 2            # act_hidden 16, 2 rounds
+    for m, grab in ((lab, lambda m: m.h_init.weight.grad[:, -7:]),
+                    (pair, lambda m: m.edge[0][0].weight.grad[:, m._n_pair_in - 4:m._n_pair_in])):
+        out = m(x)
+        assert torch.isfinite(out).all()
+        torch.nn.functional.cross_entropy(out, torch.tensor([0, 1, 1, 0])).backward()
+        assert all(torch.isfinite(q.grad).all() for q in m.parameters() if q.grad is not None)
+        assert grab(m).abs().max() > 0, "the new inputs do not reach the weights"
+
+
+def test_pair_lab_permutation_invariant_and_guards() -> None:
+    import pytest
+    from benchmarks.so3c_models import SO3CMessageSetClassifier
+    p4, mask, _ = _lab_jets()
+    x = torch.cat([p4, mask[..., None]], -1)
+    m = _lab_model(pair_lab=True, lab_scalars=True)
+    out = m(x)
+    perm = torch.tensor([3, 0, 8, 5, 1, 7, 2, 6, 4])
+    xp = x[:, perm]
+    assert (m(xp) - out).abs().max() < 1e-10 * max(1.0, out.abs().max().item())
+    with pytest.raises(ValueError):
+        SO3CMessageSetClassifier(channels=4, rounds=2, lab_scalars=True)
+    with pytest.raises(ValueError):
+        SO3CMessageSetClassifier(channels=4, rounds=2, beams=True, pair_lab=True, neighbors=4)
+
+
 def test_message_set_matches_golden() -> None:
     """Logits and parameter gradients equal those of the implementation the
     published numbers were measured with, for every switch combination.

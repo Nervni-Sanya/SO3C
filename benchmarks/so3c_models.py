@@ -511,6 +511,100 @@ class _SignedFAlpha(nn.Module):
         return (torch.sign(x).unsqueeze(-1) * y).flatten(-2)
 
 
+# Floors for the lab-frame features: logs are taken of clamp_min(x, floor),
+# and square roots of x + floor^2, so every feature and gradient stays finite
+# at pT -> 0, on padding and for collinear pairs.
+_LAB_LOG_FLOOR = 1e-8
+_LAB_SQRT_FLOOR = 1e-6
+
+
+def _beam_frame(p4: torch.Tensor, beam_p4: torch.Tensor):
+    """Lab-frame (E, p_z, p_T^2, E + p_z, E - p_z) of (..., 4) momenta.
+
+    Written entirely in Minkowski products with the beams b+- = E_b(1,0,0,+-1):
+    <p, b+> = E_b (E - p_z), <p, b-> = E_b (E + p_z) and <b+, b-> = 2 E_b^2.
+    Every value is therefore a function of invariants of {p, b+, b-}, and moving
+    the beams along with the jet under a Lorentz transformation leaves it
+    unchanged -- which keeps the model exactly covariant.
+    """
+    bp, bm = beam_p4[0], beam_p4[1]
+    eb = torch.sqrt(0.5 * minkowski_inner(bp, bm))
+    e_minus = minkowski_inner(p4, bp.expand_as(p4)) / eb     # E - p_z
+    e_plus = minkowski_inner(p4, bm.expand_as(p4)) / eb      # E + p_z
+    E = 0.5 * (e_plus + e_minus)
+    pz = 0.5 * (e_plus - e_minus)
+    pt2 = (e_plus * e_minus - minkowski_inner(p4, p4)).clamp_min(0.0)
+    return E, pz, pt2, e_plus, e_minus
+
+
+def _rapidity(e_plus: torch.Tensor, e_minus: torch.Tensor) -> torch.Tensor:
+    return 0.5 * (torch.log(e_plus.clamp_min(_LAB_LOG_FLOOR))
+                  - torch.log(e_minus.clamp_min(_LAB_LOG_FLOOR)))
+
+
+def _abs_dphi(E1, pz1, pt21, E2, pz2, pt22, inner12):
+    """|Delta phi| in [0, pi] from invariants: the transverse dot product is
+    E1 E2 - <p1, p2> - pz1 pz2, and |transverse cross| follows from pT^2."""
+    dot = E1 * E2 - inner12 - pz1 * pz2
+    cross2 = (pt21 * pt22 - dot * dot).clamp_min(0.0)
+    return torch.atan2(torch.sqrt(cross2 + _LAB_SQRT_FLOOR ** 2), dot)
+
+
+def _lab_node_features(p4: torch.Tensor, P: torch.Tensor, beam_p4: torch.Tensor,
+                       real: torch.Tensor) -> torch.Tensor:
+    """ParT's particle features, (B, N, 4) + (B, 1, 4) -> (B, N, 7): log E,
+    log pT, log E/E_J, log pT/pT_J, y - y_J, |Delta phi_J|, Delta R_J.
+
+    All are functions of invariants of {p, P, b+-} (see _beam_frame). Zero
+    wherever ``real`` is 0 (padding and the beam nodes).
+    """
+    E, pz, pt2, ep, em = _beam_frame(p4, beam_p4)
+    EJ, pzJ, pt2J, epJ, emJ = _beam_frame(P, beam_p4)
+    log_E = torch.log(E.clamp_min(_LAB_LOG_FLOOR))
+    log_pt = 0.5 * torch.log(pt2.clamp_min(_LAB_LOG_FLOOR ** 2))
+    log_EJ = torch.log(EJ.clamp_min(_LAB_LOG_FLOOR))
+    log_ptJ = 0.5 * torch.log(pt2J.clamp_min(_LAB_LOG_FLOOR ** 2))
+    dy = _rapidity(ep, em) - _rapidity(epJ, emJ)
+    dphi = _abs_dphi(E, pz, pt2, EJ, pzJ, pt2J,
+                     minkowski_inner(p4, P.expand_as(p4)))
+    dR = torch.sqrt(dy * dy + dphi * dphi + _LAB_SQRT_FLOOR ** 2)
+    feats = torch.stack([log_E, log_pt, log_E - log_EJ, log_pt - log_ptJ,
+                         dy, dphi, dR], dim=-1)
+    return feats * real.unsqueeze(-1)
+
+
+def _lab_pair_features(p4: torch.Tensor, beam_p4: torch.Tensor,
+                       real: torch.Tensor) -> torch.Tensor:
+    """ParT's interaction features, (B, N, 4) -> (B, N, N, 4): ln Delta_ab,
+    ln k_T, ln z, ln m^2_ab, with Delta = sqrt(dy^2 + dphi^2),
+    k_T = min(pT_a, pT_b) Delta, z = min(pT)/(pT_a + pT_b) and
+    m^2 = (p_a + p_b)^2. Functions of invariants of {p_a, p_b, b+-}; zero on
+    the diagonal and on every pair that involves padding or a beam node.
+    """
+    E, pz, pt2, ep, em = _beam_frame(p4, beam_p4)
+    y = _rapidity(ep, em)
+    Ep = p4[..., 0]
+    inner = (Ep.unsqueeze(-1) * Ep.unsqueeze(-2)
+             - p4[..., 1:] @ p4[..., 1:].transpose(-1, -2))          # <p_a, p_b>
+    dphi = _abs_dphi(E.unsqueeze(-1), pz.unsqueeze(-1), pt2.unsqueeze(-1),
+                     E.unsqueeze(-2), pz.unsqueeze(-2), pt2.unsqueeze(-2), inner)
+    dy = y.unsqueeze(-1) - y.unsqueeze(-2)
+    delta = torch.sqrt(dy * dy + dphi * dphi + _LAB_SQRT_FLOOR ** 2)
+    pt = torch.sqrt(pt2 + _LAB_SQRT_FLOOR ** 2)
+    pt_min = torch.minimum(pt.unsqueeze(-1), pt.unsqueeze(-2))
+    kt = pt_min * delta
+    zz = pt_min / (pt.unsqueeze(-1) + pt.unsqueeze(-2))
+    m_self = minkowski_inner(p4, p4)
+    m2 = m_self.unsqueeze(-1) + m_self.unsqueeze(-2) + 2.0 * inner
+    feats = torch.stack([torch.log(delta.clamp_min(_LAB_LOG_FLOOR)),
+                         torch.log(kt.clamp_min(_LAB_LOG_FLOOR)),
+                         torch.log(zz.clamp_min(_LAB_LOG_FLOOR)),
+                         torch.log(m2.clamp_min(_LAB_LOG_FLOOR))], dim=-1)
+    eye = torch.eye(p4.shape[1], dtype=real.dtype, device=real.device)
+    pm = real.unsqueeze(-1) * real.unsqueeze(-2) * (1.0 - eye)
+    return feats * pm.unsqueeze(-1)
+
+
 class SO3CMessageSetClassifier(nn.Module):
     """Covariant message passing: several rounds of the SO3CCovariantSet
     connection, with a scalar channel running alongside the vector one.
@@ -656,6 +750,8 @@ class SO3CMessageSetClassifier(nn.Module):
         pair_latent: int = 0,
         edge_norm: bool = False,
         log_knee: bool = False,
+        lab_scalars: bool = False,
+        pair_lab: bool = False,
         dtype: torch.dtype = torch.float64,
     ) -> None:
         super().__init__()
@@ -681,6 +777,13 @@ class SO3CMessageSetClassifier(nn.Module):
                              "invariants; use one of them")
         self.edge_norm = edge_norm
         self.log_knee = log_knee
+        if (lab_scalars or pair_lab) and not beams:
+            raise ValueError("lab_scalars and pair_lab are built from the beams; "
+                             "they need beams=True")
+        if pair_lab and neighbors is not None:
+            raise ValueError("pair_lab is implemented for the dense graph only")
+        self.lab_scalars = lab_scalars
+        self.pair_lab = pair_lab
         if beams:
             # A buffer rather than a constant so a test can move the beams
             # with the jet and check exact covariance.
@@ -698,7 +801,8 @@ class SO3CMessageSetClassifier(nn.Module):
         # Scalar states are seeded from per-particle invariants only:
         # Re/Im (z.z) and the Minkowski mass <p, p>.
         # With beams, also <p, b+>, <p, b-> and a constituent/beam label.
-        n_node = (3 if beams else 0) + 2 + (1 if mass_input else 0)
+        n_node = ((3 if beams else 0) + 2 + (1 if mass_input else 0)
+                  + (7 if lab_scalars else 0))
         self.h_init = (nn.Linear(n_node, scalar_dim).to(dtype)
                        if scalar_dim else None)
 
@@ -707,13 +811,15 @@ class SO3CMessageSetClassifier(nn.Module):
         # asinh.
         n_pair = (4 if relnorm_edge else 2) * channels
         self.falpha_embed = _SignedFAlpha(falpha, dtype) if falpha else None
-        edge_in = (n_pair * (falpha if falpha else 1) + 4 * channels
-                   + 2 * scalar_dim + (2 if vector_channel else 0))
+        edge_in = (n_pair * (falpha if falpha else 1) + (4 if pair_lab else 0)
+                   + 4 * channels + 2 * scalar_dim + (2 if vector_channel else 0))
         # Column layout of the edge input, in concatenation order: pair
         # invariants | Re, Im of z_a.z_a and z_b.z_b (C each) | h_a, h_b |
         # vector features | pair latent. _edge_pre uses it to apply the first
         # edge layer block by block instead of building the concatenation.
-        self._n_pair_in = n_pair * (falpha if falpha else 1)
+        # pair_lab's four log features follow the compressed pair invariants
+        # in the same block.
+        self._n_pair_in = n_pair * (falpha if falpha else 1) + (4 if pair_lab else 0)
         self.edge = nn.ModuleList()
         self.w_head = nn.ModuleList()
         self.msg_head = nn.ModuleList()
@@ -963,15 +1069,25 @@ class SO3CMessageSetClassifier(nn.Module):
             inv = torch.stack(node_inv, dim=-1)
             if self.knee_q is not None:
                 # the knee acts on Re/Im z.z only; m^2 and <p, b+-> keep asinh
-                h = self.h_init(torch.cat([self._knee(inv[..., :2], self.knee_q),
-                                           torch.asinh(inv[..., 2:])], dim=-1))
+                h_in = torch.cat([self._knee(inv[..., :2], self.knee_q),
+                                  torch.asinh(inv[..., 2:])], dim=-1)
             else:
-                h = self.h_init(torch.asinh(inv))
+                h_in = torch.asinh(inv)
+            if self.lab_scalars:
+                # already log-scaled, as ParT feeds them; zero on beams and padding
+                real = torch.cat([mask, mask.new_zeros(p4.shape[0], 2)], dim=1)
+                h_in = torch.cat([h_in, _lab_node_features(p4_all, P, self.beam_p4, real)],
+                                 dim=-1)
+            h = self.h_init(h_in)
             h = h * mask_all.unsqueeze(-1)                       # (B, N, D)
         else:
             h = None
 
         v = (p4_all * mask_all.unsqueeze(-1)) if self.vector_channel else None
+        lab_pair = None
+        if self.pair_lab:
+            real = torch.cat([mask, mask.new_zeros(p4.shape[0], 2)], dim=1)
+            lab_pair = _lab_pair_features(p4_all, self.beam_p4, real)   # (B, N, N, 4)
         w = torch.complex(self.channel_weights[:, 0],
                           self.channel_weights[:, 1])            # (C,)
         zc = w[None, :, None, None] * z[:, None, :, :]           # (B, C, K, 3)
@@ -1062,6 +1178,8 @@ class SO3CMessageSetClassifier(nn.Module):
                 kn = self.knee_node[r] if self.knee_node is not None else None
                 pair = (self.falpha_embed(pair) if self.falpha_embed is not None
                         else self._knee(pair, kp))
+                if lab_pair is not None:
+                    pair = torch.cat([pair, lab_pair], dim=-1)
                 ar, ai = self._knee(sd_r, kn), self._knee(sd_i, kn)    # (B, K, C)
                 if self.pair_latent and r == 0:
                     E = (self._edge_pre(self.pair_init, pair, ar, ai, h, vfeat)

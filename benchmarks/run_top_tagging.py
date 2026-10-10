@@ -154,6 +154,15 @@ def main(argv: list[str] | None = None) -> int:
                    help="so3c_message_set: asinh(exp(kappa) x) with learnable "
                         "kappa on the bilinear invariants, whose round-0 values "
                         "sit in asinh's linear range.")
+    p.add_argument("--lab-scalars", action="store_true",
+                   help="so3c_message_set with --beams: ParT's particle features "
+                        "(log E, log pT, their ratios to the jet's, y - y_J, "
+                        "|dphi_J|, dR_J) in the scalar initialisation, written "
+                        "in invariants of {p, P, beams} so covariance is exact.")
+    p.add_argument("--pair-lab", action="store_true",
+                   help="so3c_message_set with --beams, dense graph: ParT's pair "
+                        "features (ln Delta, ln kT, ln z, ln m^2) on the edges, "
+                        "in invariants of {p_a, p_b, beams}; beam pairs masked.")
     p.add_argument("--ckpt-dir", type=str, default=None,
                    help="Directory for training checkpoints; --resume needs it.")
     p.add_argument("--compile", action="store_true",
@@ -233,6 +242,8 @@ def main(argv: list[str] | None = None) -> int:
         ("pair_latent", args.pair_latent),
         ("edge_norm", True if args.edge_norm else None),
         ("log_knee", True if args.log_knee else None),
+        ("lab_scalars", True if args.lab_scalars else None),
+        ("pair_lab", True if args.pair_lab else None),
     ) if v is not None} or None
 
     kwargs = dict(
