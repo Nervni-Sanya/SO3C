@@ -126,7 +126,19 @@ Full agent text: `so3c_notes/gap_to_sota_2026-09-13.md`. Three of the workflow's
 
 ## GPU window 2026-10-10 → 2026-10-17 (in progress)
 
-Plan: [`so3c_notes/plan_2026-10-10.md`](so3c_notes/plan_2026-10-10.md). Its code steps C0–C6 were not done before the window opened; C0 (integrating the gap-notes branch: results, notes with the audit corrections, and this status) is done, and the first run is the 60 → 120-epoch continuation of the K=64 headline (plan §2a).
+Plan: [`so3c_notes/plan_2026-10-10.md`](so3c_notes/plan_2026-10-10.md). Its code steps C0–C6 were not done before the window opened; they were done on 10-10, in this order:
+
+| step | commit | what |
+|---|---|---|
+| C0 | `43c2242`, `3599b68`, `83dc8a8`, `f4aba0f`, `9938676` | the gap-notes branch integrated: the 10-05 screen results, the notes with the audit corrections, its status and docs content ported into these files |
+| continuation | `acfb88e` | slot A: `headline60` continued 60 → 120 epochs (plan §2a), pushed 06:23 as `nsanya/so3c-k64-headline120-seed0`; still running after 20 min, so past the guard, the checkpoint check and the smoke run, any of which would have stopped it (the log is readable only at the end). A finish kernel is prepared, to push only if the run stops early |
+| C1 | `7c274e7` | `--beam-energy` (R1) |
+| C2 | `86ca67a` | batch-order fingerprint in every result JSON (`batch_order`: epoch 1's permutation and a running hash, carried through checkpoints) |
+| C3 | `c9dd235` | `build_notebooks` builds nothing unless named: `--list`, `--only NAME...`, `--all` |
+| C4, C5 | `06c68bc` | `--lab-scalars` (R2) and `--pair-lab` (R3), ParT's lab-frame particle and pair features written in invariants of {p, P, b±}; CPU cost 0.98× and 1.50× |
+| C6 | this commit | slot B notebooks: `probe_screen_{beame002,labscalars,pairlab}`, each the 10-05 control's command plus one flag (tested against the committed control notebook), seeds 0–2, paired summary with the plan §3 decision rule. R1 starts with the pairing check: control seed 0 rerun for two epochs of its 20-epoch schedule (two one-epoch sessions), compared with the stored history; pass within 1e-5, otherwise a fresh control |
+
+Slot B is pushed after the diff and the notebooks have been reviewed (plan §5).
 
 ## GPU window 2026-10-03 → 2026-10-10 (closed): regularising the wide model
 
@@ -365,6 +377,7 @@ GPU used this window: ~9.2 h (screen) + 5.2 h (headline seed 2) + ~0.7 h (profil
 | `.double()` on a complex tensor | silently drops the imaginary part (a warning only); a read-only diagnostic briefly reported nonsense jet-frame norms | cast complex tensors with `.to(torch.complex128)` |
 | A Windows Python given a Git Bash `/tmp/...` path | resolves it to `C:\tmp\...`, not the scratch directory | hand Python Windows paths (`cygpath -w`) |
 | A local smoke run with `--canonical-splits` | evaluates all 807k validation and test jets on CPU; it did not finish in 15 min | replay on the internal split with `--max-samples`; the canonical loader is proven on Kaggle |
+| `--resume` skips a run whose result JSON already exists, even one written by a run that stopped early | a second session pointed at the same results directory does nothing | a finish or second session writes to its own results directory and finds the run through the checkpoint (the pairing check uses `session1/`, `session2/`) |
 | Kaggle's image has a regular top-level `tests` package in site-packages | while our `tests/` was a namespace package, `tests.message_golden` failed to import on the card and the golden guard stopped headline seed 2 after ~5 min (log in `results_k64/headline/`) | `tests/__init__.py` (SO3C `4f397f4`); replay bundles with a fake shadowing `tests` package on PYTHONPATH |
 
 ## Compute and quota facts

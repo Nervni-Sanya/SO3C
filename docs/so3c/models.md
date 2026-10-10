@@ -162,7 +162,7 @@ so far is `beams=True, channels=8` at $K=64$, trained for 60 epochs
 | `channel_mixing` | `True` | — | per-round complex mixing matrices |
 | `neighbors` | `None` | `--neighbors` | $k$ strongest partners by $\lvert\operatorname{Re}z_a\cdot z_b\rvert$, plus the two beam nodes when there are beams; `None` is dense |
 | `beams` | `False` | `--beams` | the two beam particles ([theory.md §11](theory.md#11-beams-what-symmetry-survives)) |
-| `beam_energy` | 1.0 | — | energy $E_b$ of each beam, in the normalised input units |
+| `beam_energy` | 1.0 | `--beam-energy` | energy $E_b$ of each beam, in the normalised input units; needs `--beams` |
 | `dropout` | 0.0 | `--dropout` | dropout in the readout MLP |
 | `mass_input`, `self_edges`, `relnorm_edge`, `falpha`, `vector_channel`, `pair_latent` | see below | see below | the switches below |
 
@@ -232,7 +232,25 @@ GPU run had put `falpha=3` at 3.54×. On the CPU (K=32, batch 256, float32)
 
 Since 2026-10-05 every result JSON also records `env`: torch and CUDA versions,
 Python and the GPU name. Seed pairing between runs is established only on the same
-torch build; across builds it is not shown either way.
+torch build; across builds it is not shown either way. Since 2026-10-10 it
+also records `batch_order`: the sha256 of epoch 1's permutation and a running
+hash over all epochs, carried through checkpoints. Two runs saw the same batch
+order exactly when these agree, whatever the architecture.
+
+### Lab-frame features (added 2026-10-10, screen pending)
+
+Off by default; both need `beams=True`
+([theory.md §12](theory.md#12-switches-screened-on-the-probe-protocol)).
+Parameter counts are on the headline configuration.
+
+| Argument | CLI flag | Parameters | Change |
+|---|---|---:|---|
+| `lab_scalars=True` | `--lab-scalars` | 22,890 | ParT's seven particle features in the scalar initialisation |
+| `pair_lab=True` | `--pair-lab` | 23,026 | ParT's four interaction features on the edges; dense graph only |
+| both | both flags | 23,082 | |
+
+On the CPU (K=32, batch 256, float32) `lab_scalars` costs 0.98×, `pair_lab`
+1.50× and both 1.53× the headline per step; not yet timed on the card.
 
 ## `so3c_interaction_set`
 

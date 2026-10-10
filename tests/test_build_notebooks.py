@@ -63,3 +63,40 @@ def test_unknown_name_writes_nothing(nb_dir) -> None:
         B.main(["--only", "cuda_diag", "no_such_notebook"])
     assert e.value.code == 2
     assert _written(nb_dir) == []
+
+
+def _assigned_list(nb_path, name):
+    """The literal list a notebook cell assigns to `name`."""
+    import ast
+    import json
+    for c in json.loads(nb_path.read_text(encoding="utf-8"))["cells"]:
+        if c["cell_type"] != "code":
+            continue
+        for node in ast.parse("".join(c["source"])).body:
+            if (isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name)
+                    and node.targets[0].id == name):
+                return ast.literal_eval(node.value)
+    return None
+
+
+def test_representation_screen_pairs_with_the_stored_control(nb_dir) -> None:
+    """Plan C6: each arm's command is the 10-05 control's, as committed in its
+    notebook, plus exactly the arm's flags; only R1 carries the pairing check."""
+    import json
+    control = _assigned_list(ROOT / "notebooks" / "kaggle_probe_screen_base.ipynb", "BASE")
+    assert control and "--compile" in control
+    for tag, flags, _, _, check in B.REPR_SCREEN_RUNS:
+        assert B.main(["--only", "probe_screen_" + tag]) == 0
+        nb = nb_dir / ("kaggle_probe_screen_%s.ipynb" % tag)
+        assert _assigned_list(nb, "CONTROL_BASE") == control, tag
+        assert _assigned_list(nb, "BASE") == control + flags, tag
+        text = nb.read_text(encoding="utf-8")
+        assert ("Pairing check" in text) == check, tag
+        meta = json.loads((nb_dir / ("kernel-metadata-probe-screen-%s.json" % tag)).read_text())
+        assert meta["id"] == "nsanya/so3c-probe-screen-" + tag
+    assert [r[4] for r in B.REPR_SCREEN_RUNS].count(True) == 1
+
+
+def test_pairing_check_needs_the_control(nb_dir) -> None:
+    with pytest.raises(ValueError):
+        B.build_probe_screen("", "x", [], (0,), 1.0, pairing_check=True)

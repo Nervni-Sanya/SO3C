@@ -1976,10 +1976,132 @@ PROBE_SCREEN_RUNS = [
     ("logknee", ["--log-knee"], (0, 1, 2), 1.58),
 ]
 
+# The representation screen (plan_2026-10-10 section 3, R1-R3): one switch
+# per arm, seeds 0-2 on the probe protocol, paired with the 10-05 control
+# above (results_message/probe_screen/base, the same T4 / torch 2.11.0+cu128
+# stack) if the pairing check at the start of R1 passes. The last field puts
+# that check in the kernel. Budgets are kernel caps in hours, not estimates:
+# the control's three seeds trained for 1.31 h in all; R3 measured 1.5x per
+# step on the CPU (C5) and has not been timed on the card.
+REPR_SCREEN_RUNS = [
+    ("beame002", ["--beam-energy", "0.02"], (0, 1, 2), 1.75, True),
+    ("labscalars", ["--lab-scalars"], (0, 1, 2), 1.75, False),
+    ("pairlab", ["--pair-lab"], (0, 1, 2), 2.4, False),
+]
+SCREEN_CONTROL_DIR = "results_message/probe_screen/base"
+
+
+def _screen_control() -> dict:
+    """The 10-05 control: every seed's test result, seed 0's first two epochs."""
+    test, history = {}, None
+    for f in sorted((ROOT / SCREEN_CONTROL_DIR).glob("seed*/*.json")):
+        r = json.loads(f.read_text())
+        assert r["env"]["torch"] == "2.11.0+cu128" and "T4" in r["env"]["gpu"], f
+        assert r["epochs_run"] == 20 and not r["so3c_kwargs"].get("beam_energy"), f
+        test[r["seed"]] = (r["test_metrics"]["test_auc"], r["test_metrics"]["bg_rej_30"])
+        if r["seed"] == 0:
+            history = [(h["train_loss"], h["val_loss"]) for h in r["history"][:2]]
+    assert history and sorted(test) == [0, 1, 2], (history, sorted(test))
+    return {"test": test, "history": history}
+
+
+# Pairing check (plan_2026-10-10 section 3): control seed 0 rerun for the first
+# two epochs of its 20-epoch schedule, compared with the stored history.
+PAIRING_CHECK = """
+# Pairing check (plan_2026-10-10 section 3). Rerun control seed 0 for the first
+# two epochs of its 20-epoch schedule and compare with the stored history.
+# The control's three seeds differ there by 3.7e-3 to 6.1e-2 in the largest of
+# these four losses, so agreement within 1e-5 means the same initial weights
+# and the same batch order. --max-seconds 0 stops after every
+# epoch, so this is two one-epoch sessions: the second resumes from the
+# checkpoint, RNG state included, and keeps the control's cosine horizon. Each
+# session writes its own results directory, because with --resume the runner
+# skips a run whose result file already exists.
+import json, glob, pathlib
+CHECK = OUT + "/pairing_check"
+for session in (1, 2):
+    assert run(["benchmarks.run_top_tagging"] + CONTROL_BASE +
+               ["--seed", "0", "--results-dir", CHECK + "/session%d" % session,
+                "--ckpt-dir", "/kaggle/working/checkpoints/pairing_check",
+                "--resume", "--max-seconds", "0"]), "pairing check session %d failed" % session
+found = glob.glob(CHECK + "/session2/*seed0.json")
+assert found, "the pairing check wrote no result"
+chk = json.load(open(found[0]))
+hist = chk["history"]
+assert len(hist) == 2, "pairing check ran %d epochs, expected 2" % len(hist)
+assert chk["env"]["torch"] == "2.11.0+cu128", chk["env"]
+worst = 0.0
+print("%-7s%-7s%12s%12s%10s" % ("epoch", "loss", "stored", "rerun", "|diff|"))
+for i, pair in enumerate(CONTROL_HISTORY):
+    for kind, want in zip(("train", "val"), pair):
+        got = hist[i][kind + "_loss"]
+        worst = max(worst, abs(got - want))
+        print("%-7d%-7s%12.7f%12.7f%10.1e" % (i + 1, kind, want, got, abs(got - want)))
+PAIRED = worst <= 1e-5
+print("pairing check %s: max |diff| %.1e (pass if <= 1e-5)"
+      % ("PASSED" if PAIRED else "FAILED", worst))
+if not PAIRED:
+    print("  the arms cannot be read against the 10-05 control: push a fresh control")
+CHECK_ORDER = chk["batch_order"]
+print("batch order, seed 0: epoch 1 %s, chain %s" % (CHECK_ORDER["epoch1"], CHECK_ORDER["chain"]))
+pathlib.Path(CHECK, "verdict.json").write_text(json.dumps(
+    {"paired": PAIRED, "max_abs_diff": worst, "batch_order": CHECK_ORDER,
+     "stored": CONTROL_HISTORY,
+     "rerun": [(e["train_loss"], e["val_loss"]) for e in hist]}, indent=2))
+"""
+
+# Summary of a screen arm against the stored control, seed by seed, with the
+# plan_2026-10-10 section 3 decision rule.
+PAIRED_SUMMARY = """
+import json, glob, statistics
+print("%-6s%9s%10s%9s%8s%8s%7s%14s" % ("seed", "AUC", "dAUC", "rej@0.3", "drej",
+                                        "epochs", "hours", "batch order"))
+deltas, drejs, orders = {}, {}, {}
+for seed in SEEDS:
+    for f in sorted(glob.glob(OUT + "/seed%d/*.json" % seed)):
+        r = json.load(open(f)); t = r["test_metrics"]; env = r.get("env", {})
+        c_auc, c_rej = CONTROL_TEST[seed]
+        orders[seed] = r["batch_order"]["epoch1"]
+        print("%-6d%9.5f%+10.5f%9.1f%+8.1f%8d%7.2f%14s"
+              % (seed, t["test_auc"], t["test_auc"] - c_auc, t["bg_rej_30"],
+                 t["bg_rej_30"] - c_rej, r["epochs_run"], r["walltime_sec"] / 3600,
+                 orders[seed][:12]))
+        assert env.get("torch") == "2.11.0+cu128" and "T4" in env.get("gpu", ""), env
+        if r["epochs_run"] < 20:
+            print("  INCOMPLETE: stopped at epoch %d on the kernel budget" % r["epochs_run"])
+        else:
+            deltas[seed] = t["test_auc"] - c_auc
+            drejs[seed] = t["bg_rej_30"] - c_rej
+if "CHECK_ORDER" in globals() and 0 in orders:
+    same = orders[0] == CHECK_ORDER["epoch1"]
+    print("seed 0 batch order %s the pairing check's" % ("equals" if same else "DIFFERS FROM"))
+d = [deltas[s] for s in SEEDS if s in deltas]
+if len(d) < len(SEEDS):
+    print("%d of %d seeds complete: no verdict" % (len(d), len(SEEDS)))
+else:
+    m = statistics.mean(d)
+    if m >= 0.00015 and min(d) > 0:
+        verdict = "PROMOTE to the K=32 long schedule"
+    elif abs(m) < 0.0001 or min(d) < 0 < max(d):
+        verdict = "CLOSE at the probe level"
+    elif max(d) < 0:
+        verdict = "UNRESOLVED by the rule, but every seed is negative: not a candidate"
+    else:
+        verdict = "UNRESOLVED"
+    print("paired dAUC %s: mean %+.5f sd %.5f | drej mean %+.1f"
+          % (" ".join("%+.5f" % x for x in d), m, statistics.stdev(d),
+             statistics.mean(drejs.values())))
+    print("verdict: %s" % verdict)
+    print("(valid only if the pairing check in probe-screen-beame002 passed;"
+          " rejection is reported, never decides)")
+"""
+
 
 def build_probe_screen(blob: str, tag: str, flags: list[str],
-                       seeds: tuple[int, ...], budget_h: float) -> str:
-    """One arm of the conditioning screen: seeds 0-2 on the probe protocol.
+                       seeds: tuple[int, ...], budget_h: float,
+                       pairing_check: bool = False,
+                       control: dict | None = None) -> str:
+    """One arm of a probe-protocol screen: seeds 0-2.
 
     Protocol as build_probe_seeds (K=32, canonical splits, 400k training
     jets, 20 epochs, batch 256, float32, beams + channels 8, --compile), on a
@@ -1987,25 +2109,40 @@ def build_probe_screen(blob: str, tag: str, flags: list[str],
     left of the kernel budget as --max-seconds, so a slow arm stops with a
     checkpoint instead of overrunning the week's quota; a seed is skipped when
     too little budget is left for it to finish.
+
+    With `control` (from _screen_control) the arm is read against that stored
+    control seed by seed and the summary applies the plan's decision rule;
+    `pairing_check` first reruns the control's seed 0 for two epochs.
     """
     import hashlib
     bundle_sha = hashlib.sha256(blob.encode()).hexdigest()[:12]
-    base = ["--cache-dir", "DATA", "--representation", "constituents",
-            "--canonical-splits", "--normalize", "global",
-            "--max-train-samples", "400000", "--epochs", "20",
-            "--device", "cuda", "--dtype", "float32", "--batch-size", "256",
-            "--n-constituents", "32", "--eval-chunk-size", "2048",
-            "--models", "so3c_message_set", "--rounds", "3", "--beams",
-            "--channels", "8", "--compile"] + list(flags)
+    common = ["--cache-dir", "DATA", "--representation", "constituents",
+              "--canonical-splits", "--normalize", "global",
+              "--max-train-samples", "400000", "--epochs", "20",
+              "--device", "cuda", "--dtype", "float32", "--batch-size", "256",
+              "--n-constituents", "32", "--eval-chunk-size", "2048",
+              "--models", "so3c_message_set", "--rounds", "3", "--beams",
+              "--channels", "8", "--compile"]
+    base = common + list(flags)
+    if pairing_check and control is None:
+        raise ValueError("the pairing check needs the stored control")
+    if control is None:
+        pairing = "the base control of the" + chr(10) + "same screen"   # as built on 10-05
+        heading = "Conditioning screen"
+    else:
+        pairing = "the 2026-10-05 control (`%s`)" % SCREEN_CONTROL_DIR
+        heading = "Representation screen"
+        if pairing_check:
+            pairing += (". The kernel first reruns control seed 0 for two "
+                        "epochs: the pairing check")
     cells = [
         md("""
-# Conditioning screen, probe protocol: %s
+# %s, probe protocol: %s
 
 Flags beyond the base: `%s`. Seeds %s, K=32 / 400k jets / 20 epochs, T4 with
-torch 2.11.0+cu128 pinned, paired seed by seed with the base control of the
-same screen. Kernel budget %.2f h.
-""" % (tag, " ".join(flags) or "(none: the control)",
-           ", ".join(str(s) for s in seeds), budget_h)),
+torch 2.11.0+cu128 pinned, paired seed by seed with %s. Kernel budget %.2f h.
+""" % (heading, tag, " ".join(flags) or "(none: the control)",
+           ", ".join(str(s) for s in seeds), pairing, budget_h)),
         code("""
 import subprocess, time
 T0 = time.time()
@@ -2032,7 +2169,18 @@ pathlib.Path(OUT).mkdir(parents=True, exist_ok=True)
 pathlib.Path(OUT, "bundle_sha256.txt").write_text(%r + chr(10))
 print("data:", DATA, "| bundle", %r)
 """ % (tag, list(seeds), base, budget_h, bundle_sha, bundle_sha)),
-        code("""
+    ]
+    if control is not None:
+        cells.append(code("""
+# The control this arm pairs with (%s): per seed, (test AUC,
+# rejection at 30%%); seed 0's (train, val) loss in epochs 1 and 2; and its
+# command, which is BASE without this arm's flags.
+CONTROL_TEST = %r
+CONTROL_HISTORY = %r
+CONTROL_BASE = %r
+CONTROL_BASE[CONTROL_BASE.index("DATA")] = DATA
+""" % (SCREEN_CONTROL_DIR, control["test"], control["history"], common)))
+    cells.append(code("""
 # On-card guard: the forward pass must be the published function here too.
 import subprocess, sys
 g = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
@@ -2040,7 +2188,10 @@ g = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovide
                    cwd="/kaggle/working/repo", capture_output=True, text=True)
 print(g.stdout[-1200:], g.stderr[-800:])
 assert "1 passed" in g.stdout, "golden guard did not pass on the card"
-"""),
+"""))
+    if pairing_check:
+        cells.append(code(PAIRING_CHECK))
+    cells += [
         code("""
 import glob, time
 for seed in SEEDS:
@@ -2056,7 +2207,11 @@ for seed in SEEDS:
     assert glob.glob(OUT + "/seed%d/*.json" % seed), "seed %d wrote no result" % seed
 print("kernel time %.2f h" % ((time.time() - T0) / 3600))
 """),
-        code("""
+    ]
+    if control is not None:
+        cells.append(code(PAIRED_SUMMARY))
+    else:
+        cells.append(code("""
 import json, glob, statistics
 aucs, rejs = [], []
 print("%-6s%9s%10s%10s%8s%8s%20s%10s" % ("seed", "AUC", "rej@0.3", "rej@0.5", "epochs", "hours", "torch", "gpu"))
@@ -2076,8 +2231,7 @@ if len(aucs) > 1:
     print("complete seeds: mean %.5f sd %.5f AUC | mean %.1f sd %.1f rejection"
           % (statistics.mean(aucs), statistics.stdev(aucs),
              statistics.mean(rejs), statistics.stdev(rejs)))
-"""),
-    ]
+"""))
     name = "kaggle_probe_screen_%s.ipynb" % tag
     _finalise(cells, NB_DIR / name)
     meta = {
@@ -2779,6 +2933,10 @@ def _registry() -> dict:
     for tag, flags, seeds, budget_h in PROBE_SCREEN_RUNS:
         reg["probe_screen_%s" % tag] = (
             lambda b, t=tag, f=flags, s=seeds, h=budget_h: build_probe_screen(b, t, f, s, h))
+    for tag, flags, seeds, budget_h, check in REPR_SCREEN_RUNS:
+        reg["probe_screen_%s" % tag] = (
+            lambda b, t=tag, f=flags, s=seeds, h=budget_h, c=check: build_probe_screen(
+                b, t, f, s, h, pairing_check=c, control=_screen_control()))
     for tag, flags, seed, epochs in K64_RUNS:
         reg["k64_%s_seed%d" % (tag, seed)] = (
             lambda b, t=tag, f=flags, s=seed, e=epochs: build_k64_run(b, t, f, s, epochs=e))

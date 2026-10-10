@@ -422,9 +422,44 @@ neither moved AUC ([`SO3C_STATUS.md`](../../SO3C_STATUS.md), Closed table):
   `falpha` does, so the two cannot be combined. Screened: ΔAUC
   +0.00000 ± 0.00008.
 
-`vector_channel` and `pair_latent` are the only options that need the dense
-graph: combined with `neighbors`, either raises `ValueError`. `edge_norm` and
-`log_knee` work on both graphs.
+Two more, `lab_scalars` and `pair_lab`, were added on 2026-10-10 for the
+representation screen ([`so3c_notes/plan_2026-10-10.md`](../../so3c_notes/plan_2026-10-10.md)
+§3, R2 and R3; not yet trained). They give the network ParT's lab-frame
+features. Both need the beams, because every lab-frame quantity is written in
+Minkowski products with them. With $b_\pm=E_b(1,0,0,\pm1)$,
+$\langle p,b_\mp\rangle/E_b=E\pm p_z$ and $\langle b_+,b_-\rangle=2E_b^2$, so
+
+$$p_T^2=(E+p_z)(E-p_z)-\langle p,p\rangle,\qquad
+y=\tfrac12\ln\frac{E+p_z}{E-p_z},\qquad
+\vec p_{1T}\cdot\vec p_{2T}=E_1E_2-p_{z1}p_{z2}-\langle p_1,p_2\rangle,$$
+
+and $\lvert\Delta\phi\rvert=\operatorname{atan2}\big(\lvert\vec p_{1T}\times\vec p_{2T}\rvert,\ \vec p_{1T}\cdot\vec p_{2T}\big)$
+with $\lvert\vec p_{1T}\times\vec p_{2T}\rvert^2=p_{1T}^2p_{2T}^2-(\vec p_{1T}\cdot\vec p_{2T})^2$.
+Every feature is a function of invariants of $\{p_a,P,b_\pm\}$, so the model
+stays exactly covariant with the beams moved along, and invariant under
+rotations about the beam axis with them fixed (tested to roundoff, as for the
+base). Logarithms are floored at $10^{-8}$ and square roots at $10^{-6}$, so the
+features stay finite at $p_T\to0$, on padding and for collinear pairs.
+
+- **`lab_scalars=True`** appends ParT's seven particle features to the scalar
+  initialisation, after the compression of the invariants: $\ln E$, $\ln p_T$,
+  $\ln E/E_J$, $\ln p_T/p_{TJ}$, $y-y_J$, $\lvert\Delta\phi_J\rvert$ and $\Delta R_J$,
+  with $J$ the jet $P$.
+- **`pair_lab=True`** appends ParT's four interaction features to the edge
+  input, after the compression of the pair invariants: $\ln\Delta_{ab}$ with
+  $\Delta_{ab}=\sqrt{\Delta y^2+\Delta\phi^2}$, $\ln k_T=\ln(\min(p_{Ta},p_{Tb})\,\Delta_{ab})$,
+  $\ln z=\ln\big(\min(p_{Ta},p_{Tb})/(p_{Ta}+p_{Tb})\big)$ and $\ln m^2_{ab}$. They
+  are computed once per jet and are zero on the diagonal and on every pair
+  that involves padding or a beam node.
+
+`beam_energy` ($E_b$, default 1 in the normalised input units, about 47 GeV at
+$K=32$) has been a CLI flag since the same day (`--beam-energy`, R1). It sets
+where asinh sits on $\langle p,b_\pm\rangle$ and the beam nodes' soft bound
+$1+\langle b,P\rangle$; the lab-frame features above do not depend on it.
+
+`vector_channel`, `pair_latent` and `pair_lab` are the only options that need
+the dense graph: combined with `neighbors`, each raises `ValueError`.
+`edge_norm`, `log_knee` and `lab_scalars` work on both graphs.
 
 ## 13. Readout features
 
