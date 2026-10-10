@@ -15,7 +15,11 @@ Two reasons the notebooks are generated rather than hand-written:
    which is how the first data-prep kernel died. ``_src`` enforces it.
 
 Run:
-    python -m benchmarks.build_notebooks
+    python -m benchmarks.build_notebooks --list
+    python -m benchmarks.build_notebooks --only k64_headline120_seed0
+    python -m benchmarks.build_notebooks --all     # rewrites every notebook
+
+With no arguments (and with --help) nothing is written.
 """
 
 from __future__ import annotations
@@ -2736,39 +2740,96 @@ for f in FILES:
     _finalise(cells, NB_DIR / "kaggle_message_k64_finish.ipynb")
 
 
-def main() -> int:
-    blob = embed_code()
-    print("embedded code: %.0f KB base64" % (len(blob) / 1024))
-    build_dataprep(blob, k=128)
-    build_validate(blob)
-    build_scaling(blob)
-    build_fixed(blob)
-    build_k64_seed(blob, seed=1)
-    build_kappa(blob)
-    build_message_probe(blob)
-    build_message_sweep(blob)
-    build_message_finish(blob)
-    build_beams_probe(blob)
-    build_beams_tuning(blob)
-    for seed in (0, 1):
-        build_beams_k64(blob, seed=seed)
-    build_beams_k64_finish(blob)
-    build_capacity_cost(blob)
-    build_gap_screen(blob)
-    build_gpu_profile(blob)
-    build_cuda_diag(blob)
-    build_width_profile(blob)
+def _registry() -> dict:
+    """Every notebook this module can build: name -> builder(blob).
+
+    The name is the notebook's file stem without the "kaggle_" prefix, so
+    `--only k64_headline120_seed0` writes notebooks/kaggle_k64_headline120_seed0.ipynb
+    (and, for kernels that need one, its kernel-metadata file).
+    """
+    reg = {
+        "dataprep_k128": lambda b: build_dataprep(b, k=128),
+        "validate": build_validate,
+        "scaling": build_scaling,
+        "fixed": build_fixed,
+        "k64_seed1": lambda b: build_k64_seed(b, seed=1),
+        "kappa": build_kappa,
+        "message_probe": build_message_probe,
+        "message_sweep": build_message_sweep,
+        "message_k64_finish": build_message_finish,
+        "beams_probe": build_beams_probe,
+        "beams_tuning": build_beams_tuning,
+        "beams_k64_seed0": lambda b: build_beams_k64(b, seed=0),
+        "beams_k64_seed1": lambda b: build_beams_k64(b, seed=1),
+        "beams_k64_finish": build_beams_k64_finish,
+        "capacity_cost": build_capacity_cost,
+        "gap_screen": build_gap_screen,
+        "gpu_profile": build_gpu_profile,
+        "cuda_diag": build_cuda_diag,
+        "width_profile": build_width_profile,
+        "k64_%s_seed0" % CONT_TAG: build_k64_continuation,
+        "k64_%s_finish" % CONT_TAG: build_k64_continuation_finish,
+    }
     for tag, flags, seed in LONG_RUNS:
-        build_long_seeds(blob, tag, flags, (seed,), part="s%d" % seed)
+        reg["long_seeds_%s_s%d" % (tag, seed)] = (
+            lambda b, t=tag, f=flags, s=seed: build_long_seeds(b, t, f, (s,), part="s%d" % s))
     for tag, flags, seeds in PROBE_SEED_RUNS:
-        build_probe_seeds(blob, tag, flags, seeds)
+        reg["probe_seeds_%s" % tag] = (
+            lambda b, t=tag, f=flags, s=seeds: build_probe_seeds(b, t, f, s))
     for tag, flags, seeds, budget_h in PROBE_SCREEN_RUNS:
-        build_probe_screen(blob, tag, flags, seeds, budget_h)
+        reg["probe_screen_%s" % tag] = (
+            lambda b, t=tag, f=flags, s=seeds, h=budget_h: build_probe_screen(b, t, f, s, h))
     for tag, flags, seed, epochs in K64_RUNS:
-        build_k64_run(blob, tag, flags, seed, epochs=epochs)
+        reg["k64_%s_seed%d" % (tag, seed)] = (
+            lambda b, t=tag, f=flags, s=seed, e=epochs: build_k64_run(b, t, f, s, epochs=e))
     for k in (32, 64):
         for seed in (0, 1):
-            build_message(blob, seed=seed, k=k)
+            reg["message_k%d_seed%d" % (k, seed)] = (
+                lambda b, kk=k, s=seed: build_message(b, seed=s, k=kk))
+    return reg
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Build named notebooks; with no arguments, build nothing.
+
+    Every committed notebook embeds the code of the commit it was built from,
+    and that bundle is the provenance of its kernel's results. Rebuilding a
+    notebook that has already run therefore rewrites its record, so nothing
+    is built unless asked for by name, or everything with an explicit --all.
+    Plan_2026-10-10 C3: before this, even --help rewrote every notebook.
+    """
+    import argparse
+    p = argparse.ArgumentParser(
+        prog="python -m benchmarks.build_notebooks",
+        description="Build the Kaggle notebooks, each with the repository's "
+                    "code embedded. With no arguments nothing is written.")
+    g = p.add_mutually_exclusive_group()
+    g.add_argument("--list", action="store_true", help="list the notebook names")
+    g.add_argument("--only", nargs="+", metavar="NAME",
+                   help="build exactly these notebooks (names from --list)")
+    g.add_argument("--all", action="store_true",
+                   help="rebuild every notebook, including ones that already ran")
+    args = p.parse_args(argv)
+    reg = _registry()
+    if args.list:
+        for name in reg:
+            print(name)
+        return 0
+    if args.only:
+        unknown = [n for n in args.only if n not in reg]
+        if unknown:
+            p.error("unknown notebook name(s): %s (see --list)" % ", ".join(unknown))
+        names = list(dict.fromkeys(args.only))
+    elif args.all:
+        names = list(reg)
+    else:
+        p.print_usage()
+        print("nothing built: name notebooks with --only, or rebuild all with --all")
+        return 0
+    blob = embed_code()
+    print("embedded code: %.0f KB base64" % (len(blob) / 1024))
+    for name in names:
+        reg[name](blob)
     return 0
 
 
