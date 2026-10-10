@@ -121,6 +121,11 @@ def main(argv: list[str] | None = None) -> int:
                    help="so3c_message_set: add the two beam particles "
                         "(1, 0, 0, +-1) LorentzNet and PELICAN use, so the "
                         "network can see lab-frame energies and momenta.")
+    p.add_argument("--beam-energy", type=float, default=None,
+                   help="so3c_message_set with --beams: energy E_b of the beam "
+                        "particles (E_b, 0, 0, +-E_b) in the normalised input "
+                        "units (default 1.0, about 47 GeV at K=32). Sets the "
+                        "asinh regime of <p, b+-> and <P, b+->.")
     p.add_argument("--dropout", type=float, default=None,
                    help="so3c_message_set: dropout in the readout MLP.")
     p.add_argument("--no-mass-input", action="store_true",
@@ -171,6 +176,10 @@ def main(argv: list[str] | None = None) -> int:
                    help="Checkpoint and stop before a session cap (Kaggle "
                         "kills a notebook at 12h).")
     args = p.parse_args(argv)
+    if args.beam_energy is not None and not args.beams:
+        # Without beams the model has no beam particles, so the value would be
+        # silently ignored.
+        p.error("--beam-energy needs --beams")
 
     if args.quick:
         split = synthetic_tabular(n_samples=1_000, n_features=6,
@@ -214,6 +223,7 @@ def main(argv: list[str] | None = None) -> int:
         ("neighbors", args.neighbors),
         ("T", args.flow_T),
         ("beams", True if args.beams else None),
+        ("beam_energy", args.beam_energy),
         ("dropout", args.dropout),
         ("mass_input", False if args.no_mass_input else None),
         ("self_edges", False if args.no_self_edges else None),

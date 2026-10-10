@@ -1006,6 +1006,55 @@ def test_message_set_knn_carries_beams() -> None:
     assert (moved(xb) - out).abs().max() < 1e-10 * max(1.0, out.abs().max().item())
 
 
+def test_beam_energy_keeps_parameters_default_and_covariance() -> None:
+    """beam_energy (plan C1): same parameters; the default is untouched; at
+    E_b = 0.02 the model is still exactly covariant with the beams moved
+    along; and the value really reaches the model (logits change), so the
+    covariance check is not vacuous."""
+    from benchmarks.so3c_models import SO3CMessageSetClassifier
+
+    def boost_z(p4, rapidity):
+        ch, sh = torch.cosh(rapidity), torch.sinh(rapidity)
+        E, px, py, pz = p4.unbind(-1)
+        return torch.stack([ch * E + sh * pz, px, py, sh * E + ch * pz], -1)
+
+    def make(**kw):
+        torch.manual_seed(0)
+        return SO3CMessageSetClassifier(channels=4, rounds=2, beams=True,
+                                        dtype=torch.float64, **kw)
+
+    ref, low, unit = make(), make(beam_energy=0.02), make(beam_energy=1.0)
+    count = lambda m: sum(q.numel() for q in m.parameters())
+    assert count(ref) == count(low) == count(unit)
+    g = torch.Generator().manual_seed(11)
+    with torch.no_grad():
+        for head in ref.w_head:
+            head.weight.copy_(0.4 * torch.randn(head.weight.shape, dtype=torch.float64, generator=g))
+    for m in (low, unit):
+        m.load_state_dict({k: v for k, v in ref.state_dict().items() if k != "beam_p4"},
+                          strict=False)
+    B, K = 3, 9
+    n = torch.tensor([K, 6, 4])
+    mask = (torch.arange(K)[None, :] < n[:, None]).double()
+    pv = (torch.randn(B, K, 3, dtype=torch.float64, generator=g) * 0.4
+          + torch.tensor([2.0, 0.5, 1.0], dtype=torch.float64))
+    E = pv.norm(dim=-1, keepdim=True)
+    x = torch.cat([torch.cat([E, pv], -1) * mask[..., None], mask[..., None]], -1)
+
+    out_ref, out_unit, out_low = ref(x), unit(x), low(x)
+    assert torch.equal(out_ref, out_unit), "explicit beam_energy=1.0 must equal the default"
+    assert (out_low - out_ref).abs().max() > 1e-4, "beam_energy did not reach the model"
+
+    rapidity = torch.tensor(1.1, dtype=torch.float64)
+    moved = make(beam_energy=0.02)
+    moved.load_state_dict(low.state_dict())
+    with torch.no_grad():
+        moved.beam_p4.copy_(boost_z(low.beam_p4, rapidity))
+    xb = x.clone()
+    xb[..., :4] = boost_z(x[..., :4], rapidity) * mask.unsqueeze(-1)
+    assert (moved(xb) - out_low).abs().max() < 1e-10 * max(1.0, out_low.abs().max().item())
+
+
 def test_message_set_matches_golden() -> None:
     """Logits and parameter gradients equal those of the implementation the
     published numbers were measured with, for every switch combination.
@@ -1104,6 +1153,7 @@ if __name__ == "__main__":
     test_message_set_pair_latent_symmetries()
     test_message_set_pair_latent_trains()
     test_message_set_knn_carries_beams()
+    test_beam_energy_keeps_parameters_default_and_covariance()
     test_message_set_matches_golden()
     test_message_set_matches_reference()
     test_message_set_soft_mask_matches_reference()
