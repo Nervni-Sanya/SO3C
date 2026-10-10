@@ -231,8 +231,8 @@ GPU run had put `falpha=3` at 3.54×. On the CPU (K=32, batch 256, float32)
 2026-10-05 T4 screen their sessions took the same time as the control's.
 
 Since 2026-10-05 every result JSON also records `env`: torch and CUDA versions,
-Python and the GPU name. Seed pairing between runs holds only on the same
-torch build.
+Python and the GPU name. Seed pairing between runs is established only on the same
+torch build; across builds it is not shown either way.
 
 ## `so3c_interaction_set`
 

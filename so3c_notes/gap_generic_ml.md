@@ -159,7 +159,7 @@ The penalty's share of the norm is negligible: the data-only median is the same 
 **Mechanism.** The state norms grow about 10× across rounds through the channel mixing (§2.5). The pair invariants grow with |z|², asinh compresses only logarithmically, and nothing normalises the pre-activation. As a result, in rounds 1–2 the 16 edge units act mostly as sign detectors on their inputs. Gradient through those units, and so to the edge weights and everything upstream of them, is suppressed 15–100×.
 
 This is consistent with, though it does not prove, two things already in STATUS:
-- the model is slow to train (60 epochs beat 30);
+- the model is slow to train (60 epochs beat 30 by +0.00037 at K=64, 2.2 standard errors: suggestive, audit #3);
 - adding width helps (w128s32, which widens `act_hidden` from 16 to 128, gave +0.00048): more units means more of them in the linear range.
 
 The fix is the same change as `gap_thesis.md` idea 7.1(b): a per-pair LayerNorm over the 16 hidden units, or a learnable gain, before the tanh. It acts on invariants only, so exact covariance is kept.
@@ -274,11 +274,11 @@ On 100k jets, rejection at 30% signal efficiency is decided by about 41 backgrou
 
 | idea | why not |
 |---|---|
-| Label smoothing | Our metrics are ranking and tail metrics; smoothing compresses exactly the confident tail where 1/ε_B @ 0.3 is decided. It is also a regulariser, and the base model underfits (dropout and weight decay measured negative). |
+| Label smoothing | Our metrics are ranking and tail metrics; smoothing compresses exactly the confident tail where 1/ε_B @ 0.3 is decided. It is also a regulariser, and the base model underfits (dropout bundles measured negative; decoupled weight decay alone not shown to help, audit #2). |
 | Focal loss | Not a proper scoring rule. It moves capacity toward the 50% decision boundary, while rejection at 30% signal efficiency is set among the most signal-like jets. No support on this benchmark in any paper read for `gap_thesis.md`. |
 | AUC or pairwise ranking losses | Cross-entropy is proper, and its minimiser (the likelihood ratio) is already AUC-optimal. At AUC 0.983 the misordered pairs are few, so a pairwise loss trains on a noisy handful. |
 | Mixup | Interpolating the 4-momentum sets of two jets is not a jet, nor covariant unless done on invariants. And it regularises a model that underfits. |
-| SAM | About 2× the cost per step for a flatness regulariser. The model is under-trained (60 epochs beat 30), so the compute is better spent on epochs. |
+| SAM | About 2× the cost per step for a flatness regulariser. The model looks under-trained (60 epochs beat 30, suggestive only, audit #3), so the compute is better spent on epochs. |
 | Weight decay, dropout | Measured negative: dropout 0.05 + weight decay 1e-4 gave −0.0011; AdamW 0.002 on w128s32 is **not shown to help** — −0.00011, but decay runs on torch 2.11 against controls on 2.10, so unpaired and inside the ±0.00027 spread (audit #2); the LorentzNet recipe also lost (SO3C_STATUS.md). |
 | Temperature scaling for the over-confident logits (§3.3) | It does not change ranking, so it cannot change AUC or rejection. Calibration only. |
 
@@ -457,14 +457,14 @@ The growth comes from M_r (§8.1), so constraining M_r is the direct alternative
 
 On the GPU, the LayerNorm costs nothing measurable.
 
-### 9.1 The fresh control, and why the old baseline could not be reused
+### 9.1 The fresh control, and why it was the safe design
 
 | control | AUC | 1/ε_B @ 0.3 |
 |---|---|---|
 | base, torch 2.11 (this screen) | 0.98112 ± 0.00002 | 817.6 ± 11.4 |
 | base, torch 2.10 (`probe_seeds/base`, 2026-09-20) | 0.98106 ± 0.00017 | 806 ± 58 |
 
-For the same seed, the epoch-1 and epoch-2 training losses differ by up to 1.6e-3 between the two builds. **Corrected (audit #6):** epoch-1 losses cannot tell same-seed from different-seed runs — base seeds 0 and 2 agree to 0.00008 in epoch-1 validation loss — so this does not show that the old runs would not have paired. The fresh control was the safe design; "an old run is not a valid pair" is **not shown**. From now on a batch-order fingerprint in every result (plan C2) settles pairing directly.
+For the same seed, the epoch-1 and epoch-2 training losses differ by up to 1.6e-3 between the two builds. **Corrected (audit #6):** epoch-1 losses cannot tell same-seed from different-seed runs. On this protocol's own bases, seeds 0 and 2 differ by 1.04e-3 in epoch-1 training loss on torch 2.11 (`probe_screen/base`) and by 3.09e-3 on 2.10 (`probe_seeds/base`) — the same size as the 1.6e-3 cross-build difference for seed 0 — so this does not show that the old runs would not have paired. The fresh control was the safe design; "an old run is not a valid pair" is **not shown**. From now on a batch-order fingerprint in every result (plan C2) settles pairing directly.
 
 ### 9.2 Edge LayerNorm (`--edge-norm`): no AUC gain, slightly worse tail rejection
 

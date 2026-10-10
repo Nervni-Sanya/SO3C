@@ -31,7 +31,7 @@ PDF page numbers below are the physical pages of the arXiv PDF. The printed page
   3. PELICAN feeds log-compressed inputs in GeV and normalises every block. Our inputs sit in the linear regime of asinh, and the network has no normalisation layer anywhere.
 - **The bivector hypothesis does not hold up** (§3). arXiv:2606.21790 shows that the bivector channels inside an L-GATr whose inputs are vectors are redundant. It says nothing about a bivector input lift. For massless constituents, our lift loses no information.
 - **Ranked ideas** (§7):
-  1. Input conditioning and normalisation: new, costs no runtime, untested.
+  1. Input conditioning and normalisation: new, costs no runtime; (a) and (b) **measured null on AUC** on 2026-10-05 (`gap_generic_ml.md` §9).
   2. The pair latent at the long schedule: already implemented, never run there.
   3. PELICAN's N^α aggregation: free.
   4. Depth, once idea 1 is in.
@@ -347,7 +347,7 @@ LLoCa is a way to make a non-equivariant backbone equivariant. We already are.
 
 **Budget.** The current window has used about 13.9 h, plus the two K=64 width kernels pushed at commit 82235c4 (about 7.2 + 4.3 h). That leaves roughly 4–5 h until the reset on Saturday 2026-10-10. This is an estimate; test by pushing.
 
-### 7.1 Input conditioning and normalisation (new; untested; exactly covariant)
+### 7.1 Input conditioning and normalisation (new; exactly covariant; (a) and (b) measured null on AUC, 2026-10-05)
 
 **Mechanism.** Every reference tagger conditions its invariant inputs and normalises inside the network:
 
@@ -375,7 +375,7 @@ Neither is proof.
 **Counter-evidence, stated plainly.** The 8 complex channel weights already act as learnable input scales, since s_ab scales as w_c². Training never pushed |w_c|² above about 2.3, and it collapsed three channels instead (§2.3). Either the network does not want larger scales, or the route through w_c is poor, because w_c also sets the flow strength. Only the run decides.
 
 **Expected gain:** 0 to +0.001 AUC. No paper isolates this: PELICAN says only "slight boost" for f_α, and nobody ablates BatchNorm.
-**Cost:** (a) and (c) about 1.00×; (b) estimated 1.05–1.10× (unmeasured). Two paired seeds take about **7.5 GPU-h**. Before any GPU run, check on CPU: exact covariance with excited heads in float64, and the step-time ratio.
+**Cost:** (a) and (c) about 1.00×; (b) estimated 1.05–1.10× (unmeasured). Two paired seeds take about **7.5 GPU-h**, plus a same-stack control (about +7 h for seeds 0 and 1; audit #1). Before any GPU run, check on CPU: exact covariance with excited heads in float64, and the step-time ratio.
 
 ### 7.2 Pair latent at the long schedule (`--pair-latent 8`, already implemented)
 
@@ -386,7 +386,7 @@ Neither is proof.
 - Our probe protocol gave a paired **+0.00012 (t = 1.42)**, with a spread four times smaller than the base (STATUS). That was at 20 epochs on 400k jets, a regime that cannot show a capacity gain. It has never been run at the long schedule.
 
 **Expected gain:** +0.0002 to +0.0008. A cheap add-on is PELICAN's (N/49)^α on its aggregators (§7.3).
-**Cost:** at K=64 it measured 918 s per epoch against 589 for the headline (1.56×; STATUS speed-up table). K=32 compiled is unmeasured, because the profile rows for pair8 ran eager. The estimate is about 5.3–5.5 h per seed, so two paired seeds take about **11 GPU-h**.
+**Cost:** at K=64 it measured 918 s per epoch against 589 for the headline (1.56×; STATUS speed-up table). K=32 compiled is unmeasured, because the profile rows for pair8 ran eager. The estimate is about 5.3–5.5 h per seed, so two paired seeds take about **11 GPU-h**, plus a same-stack control (about +7 h for seeds 0 and 1; audit #1).
 
 ### 7.3 N^α aggregation scaling (PELICAN §3.2; N̄ = 49)
 
@@ -432,7 +432,7 @@ Today we assert mean semantics everywhere by hand.
 | K > 64 | PELICAN capped at 80 with "no noticeable performance gain"; our energy measurement already closed it (STATUS) |
 | The `--falpha` bank as implemented | Knee in the linear regime (§7.1a); 3.54× CPU |
 | JetClass pretraining | The only route above 0.9870 (L-GATr: +0.0009 AUC, +654 rejection), but a different comparison class, at ≥ 25 GPU-h |
-| Weight decay, dropout | Measured negative (STATUS) |
+| Weight decay, dropout | Dropout bundles measured negative; decoupled weight decay alone (0.002) **not shown to help** (audit #2) (STATUS) |
 | PELICAN's trace/total readout stream | Already present: our pooled invariants keep the diagonal (s_aa) and off-diagonal (s_ab) means apart (theory.md §13) |
 
 ### 7.7 Expectation and a proposal for the window opening 2026-10-10 (30 GPU-h)
@@ -444,7 +444,7 @@ Today we assert mean semantics everywhere by hand.
 | 7.5 Lion at one learning rate | 0 | ~3.5 |
 | reserve: a second Lion lr, or 7.1 + 7.2 stacked, on seed 0 | | ~6–8 |
 
-All arms run on the K=32 long schedule, paired against the existing base seeds. The K=64 width runs now on Kaggle decide whether winners move to K=64, where each run costs 2–3× as much.
+All arms run on the K=32 long schedule. **Corrected (audit #1):** they need a same-stack control on seeds 0 and 1 (about +7 h for the window), since the existing base seeds ran on torch 2.10; the costs in the table above leave it out. The K=64 width runs now on Kaggle decide whether winners move to K=64, where each run costs 2–3× as much.
 
 **Stated plainly.** If 7.1–7.3 all land near the middle of their ranges and stack, the gain is +0.0005 to +0.0015 AUC, taking the single model to about 0.9841–0.9851. That is not 0.9870. Closing the full 0.0030 would need every idea at the top of its range plus width transferring to K=64, and nothing in the literature predicts that for an architecture like ours. If 7.1 and 7.2 both come back null at the long schedule, the honest conclusion is that this construction saturates near PELICAN's 1–3k operating point (0.9835–0.9850), and the paper should be framed around that.
 
