@@ -234,6 +234,9 @@ def run_tabular_experiment(
             "n_features":    split.n_features,
             "walltime_sec":  train_res.walltime_sec,
             "env":           _environment(device),
+            # same seed gives the same batch order only if these match
+            "batch_order":   {"epoch1": train_res.batch_order_epoch1,
+                              "chain":  train_res.batch_order_chain},
             "epochs_run":    train_res.epochs_run,
             "train_metrics": {
                 "final_train_acc": train_res.final_train_acc,

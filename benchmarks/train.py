@@ -10,6 +10,7 @@ memory and returns a metrics dict that ``aggregate.py`` consumes.
 
 from __future__ import annotations
 
+import hashlib
 import math
 import pathlib
 import time
@@ -56,6 +57,12 @@ class TrainResult:
     epochs_run:      int   = 0
     best_val_loss:   float = float("inf")   # tracked when cfg.keep_best
     best_epoch:      int   = 0
+    # Batch-order fingerprint: sha256 of epoch 1's permutation, and a hash
+    # chained over every epoch's permutation. Two runs see the same batch
+    # order exactly when these agree, which settles seed pairing directly
+    # instead of inferring it from losses.
+    batch_order_epoch1:  str | None = None
+    batch_order_chain:   str | None = None
     history:         list[dict[str, float]] = field(default_factory=list)
     config:          dict[str, Any] = field(default_factory=dict)
 
@@ -220,6 +227,8 @@ def train_classifier(
     best_val_loss = float("inf")
     best_epoch = 0
     best_state: dict[str, torch.Tensor] | None = None
+    order_epoch1: str | None = None
+    order_chain: str | None = None
     history: list[dict[str, float]] = []
     t0 = time.perf_counter()
     prior_walltime = 0.0
@@ -274,6 +283,8 @@ def train_classifier(
         best_val_loss = state.get("best_val_loss", float("inf"))
         best_epoch = state.get("best_epoch", 0)
         best_state = state.get("best_state")
+        order_epoch1 = state.get("batch_order_epoch1")
+        order_chain = state.get("batch_order_chain")
         epochs_no_improve = state["epochs_no_improve"]
         history = state["history"]
         prior_walltime = state["walltime_sec"]
@@ -288,6 +299,10 @@ def train_classifier(
     for epoch in range(start_epoch, cfg.epochs + 1):
         model.train()
         perm = torch.randperm(n_train, device=device)
+        digest = hashlib.sha256(perm.cpu().numpy().tobytes()).hexdigest()
+        if epoch == 1:
+            order_epoch1 = digest
+        order_chain = hashlib.sha256(((order_chain or "") + digest).encode()).hexdigest()
 
         running_loss = 0.0
         running_correct = 0
@@ -359,6 +374,8 @@ def train_classifier(
                 "best_val_loss": best_val_loss,
                 "best_epoch": best_epoch,
                 "best_state": best_state,
+                "batch_order_epoch1": order_epoch1,
+                "batch_order_chain": order_chain,
                 "epochs_no_improve": epochs_no_improve,
                 "history": history,
                 "walltime_sec": elapsed,
@@ -398,6 +415,8 @@ def train_classifier(
         epochs_run      = epochs_run,
         best_val_loss   = best_val_loss,
         best_epoch      = best_epoch,
+        batch_order_epoch1 = order_epoch1,
+        batch_order_chain  = order_chain,
         history         = history,
         config          = asdict(cfg),
     )

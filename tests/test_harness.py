@@ -483,6 +483,60 @@ def test_ensemble_scores_members_sharing_a_seed(tmp_path) -> None:
     assert rec["ensemble"] == pytest.approx(expected)
 
 
+def test_batch_order_fingerprint_pairs_by_seed_not_by_model() -> None:
+    """Plan C2: the fingerprint is the same for one seed across two
+    architectures (that is what makes paired comparisons paired), and differs
+    between seeds."""
+    split = _tiny_split()
+
+    def fp(name, seed):
+        torch.manual_seed(seed)
+        model = build_model(name, in_features=4, out_features=2,
+                            representation="constituents")
+        r = train_classifier(model, split.X_train, split.y_train, split.X_val,
+                             split.y_val, TrainConfig(epochs=3, batch_size=32, seed=seed))
+        return r.batch_order_epoch1, r.batch_order_chain
+
+    a = fp("so3c_invariant_set", 0)
+    b = fp("so3c_covariant_set", 0)
+    c = fp("so3c_invariant_set", 1)
+    assert a[0] and a[1] and len(a[0]) == 64
+    assert a == b, "same seed, different model: batch order must agree"
+    assert a[0] != c[0] and a[1] != c[1], "different seeds must differ"
+
+
+def test_batch_order_chain_survives_resume(tmp_path) -> None:
+    """An interrupted and resumed run carries the same fingerprint as an
+    uninterrupted one: the chain is stored in the checkpoint."""
+    split = _tiny_split()
+    torch.manual_seed(0)
+    cont = train_classifier(_small_model(), split.X_train, split.y_train,
+                            split.X_val, split.y_val, TrainConfig(epochs=4, batch_size=32, seed=0))
+    ckpt = tmp_path / "run.pt"
+    torch.manual_seed(0)
+    part = train_classifier(_small_model(), split.X_train, split.y_train,
+                            split.X_val, split.y_val,
+                            TrainConfig(epochs=4, batch_size=32, seed=0,
+                                        ckpt_path=str(ckpt), max_seconds=0.0))
+    assert part.epochs_run < 4
+    torch.manual_seed(0)
+    resumed = train_classifier(_small_model(), split.X_train, split.y_train,
+                               split.X_val, split.y_val,
+                               TrainConfig(epochs=4, batch_size=32, seed=0,
+                                           ckpt_path=str(ckpt), resume=True))
+    assert resumed.batch_order_epoch1 == cont.batch_order_epoch1
+    assert resumed.batch_order_chain == cont.batch_order_chain
+    assert part.batch_order_chain != cont.batch_order_chain, "chain must grow per epoch"
+
+
+def test_runner_records_batch_order(tmp_path) -> None:
+    split = _tiny_split()
+    run_tabular_experiment("t", split, models=["so3c_invariant_set"], seed=0, epochs=2,
+                           batch_size=32, representation="constituents", results_dir=tmp_path)
+    rec = json.loads((tmp_path / "t__so3c_invariant_set__seed0.json").read_text())
+    assert len(rec["batch_order"]["epoch1"]) == 64 and len(rec["batch_order"]["chain"]) == 64
+
+
 def test_cuda_resume_restores_rng_state(tmp_path) -> None:
     """Resuming on a GPU must get past restoring the saved RNG state.
 
