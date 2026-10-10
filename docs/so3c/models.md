@@ -241,7 +241,8 @@ with the same default-path code, do not reproduce each other (epoch-1 losses
 controls). At the probe protocol that is as far apart as different seeds, so
 there same-seed comparisons are read as unpaired. Across torch builds the
 batch order was not checked directly, though the long-schedule weight-decay
-runs (2.11) tracked their 2.10 counterparts seed by seed.
+runs (2.11) tracked their 2.10 counterparts seed by seed; the 2.11 base at the
+long schedule did not (`SO3C_STATUS.md`, phase 2).
 
 ### Lab-frame features (added and screened 2026-10-10)
 
