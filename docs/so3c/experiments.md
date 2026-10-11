@@ -267,6 +267,9 @@ python -m benchmarks.run_top_tagging $COMMON --seed 0 \
 python -m benchmarks.run_top_tagging $COMMON --seed 0 \
   --act-hidden 128 --msg-dim 32 --scalar-dim 32 \
   --optimizer adamw --weight-decay 0.002 --keep-best --results-dir long/w128s32wd2
+# 2026-10-10, pinned T4 / torch 2.11 (notebooks/kaggle_long_seeds_{base211,pairlab211}_s0.ipynb)
+python -m benchmarks.run_top_tagging $COMMON --seed 0 --keep-best --results-dir long/base211
+python -m benchmarks.run_top_tagging $COMMON --seed 0 --keep-best --pair-lab --results-dir long/pairlab211
 ```
 
 `w64s24` is `--act-hidden 64 --msg-dim 24 --scalar-dim 24`. The $K=64$ width
@@ -756,13 +759,15 @@ pass and `--compile`, committed in `results_message/probe_seeds/`.
   P100: consistent with no shift, but one cross-stack pair cannot test it. The
   float64 guard tests are what hold the two implementations equal.
 
-### M. Long schedule: width and weight decay
+### M. Long schedule: width, weight decay and lab-frame pair features
 
 Canonical split, all 1,211,000 training jets, $K=32$, 60 epochs, beams and 8
 channels, float32 with `--compile` on a T4, committed in `results_long_seeds/`.
 `w64s24` adds `--act-hidden 64 --msg-dim 24 --scalar-dim 24`, `w128s32` adds
 `--act-hidden 128 --msg-dim 32 --scalar-dim 32`, and the weight-decay arm adds
-`--optimizer adamw --weight-decay 0.002 --keep-best` to `w128s32`.
+`--optimizer adamw --weight-decay 0.002 --keep-best` to `w128s32`. The 2026-10-10
+rows add `--keep-best` to the base, and `--pair-lab` for the lab-frame pair
+features (theory.md §12).
 
 | Arm | Params | Seeds | AUC | $1/\varepsilon_B$ @ 0.3 | @ 0.5 | Lowest val. loss at epoch | Val. − train loss at 60 | Hours / seed | torch |
 |---|---:|---:|---|---|---|---|---|---|---|
@@ -770,7 +775,13 @@ channels, float32 with `--compile` on a T4, committed in `results_long_seeds/`.
 | `w64s24` | 60,834 | 1 | 0.98286 | 930 | 256 | 50 | 0.0091 | 4.39 | 2.10 |
 | `w128s32` | 120,202 | 2 | 0.98289 ± 0.00027 | 989 ± 65 | 269 ± 12 | 45, 47 | 0.0103–0.0120 | 6.40–7.02 | 2.10 |
 | `w128s32`, weight decay 0.002 | 120,202 | 2 | 0.98278 ± 0.00028 | 955 ± 114 | 264 ± 12 | 50, 52 | 0.0104–0.0133 | 6.30–7.41 | 2.11 |
+| base (`base211`) | 22,834 | 2 | 0.98240 ± 0.00020 | 942 ± 47 | 252 ± 2 | 58, 56 | 0.0045–0.0050 | 3.25–3.35 | 2.11 |
+| **lab-frame pair features** (`pairlab211`) | 23,026 | 2 | **0.98305 ± 0.00007** | 996 ± 87 | 268 ± 2 | 58, 58 | 0.0046–0.0049 | 3.30–3.35 | 2.11 |
 
+- The lab-frame pair features pay most: +0.00064 AUC against the five base runs
+  pooled (Welch t = 6.8), with 192 extra parameters, no extra overfitting and no
+  extra time. On torch 2.11 the runs are read unpaired: the 2.11 base reverses
+  the 2.10 seed order (`SO3C_STATUS.md`, phase 2).
 - Width pays a little, on two pairs. With dropout off and the same torch build,
   runs that share a seed see the same batch order (`train_classifier` reseeds
   after the model is built), and here they behaved as pairs:

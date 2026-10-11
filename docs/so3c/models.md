@@ -261,7 +261,9 @@ On the CPU (K=32, batch 256, float32) `lab_scalars` costs 0.98×, `pair_lab`
 `lab_scalars` took 0.97–0.98× and `pair_lab` 1.04–1.13× the control's training
 time. Screened on the probe protocol: `lab_scalars` closed (ΔAUC +0.00004 ±
 0.00009), `pair_lab` promoted to the long schedule (+0.00055 ± 0.00009 by seed,
-+0.00051 unpaired against the pooled control; `SO3C_STATUS.md`).
++0.00051 unpaired against the pooled control; `SO3C_STATUS.md`). At the $K=32$
+long schedule `pair_lab` gave +0.00064 against the pooled base (two seeds,
+Welch t = 6.8) at the control's training time.
 
 ## `so3c_interaction_set`
 

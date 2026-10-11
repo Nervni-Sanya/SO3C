@@ -1,6 +1,6 @@
 # SO3C status
 
-Last updated 2026-10-10. This is the single place to start from. Commit hashes point at the evidence for every number. Hashes of work from before the snapshot (2026-09-16) are commits in the **so33** repository this one was split from; hashes of later work, some marked **(SO3C)**, are commits in this repository; `git cat-file -t <hash>` tells which (see [Provenance](#provenance)).
+Last updated 2026-10-11. This is the single place to start from. Commit hashes point at the evidence for every number. Hashes of work from before the snapshot (2026-09-16) are commits in the **so33** repository this one was split from; hashes of later work, some marked **(SO3C)**, are commits in this repository; `git cat-file -t <hash>` tells which (see [Provenance](#provenance)).
 
 ## Scope and goal
 
@@ -97,6 +97,8 @@ The 30-epoch seeds, for the record:
 
 ## Open — candidates
 
+**Lead (2026-10-11): lab-frame pair features (`--pair-lab`) at K=64.** Promoted on the probe protocol (+0.00051 against the pooled control, t = 5.9) and confirmed at the K=32 long schedule (+0.00064, t = 6.8, free). Not yet run at K=64, the protocol the current best is measured on. Its four features (ln Δ, ln k_T, ln z, ln m²) have not been separated.
+
 Ranked literature and generic-ML candidates, every literature number checked against its paper's table: [`so3c_notes/gap_thesis.md`](so3c_notes/gap_thesis.md) and [`so3c_notes/gap_generic_ml.md`](so3c_notes/gap_generic_ml.md), with the 2026-10-06 audit's corrections applied. Their two measured leads were conditioning problems — round-0 inputs in asinh's linear range (about 95% of pair invariants below 0.1) and edge-tanh saturation in rounds 1–2 (61–84% of pre-activations beyond |x| > 2), with no normalisation layer in the network. Both were screened on 2026-10-05 and **neither moves AUC** (Closed table). The plan for the window opening 2026-10-10 is [`so3c_notes/plan_2026-10-10.md`](so3c_notes/plan_2026-10-10.md).
 
 ### Screened on 2026-09-20, none better than the base
@@ -168,7 +170,24 @@ Phase 2 (the branch for a promoted arm, plan §4): the same-stack long controls 
 - Batch orders (epoch 1): `4956a97c…` and `99fdd635…`. The R3 long runs should match them.
 - GPU time: training 3.25 h and 3.35 h; kernels 3.33 h and 3.42 h (log span).
 
-**R3 long (`pairlab211` s0 and s1)**: pushed 22:47, about 3.6 h each. Budget: 20.5 GPU-h used (13.76 h phase 1 + 6.75 h controls); about 27.7 h once R3 long finishes.
+**R3 at the long schedule (`pairlab211`, seeds 0 and 1, pushed 22:47): the gain holds** (+0.00064, against +0.00051 on the probe protocol; the difference is about one standard error).
+
+| K=32 long schedule | seed 0 | seed 1 | mean ± sd |
+|---|---|---|---|
+| R3 (`--pair-lab`), AUC / 1/ε_B@0.3 | 0.98310 / 1057.1 | 0.98300 / 934.8 | 0.98305 ± 0.00007 / 996.0 |
+| `base211`, AUC / 1/ε_B@0.3 | 0.98225 / 909.5 | 0.98254 / 975.4 | 0.98240 / 942.5 |
+| Δ by seed (the plan's reading) | +0.00085 | +0.00045 | +0.00065 |
+
+- Unpaired, the primary reading: +0.00064 against the five pooled base runs (0.98241 ± 0.00017; Welch t = 6.8). Both R3 runs lie above all five base runs (worst R3 0.98300, best base 0.98261).
+- Best validation loss: 0.16442 and 0.16465, against 0.16745 ± 0.00090 for the pooled base (−0.0029, t = −7.0).
+- Rejection: 996.0 against 922.3 ± 37.1 (+74, t = 1.2, not resolved).
+- Lowest validation loss at epoch 58 in both runs, and the best-validation weights give the same AUC. The validation − train gap at epoch 60 is 0.0046–0.0049, against 0.0045–0.0050 for the control: the features do not add overfitting.
+- Cost: free at this schedule (training 3.30 h and 3.35 h, 1.01× and 1.00× the control's). Batch orders equal the controls'.
+- For scale: `w128s32` (120,202 parameters, about twice the time, torch 2.10) averaged 0.98289. R3 gets more, +0.00064 against +0.00048 over the same base level, with +192 parameters. That comparison crosses torch builds.
+
+R3 pays on both schedules it has been run on, and unlike width (whose validation − train gap doubled at this schedule) without adding overfitting. Width's edge axis was never screened on the probe protocol; at K=64 over 30 epochs it gave +0.00008, a schedule R3 has not been run on. It is the largest gain from a change to the model since the beams, and about as large as the whole training-length lever: width gave +0.00048 at this schedule (torch 2.10), while at K=64 training longer gave +0.00037 at 60 epochs and +0.00066 at 120 epochs over the 30-epoch mean (one run each against a three-seed mean; the 120-epoch run is +0.00029 over its own epoch 60). Unlike either, it costs neither time nor overfitting.
+
+Budget: 27.3 GPU-h used (13.76 h phase 1, 6.75 h controls, 6.77 h R3 long); about 2.7 h left until the quota resets on Saturday 2026-10-17.
 
 ### 60 → 120 continuation (slot A, K=64, canonical protocol)
 
