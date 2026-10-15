@@ -1,7 +1,7 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 title: "SO3C: Lorentz-covariant jet tagging with complexified-SO(3) geodesic flows"
-abstract: "Jet taggers built on the complexified rotation algebra so(3) + i so(3) = so(3,C), which is isomorphic to the Lorentz algebra so(3,1). Each particle carries a complex 3-vector moved along the closed-form flow z' = -[a] x z by a learned covariant connection; the flow conserves the bilinear invariant z.z and is evaluated with a complex Rodrigues formula, so no ODE solver is involved. Includes the benchmark harness used to measure the taggers on the Kasieczka top-tagging reference dataset."
+abstract: "Jet taggers built on the complexified rotation algebra so(3) + i so(3) = so(3,C), which is isomorphic to the Lorentz algebra so(3,1). Each constituent is lifted to a complex 3-vector relative to the jet and moved along the closed-form flow z' = -[a] x z by a learned covariant connection; the flow conserves the bilinear invariant z.z and is evaluated with a complex Rodrigues formula, so no ODE solver is involved. The message-passing model runs several such rounds with an invariant scalar channel; optional beam particles reduce the symmetry to rotations about the beam axis while the model stays exactly covariant when the beams are transformed with the jet. On the Kasieczka top-tagging reference dataset a 22,834-parameter model reaches AUC 0.9839 and background rejection 1202 at 30% signal efficiency (single run; an ensemble of five models, three 30-epoch seeds plus the 60- and 120-epoch snapshots of a fourth run, reaches 0.9841 and 1270), below the best published Lorentz-symmetric taggers (PELICAN 0.9870 and 2250). Includes the benchmark harness, the Kaggle notebooks, the result files behind the reported GPU results and the checkpoints of the headline models."
 authors:
   - family-names: "Панченко"
     given-names: "Александр Алексеевич"
@@ -20,6 +20,7 @@ keywords:
   - "particle physics"
   - "Python"
 type: software
-# No version, release date or DOI: SO3C has no release and no paper yet.
+# No version, release date or DOI yet: add `version`, `date-released` and
+# `doi` (the concept DOI) once the first GitHub release is archived by Zenodo.
 # The Zenodo DOI 10.5281/zenodo.19763339 belongs to the separate SO(3,3)
 # software (github.com/Nervni-Sanya/so33) and must not be used for SO3C.

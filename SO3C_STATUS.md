@@ -54,10 +54,10 @@ The 30-epoch seeds, for the record:
 | model | params | K | AUC | 1/ε_B@0.3 | commit |
 |---|---|---|---|---|---|
 | `eta_invariants` anchor | 4802 | 32 | 0.9478 | 49 | — |
-| `so3c_invariant_set` (no flow) | 5122 | 32 | 0.9689 | 183 | — |
+| `so3c_invariant_set` (no flow) | 5506 (5122 since six identically-zero features were removed) | 32 | 0.9689 | 183 | — |
 | `so3c_covariant_set` (1 covariant round) | 9078 | 32 | 0.9746 ± 0.0001 | 312 | `c3a98d0` |
 | `so3c_covariant_set` | 9078 | 64 | 0.9772 ± 0.0001 | 638 ± 1 | `6b4e7b5` |
-| `so3c_message_set` (3 rounds + scalar channel) | 13862 | 64 | 0.98073 ± 0.00006 | 850 ± 56 | `d77fb9c` |
+| `so3c_message_set` (3 rounds + scalar channel) | 13862 | 64 | 0.98072 ± 0.00006 | 850 ± 56 | `d77fb9c` |
 | + beams + channels 8 | 22834 | 64 | 0.98333 ± 0.00010 | 1131 ± 22 | `b72437f` |
 
 ## Closed — measured, do not re-run without a reason
