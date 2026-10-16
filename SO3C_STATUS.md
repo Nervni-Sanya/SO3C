@@ -1,6 +1,6 @@
 # SO3C status
 
-Last updated 2026-10-11. This is the single place to start from. Commit hashes point at the evidence for every number. Hashes of work from before the snapshot (2026-09-16) are commits in the **so33** repository this one was split from; hashes of later work, some marked **(SO3C)**, are commits in this repository; `git cat-file -t <hash>` tells which (see [Provenance](#provenance)).
+Last updated 2026-10-16. This is the single place to start from. Commit hashes point at the evidence for every number. Hashes of work from before the snapshot (2026-09-16) are commits in the **so33** repository this one was split from; hashes of later work, some marked **(SO3C)**, are commits in this repository; `git cat-file -t <hash>` tells which (see [Provenance](#provenance)).
 
 ## Scope and goal
 
@@ -131,7 +131,24 @@ Both are now switchable and default to the old behaviour: `--no-mass-input --no-
 
 Full agent text: `so3c_notes/gap_to_sota_2026-09-13.md`. Three of the workflow's six agents failed on the usage limit, so the findings there are unranked.
 
-## GPU window 2026-10-10 → 2026-10-17 (in progress)
+## GPU window 2026-10-17 → 2026-10-24 (in progress)
+
+**First run: the lab-frame pair features at K=64**, the protocol the headline numbers are measured on, with a same-stack control. Two kernels, pushed when the quota resets on Saturday 10-17:
+
+| kernel | runs |
+|---|---|
+| `k64_pairlab60_seeds01` | beams + channels 8 + `--keep-best --pair-lab`, K=64, 60 epochs, seeds 0 and 1 |
+| `k64_base60_seeds01` | the same without `--pair-lab`: a same-stack control of the 60-epoch headline, which ran on torch 2.10 |
+
+Each kernel runs its two seeds in parallel, one per T4. Kaggle's T4 sessions have two cards and charge quota per session hour, and earlier kernels used one. Each kernel first runs a smoke test on both cards at once; if either card fails it, the first seed runs alone. Pinned T4 / torch 2.11, `--max-seconds 39000` per seed. A 60-epoch run took 8.73 h of kernel time on 2.10, and 2.11 ran at 475 s per epoch; so about 9 h per kernel, about 18 GPU-h for both.
+
+The arm is read unpaired against the two same-stack controls, with the 2.10 headline (0.98363) and its 120-epoch continuation (0.98392) alongside. Built and checked before the push:
+- the commands are the committed 60-epoch headline's plus exactly the flags (test);
+- CPU replays of both notebooks' own cells ran two processes in parallel;
+- the one-card fallback and a simulated mid-run failure of one seed were replayed too;
+- two read-only reviews were applied.
+
+## GPU window 2026-10-10 → 2026-10-17 (closed)
 
 Plan: [`so3c_notes/plan_2026-10-10.md`](so3c_notes/plan_2026-10-10.md). Its code steps C0–C6 were not done before the window opened; they were done on 10-10, in this order:
 
@@ -523,7 +540,7 @@ GPU used this window: ~9.2 h (screen) + 5.2 h (headline seed 2) + ~0.7 h (profil
 | K=128 kNN(16) (from 100k jets) | ~2313 | 19.3 h |
 
 - The K=32 probe protocol (400k train jets, 20 epochs) costs 0.6–1.2 h per row.
-- Quota is 30 GPU-h per week, resetting on Saturday. The current window is [2026-10-10 → 2026-10-17](#gpu-window-2026-10-10--2026-10-17-in-progress).
+- Quota is 30 GPU-h per week, resetting on Saturday. The current window is [2026-10-17 → 2026-10-24](#gpu-window-2026-10-17--2026-10-24-in-progress).
 - Rows not marked T4 are P100 wall clock on the old forward pass. Since `47ec4ad` the per-epoch cost is about half; the T4 profiles are in the 2026-09-19 GPU-window section and in `docs/so3c/experiments.md` (table O).
 
 ## Provenance

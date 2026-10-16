@@ -135,3 +135,41 @@ def test_fresh_control_is_the_stored_controls_command(nb_dir) -> None:
     text = "".join("".join(c["source"]) for c in
                    json.loads(nb.read_text(encoding="utf-8"))["cells"])
     assert "Pairing check" not in text and "CONTROL_TEST" not in text
+
+
+def test_k64_pair_lab_runs_are_the_60_epoch_headline_plus_pair_lab(nb_dir) -> None:
+    """Window 2026-10-17: the K=64 pair-feature runs are the committed
+    60-epoch headline's command plus exactly --keep-best --pair-lab, 60
+    epochs, seeds 0 and 1, on the pinned T4 / torch 2.11 setup."""
+    import json
+    base = _assigned_list(ROOT / "notebooks" / "kaggle_k64_headline60_seed0.ipynb", "BASE")
+    assert base and "--compile" in base and "64" in base
+    for seed in (0, 1):
+        assert B.main(["--only", "k64_pairlab60_seed%d" % seed]) == 0
+        nb = nb_dir / ("kaggle_k64_pairlab60_seed%d.ipynb" % seed)
+        assert _assigned_list(nb, "BASE") == base + ["--keep-best", "--pair-lab"]
+        text = "".join("".join(c["source"]) for c in
+                       json.loads(nb.read_text(encoding="utf-8"))["cells"])
+        assert "TAG, SEED, EPOCHS = 'pairlab60', %d, 60" % seed in text
+        assert 'WANT = "2.11.0+cu128"' in text and "ensure_torch_for_this_gpu" not in text
+        meta = json.loads((nb_dir / ("kernel-metadata-k64-pairlab60-seed%d.json" % seed)).read_text())
+        assert meta["id"] == "nsanya/so3c-k64-pairlab60-seed%d" % seed
+
+
+def test_k64_two_card_runs_are_the_60_epoch_headline_plus_their_flags(nb_dir) -> None:
+    """Window 2026-10-17, two seeds per kernel (one per T4): the pair-feature
+    arm and its same-stack control are the committed 60-epoch headline's
+    command plus exactly their flags, seeds 0 and 1, 60 epochs, pinned."""
+    import json
+    base = _assigned_list(ROOT / "notebooks" / "kaggle_k64_headline60_seed0.ipynb", "BASE")
+    for tag, extra in (("pairlab60", ["--keep-best", "--pair-lab"]), ("base60", ["--keep-best"])):
+        assert B.main(["--only", "k64_%s_seeds01" % tag]) == 0
+        nb = nb_dir / ("kaggle_k64_%s_seeds01.ipynb" % tag)
+        assert _assigned_list(nb, "BASE") == base + extra, tag
+        text = "".join("".join(c["source"]) for c in
+                       json.loads(nb.read_text(encoding="utf-8"))["cells"])
+        assert "TAG, SEEDS, EPOCHS, MAX_SECONDS = %r, [0, 1], 60, 39000" % tag in text
+        assert 'WANT = "2.11.0+cu128"' in text and "ensure_torch_for_this_gpu" not in text
+        assert "CUDA_VISIBLE_DEVICES" in text and "PARALLEL" in text
+        meta = json.loads((nb_dir / ("kernel-metadata-k64-%s-seeds01.json" % tag)).read_text())
+        assert meta["id"] == "nsanya/so3c-k64-%s-seeds01" % tag
