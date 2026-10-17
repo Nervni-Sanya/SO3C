@@ -147,8 +147,9 @@ particle and complex channel mixing
 ([theory.md §10](theory.md#10-covariant-message-passing-so3c_message_set)).
 The readout adds the masked mean and max of the scalar state, so its input is
 $11C+C(C+1)+2D+7=87$ features at the defaults. The best configuration measured
-so far is `beams=True, channels=8` at $K=64$, trained for 60 epochs and
-continued to 120 (0.98392; [experiments.md, table A](experiments.md#a-canonical-top-tagging)).
+so far is `beams=True, channels=8, pair_lab=True` at $K=64$, 60 epochs (0.98467
+for the better of two seeds); without `pair_lab`, `beams=True, channels=8`
+trained for 60 epochs and continued to 120 (0.98392; [experiments.md, table A](experiments.md#a-canonical-top-tagging)).
 
 | Argument | Default | CLI flag | Meaning |
 |---|---|---|---|
@@ -263,7 +264,9 @@ time. Screened on the probe protocol: `lab_scalars` closed (ΔAUC +0.00004 ±
 0.00009), `pair_lab` promoted to the long schedule (+0.00055 ± 0.00009 by seed,
 +0.00051 unpaired against the pooled control; `SO3C_STATUS.md`). At the $K=32$
 long schedule `pair_lab` gave +0.00064 against the pooled base (two seeds,
-Welch t = 6.8) at the control's training time.
+Welch t = 6.8) at the control's training time, and at $K=64$ over 60 epochs
++0.00100 against a same-stack control (two seeds each, Welch t = 3.5 on ≈1.7
+df, p ≈ 0.1) at 0.98–1.08× its training time.
 
 ## `so3c_interaction_set`
 

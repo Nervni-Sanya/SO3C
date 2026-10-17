@@ -1,6 +1,6 @@
 # SO3C status
 
-Last updated 2026-10-16. This is the single place to start from. Commit hashes point at the evidence for every number. Hashes of work from before the snapshot (2026-09-16) are commits in the **so33** repository this one was split from; hashes of later work, some marked **(SO3C)**, are commits in this repository; `git cat-file -t <hash>` tells which (see [Provenance](#provenance)).
+Last updated 2026-10-17. This is the single place to start from. Commit hashes point at the evidence for every number. Hashes of work from before the snapshot (2026-09-16) are commits in the **so33** repository this one was split from; hashes of later work, some marked **(SO3C)**, are commits in this repository; `git cat-file -t <hash>` tells which (see [Provenance](#provenance)).
 
 ## Scope and goal
 
@@ -20,19 +20,31 @@ Last updated 2026-10-16. This is the single place to start from. Commit hashes p
 
 ## Current best
 
-`so3c_message_set` with **beams + channels 8**, K=64, canonical protocol, Adam 3e-3 cosine, float32, 22834 parameters. **The best single model is the 60-epoch run continued to 120 epochs** (2026-10-10, `results_k64/headline120`). The 60-epoch run (`f12cd65`) and the 30-epoch runs below are the same configuration on shorter schedules (`b72437f`).
+**Since 2026-10-17 the best models add the lab-frame pair features** (`so3c_message_set --beams --channels 8 --pair-lab`, 23,026 parameters; K=64, canonical protocol, 60 epochs, T4, torch 2.11; `results_k64/pairlab60`):
 
 | | AUC | 1/ε_B@0.3 | 1/ε_B@0.5 | final val loss |
 |---|---|---|---|---|
-| **120 epochs, seed 0** (the 60-epoch run continued, cosine re-anchored; T4, torch 2.11, `--compile`, +7.91 h) | **0.98392** | **1201.9** | 321.5 | **0.16184** |
+| **`--pair-lab`, mean of seeds 0 and 1** | **0.98442 ± 0.00035** | 1296.2 ± 70.5 | 334.9 ± 14.5 | 0.16073 / 0.15742 |
+| `--pair-lab`, seed 1 (the better seed, picked on test AUC) | 0.98467 | 1246.4 | 345.2 | 0.15742 |
+| `--pair-lab`, seed 0 | 0.98417 | 1346.1 | 324.6 | 0.16073 |
+| **ensemble of the two seeds** | **0.98492** | **1463.1** | 359.9 | |
+| same-stack control without the features (`results_k64/base60`), mean of seeds 0 and 1 | 0.98342 ± 0.00021 | 1144.1 | 295.2 | 0.16421 / 0.16296 |
+
++0.00100 AUC over the same-stack control (two runs each, read unpaired; Welch t = 3.5 on ≈1.7 degrees of freedom, p ≈ 0.1 on its own, with both pair-feature runs above both controls). It repeats the gain measured on the probe protocol (+0.00051, t = 5.9) and at the K=32 long schedule (+0.00064, t = 6.8). +0.00093 over the three K=64 60-epoch base runs pooled (with the torch-2.10 headline); both pair-feature runs lie above all three. Gap to PELICAN: **0.0021 AUC and a factor 1.54 in rejection for the two-seed ensemble**, 0.0026 and 1.74 for the two-seed mean, 0.0023 and 1.81 for the better seed. Adding the five earlier beams-only models to the two-seed ensemble lowers it (0.98459 / 1412.0). Both seeds are being continued to 120 epochs (`k64_pairlab120_seeds01`, pushed 2026-10-17 12:53).
+
+Without the pair features (`so3c_message_set` with beams + channels 8, Adam 3e-3 cosine, float32, 22834 parameters), the best single model is the 60-epoch run continued to 120 epochs (2026-10-10, `results_k64/headline120`). The 60-epoch run (`f12cd65`) and the 30-epoch runs below are the same configuration on shorter schedules (`b72437f`).
+
+| | AUC | 1/ε_B@0.3 | 1/ε_B@0.5 | final val loss |
+|---|---|---|---|---|
+| 120 epochs, seed 0 (the 60-epoch run continued, cosine re-anchored; T4, torch 2.11, `--compile`, +7.91 h) | 0.98392 | 1201.9 | 321.5 | 0.16184 |
 | 60 epochs, seed 0 (T4, `--compile`, 8.59 h) | 0.98363 | 1140.8 | 314.5 | 0.16276 |
 | 30 epochs, mean of 3 seeds | 0.98326 ± 0.00014 | 1089 ± 75 | 291 ± 6 | 0.16318 / 0.16449 / 0.16455 |
 | ensemble, 3 × 30 epochs | 0.98378 | 1160.4 | 316 | |
 | ensemble, 3 × 30 + 60 epochs | 0.98396 | 1231.2 | 327.8 | |
 | ensemble, 3 × 30 + 120 epochs | 0.98409 | 1254.1 | 339.4 | |
-| **ensemble, 3 × 30 + 60 + 120 epochs** (the 60 and the 120 are two snapshots of one run) | **0.98413** | **1269.9** | 339.9 | |
+| ensemble, 3 × 30 + 60 + 120 epochs (the 60 and the 120 are two snapshots of one run) | 0.98413 | 1269.9 | 339.9 | |
 
-The 60-epoch run: +0.00037 AUC over the 30-epoch mean: 2.2 standard errors of one run against a three-seed mean (t on two degrees of freedom, p ≈ 0.15), or 1.8 σ of a difference between two single runs — suggestive, not conclusive from one seed. The validation loss is the cleaner signal: 0.16276 is below all three *complete* 30-epoch schedules. It was still falling at the end (−0.00038 over the last five epochs), but a cosine schedule always flattens there, so that part is weak evidence that more epochs would help. The rejection gain (+52) is inside the ±75 seed spread. The 120-epoch continuation is +0.00066 over the 30-epoch mean (0.98392 against 0.98326). Gap to PELICAN from the best ensemble (3 × 30 + 60 + 120 epochs): **0.0029 AUC, factor 1.77 in rejection** (0.0030 and 1.83 for the four-model one).
+The 60-epoch run: +0.00037 AUC over the 30-epoch mean: 2.2 standard errors of one run against a three-seed mean (t on two degrees of freedom, p ≈ 0.15), or 1.8 σ of a difference between two single runs — suggestive, not conclusive from one seed. The validation loss is the cleaner signal: 0.16276 is below all three *complete* 30-epoch schedules. It was still falling at the end (−0.00038 over the last five epochs), but a cosine schedule always flattens there, so that part is weak evidence that more epochs would help. The rejection gain (+52) is inside the ±75 seed spread. The 120-epoch continuation is +0.00066 over the 30-epoch mean (0.98392 against 0.98326). Gap to PELICAN from the best beams-only ensemble (3 × 30 + 60 + 120 epochs): **0.0029 AUC, factor 1.77 in rejection** (0.0030 and 1.83 for the four-model one).
 
 The 30-epoch seeds, for the record:
 
@@ -44,8 +56,8 @@ The 30-epoch seeds, for the record:
 
 **The rejection is much noisier than two seeds suggested.** Seeds 0 and 1 alone gave 1131 ± 22; the third seed landed at 1004.5 and the three-seed standard deviation is 75, that is 7%. The AUC is stable to 0.00014. Rejection at 30% signal efficiency is a tail statistic — a few hundred background jets decide it — so **a rejection gain under ~150 on a single seed is not evidence**, while +0.0004 AUC is about two standard deviations of a single-run difference. Seed 2 is not the rewrite's doing: its training curve matches seed 0's (final validation loss 0.16455 against 0.16449) and the two implementations agree to 1e-14 in float64.
 
-- **Gap to PELICAN:** 0.0037 AUC and a factor 2.1 in rejection for a single 30-epoch model (from 0.0063 and 2.6 before beams); 0.0034 and 1.97 for the 60-epoch model; 0.0031 and 1.87 for the 120-epoch model; 0.0029 and 1.77 for the five-model ensemble.
-- **The sobering comparison (verified):** PELICAN's own 1k-parameter model (0.9835 / 1145) (± 74) matches the 60-epoch model and is only 0.0004 AUC below the 120-epoch continuation (0.98392 / 1202), at 1/23 of the parameters. The gap is architectural, not a matter of size.
+- **Gap to PELICAN:** 0.0021 AUC and a factor 1.54 for the two-seed `--pair-lab` ensemble, 0.0023 and 1.81 for its better seed by AUC (0.0028 and 1.67 for the other). Before the pair features: 0.0037 AUC and a factor 2.1 in rejection for a single 30-epoch model (from 0.0063 and 2.6 before beams); 0.0034 and 1.97 for the 60-epoch model; 0.0031 and 1.87 for the 120-epoch model; 0.0029 and 1.77 for the five-model ensemble.
+- **The sobering comparison (verified):** PELICAN's own 1k-parameter model (0.9835 / 1145) (± 74) matches the 60-epoch model and is only 0.0004 AUC below the 120-epoch continuation (0.98392 / 1202), at 1/23 of the parameters. The gap is architectural, not a matter of size. With the pair features (23,026 parameters) the better seed (0.98467 / 1246) sits between PELICAN's 1k and 3k models; PELICAN's 3k model (0.9850 / 1494 ± 43) beats it on both metrics, and is level with the two-seed ensemble (0.98492 / 1463: 0.00008 AUC lower, rejection inside PELICAN's ±43).
 - **Exact equivariance, measured** (float64, `87206e7`): with the beams transformed along with the jet, AUC stays 0.9684 at every boost scale (drop −0.0001); with the beams pinned to the lab it falls to 0.9332. That is exact covariance, the correct physics, and the same property PELICAN has.
 - **Reproduce:** `notebooks/kaggle_k64_headline_seed2.ipynb` for a new seed (one session: seed 2 took 5.2 h without `--compile`, which the notebook has passed since, ~4.1 h); seeds 0 and 1 came from `notebooks/kaggle_beams_k64_seed{0,1}.ipynb` plus `kaggle_beams_k64_finish.ipynb` (they stopped at epoch 24 on the session cap and resumed). Seed 2 with its checkpoint and log is in `results_k64/headline/`; results, the epoch-30 checkpoints of seeds 0 and 1 and the full kernel logs are in `results_message/beams_k64/` (weights archived from Kaggle in `a76d837`; most other GPU runs keep their checkpoints in a `checkpoints/` folder beside the results). Ensembles: `python -m benchmarks.ensemble_scores --results-dir results_message/beams_k64 results_k64/headline` for the three 30-epoch seeds (`results_k64/headline/ensemble_seeds012.json`); add `--allow-shared-seed` and `results_k64/headline60` for the four-model ensemble, whose members include two seed-0 runs (`results_k64/headline60/ensemble_seeds012_plus_60ep.json`), and `results_k64/headline120` as well for the five-model one (`results_k64/headline120/ensemble_seeds012_plus_60ep_120ep.json`; without the 60: `ensemble_seeds012_plus_120ep.json`). The 120-epoch run: `notebooks/kaggle_k64_headline120_seed0.ipynb` (`acfb88e`), which embeds the epoch-60 checkpoint; result, checkpoint and log in `results_k64/headline120/`.
 
@@ -59,6 +71,7 @@ The 30-epoch seeds, for the record:
 | `so3c_covariant_set` | 9078 | 64 | 0.9772 ± 0.0001 | 638 ± 1 | `6b4e7b5` |
 | `so3c_message_set` (3 rounds + scalar channel) | 13862 | 64 | 0.98072 ± 0.00006 | 850 ± 56 | `d77fb9c` |
 | + beams + channels 8 | 22834 | 64 | 0.98333 ± 0.00010 | 1131 ± 22 | `b72437f` |
+| + lab-frame pair features (`--pair-lab`), 60 epochs (two seeds; same-stack control 0.98342 ± 0.00021) | 23026 | 64 | 0.98442 ± 0.00035 | 1296 ± 71 | `9f5cb23` |
 
 ## Closed — measured, do not re-run without a reason
 
@@ -75,7 +88,7 @@ The 30-epoch seeds, for the record:
 | Scalar channel | load-bearing: −0.0025 AUC and −40% rejection without it | `abd5660` |
 | Published LorentzNet/PELICAN recipe (AdamW wd 0.01, dropout 0.2, lr 1e-3, 35-epoch warm restarts) | **negative**: 0.97769 alone (below anchor 0.9786), and beams + recipe 0.98065 < beams alone 0.98088 | `837c567` |
 | Learning rate | 3e-3 beats both 6e-3 (−0.0003) and 1e-3 | `c325950` |
-| ~~Longer training~~ **REOPENED 2026-09-20** | The verdict rested on one probe-protocol row (35 vs 20 epochs on 400k jets, K=32: +0.00015 AUC, −14 rejection). Against it: validation loss is lowest at the **final** epoch in all four K=64 runs, and on the older 9k `so3c_equivariant_set` at K=32 on the full training set, 60 epochs beat 30 by +0.00024 AUC (6.4 σ) and +30 rejection (9.5%, 5.2 σ) — `results_60ep` against its three 30-epoch seeds, same batch, same learning rate, only the epoch count differing. Tested at K=64 since: 60 epochs gave 0.98363, +0.00037 over the 30-epoch mean, one seed (`f12cd65`); continued to 120 epochs (2026-10-10, warm restart at lr 1.5e-3): +0.00029 AUC, +61 rejection, final val loss −0.00092 against its own epoch 60, unresolved by plan §2's rule (needs ≥ +0.0003), the new best single model (`results_k64/headline120`) | `c325950`, `results_60ep` |
+| ~~Longer training~~ **REOPENED 2026-09-20** | The verdict rested on one probe-protocol row (35 vs 20 epochs on 400k jets, K=32: +0.00015 AUC, −14 rejection). Against it: validation loss is lowest at the **final** epoch in all four K=64 runs, and on the older 9k `so3c_equivariant_set` at K=32 on the full training set, 60 epochs beat 30 by +0.00024 AUC (6.4 σ) and +30 rejection (9.5%, 5.2 σ) — `results_60ep` against its three 30-epoch seeds, same batch, same learning rate, only the epoch count differing. Tested at K=64 since: 60 epochs gave 0.98363, +0.00037 over the 30-epoch mean, one seed (`f12cd65`); continued to 120 epochs (2026-10-10, warm restart at lr 1.5e-3): +0.00029 AUC, +61 rejection, final val loss −0.00092 against its own epoch 60, unresolved by plan §2's rule (needs ≥ +0.0003), then the best single model (`results_k64/headline120`; the best beams-only one since the pair features, 2026-10-17) | `c325950`, `results_60ep` |
 | Regularisation | dropout 0.05 + wd 1e-4: −0.0011 AUC, −133 rejection. The model **underfits** | `c325950` |
 | Capacity **with** beams | channels 8: +0.0004 AUC, +67 rejection; channels 16: 0.98111 / 811 at 1.5× cost. One seed each, so neither difference is resolved (a difference between two single runs on this protocol spreads by ±0.00024, measured later) | `c325950`, `90f2ead` |
 | K=128 wall clock | dense 602 s/epoch on 100k jets (60.8 h full protocol); kNN(16) 191 s (19.3 h), 3.15× faster | `90f2ead` |
@@ -91,13 +104,13 @@ The 30-epoch seeds, for the record:
 | **Log knee** (`--log-knee`, asinh(e^κ x) with learnable κ on the bilinear invariants; same screen) | **ΔAUC +0.00000 ± 0.00008** (t = 0.08), +0.00004 unpaired against the pooled six-run control (t = 0.7); 1/ε_B@0.3 +39.0 ± 30.1 by seed, positive on all three (p ≈ 0.08 one-sided), +48 read unpaired against the pooled control (t = 2.1), suggestive only; κ barely moves from its initial 4 (3.2–4.4). Free (+7 parameters), so a possible passenger, not an arm | (SO3C) `results_message/probe_screen/`, `so3c_notes/gap_generic_ml.md` §9.3 |
 | **Beam energy 0.02** (`--beam-energy 0.02`, R1 of the representation screen; probe protocol, 3 seeds against a fresh same-stack control) | **ΔAUC −0.00025 ± 0.00018** by seed, every seed negative; −0.00028 against the pooled six-run control (t = −2.8); all three runs below all six control runs; 1/ε_B@0.3 765.9 against 808.9; best validation loss worse on every seed. Unresolved by the plan's rule; closed by judgment | (SO3C) `results_message/repr_screen/` |
 | **Lab-frame particle features** (`--lab-scalars`, R2: ParT's log E, log pT, their ratios to the jet's, y − y_J, \|Δφ_J\|, ΔR_J in the scalar initialisation, written in invariants of {p, P, b±}; probe protocol, 3 seeds against a fresh same-stack control) | **ΔAUC +0.00004 ± 0.00009** by seed, mixed signs; +0.00000 against the pooled six-run control (t = 0.05); 1/ε_B@0.3 796.2 against 808.9; free (+56 parameters, 0.98× the time). Closed by the plan's rule | (SO3C) `results_message/repr_screen/labscalars` |
-| Best-validation checkpoint | Validation loss is lowest at the **final** epoch in both headline seeds and both beamless K=64 seeds (cosine schedule), so the best-validation checkpoint is the last one. Not after the 60 → 120 warm restart: lowest at epoch 110 (0.16170 against 0.16184 at 120), with the same AUC (0.98392) and rejection 1194.8 against 1201.9, so the best-validation weights still add nothing (2026-10-10, `results_k64/headline120`) | (SO3C) 2026-09-19, from the stored histories |
+| Best-validation checkpoint | Validation loss is lowest at the **final** epoch in both headline seeds and both beamless K=64 seeds (cosine schedule), so the best-validation checkpoint is the last one. Not after the 60 → 120 warm restart: lowest at epoch 110 (0.16170 against 0.16184 at 120), with the same AUC (0.98392) and rejection 1194.8 against 1201.9, so the best-validation weights still add nothing (2026-10-10, `results_k64/headline120`). In the four 60-epoch K=64 runs of 2026-10-17 it is lowest at epochs 56–58, within 7e-5 of the final loss, and the best-validation weights score within 0.00002 AUC of the final ones | (SO3C) 2026-09-19, from the stored histories |
 
 **Lesson worth keeping:** a closed question can re-open when the inputs change. Capacity was flat without beams and looked as if it paid once beams supplied the information (one seed, not resolved); width did pay later, paired, at the long schedule. kNN was useless at K=32 and 3.15× faster at K=128.
 
 ## Open — candidates
 
-**Lead (2026-10-11): lab-frame pair features (`--pair-lab`) at K=64.** Promoted on the probe protocol (+0.00051 against the pooled control, t = 5.9) and confirmed at the K=32 long schedule (+0.00064, t = 6.8, free). Not yet run at K=64, the protocol the current best is measured on. Its four features (ln Δ, ln k_T, ln z, ln m²) have not been separated.
+**Lead (2026-10-11, confirmed 2026-10-17): lab-frame pair features (`--pair-lab`).** Promoted on the probe protocol (+0.00051 against the pooled control, t = 5.9), confirmed at the K=32 long schedule (+0.00064, t = 6.8, free) and replicated at K=64 over 60 epochs (+0.00100 against a same-stack control, two runs each, Welch t = 3.5 on ≈1.7 degrees of freedom, p ≈ 0.1 on its own), where they give the current best models. Their four features (ln Δ, ln k_T, ln z, ln m²) have not been separated.
 
 Ranked literature and generic-ML candidates, every literature number checked against its paper's table: [`so3c_notes/gap_thesis.md`](so3c_notes/gap_thesis.md) and [`so3c_notes/gap_generic_ml.md`](so3c_notes/gap_generic_ml.md), with the 2026-10-06 audit's corrections applied. Their two measured leads were conditioning problems — round-0 inputs in asinh's linear range (about 95% of pair invariants below 0.1) and edge-tanh saturation in rounds 1–2 (61–84% of pre-activations beyond |x| > 2), with no normalisation layer in the network. Both were screened on 2026-10-05 and **neither moves AUC** (Closed table). The plan for the window opening 2026-10-10 is [`so3c_notes/plan_2026-10-10.md`](so3c_notes/plan_2026-10-10.md).
 
@@ -147,6 +160,22 @@ The arm is read unpaired against the two same-stack controls, with the 2.10 head
 - CPU replays of both notebooks' own cells ran two processes in parallel;
 - the one-card fallback and a simulated mid-run failure of one seed were replayed too;
 - two read-only reviews were applied.
+
+**Result: the pair features pay at K=64 too, +0.00100 AUC.** Both kernels ran their two seeds in parallel (the smoke passed on both cards): 9.01 h (control) and 9.22 h (arm) of kernel time for two seeds each, at 500–541 s per epoch against 475–492 s on one card (torch 2.11: the 120-epoch continuation and the 30-epoch control rerun). So a 60-epoch K=64 seed costs about 4.6 GPU-h of quota (half of a ~9.1 h kernel), against 8–9 h when it runs alone on one card.
+
+| K=64, 60 epochs | seed 0 | seed 1 | mean ± sd |
+|---|---|---|---|
+| `--pair-lab`, AUC / 1/ε_B@0.3 | 0.98417 / 1346.1 | 0.98467 / 1246.4 | 0.98442 ± 0.00035 / 1296.2 |
+| control (`base60`), AUC / 1/ε_B@0.3 | 0.98327 / 1134.3 | 0.98357 / 1153.8 | 0.98342 ± 0.00021 / 1144.1 |
+| final validation loss, arm / control | 0.16073 / 0.16421 | 0.15742 / 0.16296 | |
+
+- Unpaired: +0.00100 AUC (Welch t = 3.5 on ≈1.7 df, p ≈ 0.1), +152 rejection (t = 3.0 on ≈1.1 df, p ≈ 0.2: not resolved; about two standard deviations of the ±75 single-seed spread, and the arm's own two seeds differ by 100), final validation loss −0.0045 (t = −2.6 on ≈1.3 df, p ≈ 0.2). Against the three K=64 60-epoch base runs pooled (the control's two and the torch-2.10 headline, 0.98349 ± 0.00019): +0.00093. Both arm runs lie above all three.
+- Both control seeds land a little below the 2.10 headline in AUC (0.98327 and 0.98357 against 0.98363, −0.00036 and −0.00006, within the seed spread) and bracket it in rejection (1134.3 and 1153.8 against 1140.8); their two-seed ensemble is 0.98389 / 1246.4. The arm's is 0.98492 / 1463.1.
+- Unlike at K=32, the validation − train gap at epoch 60 is a little larger with the features: 0.0048–0.0053 against 0.0039–0.0042. The lowest validation loss falls at epochs 57 and 56, and the best-validation weights score within 0.00002 AUC of the final ones (0.98417 and 0.98465 against 0.98417 and 0.98467; rejection 1319.7 and 1262.0 against 1346.1 and 1246.4).
+- Batch orders (epoch 1) equal the control's for each seed.
+- Cost: training 8.61 h and 9.01 h against 8.81 h and 8.33 h (0.98× and 1.08×).
+
+**Continuation:** both pair-feature seeds 60 → 120 epochs in one two-card kernel (`k64_pairlab120_seeds01`, about 9 h), pushed 12:53. The first push was refused because two embedded checkpoints made the kernel source 1.45 MB, over Kaggle's 1 MB limit. The kernel now mounts the 60-epoch kernel's output and checks each checkpoint against the committed copy's sha256. Budget: 18.2 GPU-h used, about 27.5 once the continuation ends.
 
 ## GPU window 2026-10-10 → 2026-10-17 (closed)
 
@@ -208,7 +237,7 @@ Budget: 27.3 GPU-h used (13.76 h phase 1, 6.75 h controls, 6.77 h R3 long); abou
 
 ### 60 → 120 continuation (slot A, K=64, canonical protocol)
 
-**Unresolved by the plan's rule, and the new best single model** (8.06 h). Against its own epoch 60: AUC 0.98392 against 0.98363 (+0.00029, just under the +0.0003 the rule asks for to call it paying), rejection 1201.9 against 1140.8 (+61), final validation loss 0.16184 against 0.16276 (−0.00092). The restart at epoch 61 (learning rate back to 1.5e-3) lifted the validation loss to 0.16802 at epoch 61 and 0.16865 at epoch 62; it fell below the epoch-60 value by epoch 90 and reached 0.16170 at epoch 110 (the best-validation weights: AUC 0.98392, rejection 1194.8). It is one run compared with its own earlier snapshot, so the gain is not a seed-to-seed comparison. Against the four-model ensemble (0.98396) it adds +0.00013 in place of the 60-epoch member (0.98409) and +0.00016 beside it (0.98413); added to the three 30-epoch seeds alone, +0.00031 (Current best).
+**Unresolved by the plan's rule, and the new best single model until the pair features (2026-10-17)** (8.06 h). Against its own epoch 60: AUC 0.98392 against 0.98363 (+0.00029, just under the +0.0003 the rule asks for to call it paying), rejection 1201.9 against 1140.8 (+61), final validation loss 0.16184 against 0.16276 (−0.00092). The restart at epoch 61 (learning rate back to 1.5e-3) lifted the validation loss to 0.16802 at epoch 61 and 0.16865 at epoch 62; it fell below the epoch-60 value by epoch 90 and reached 0.16170 at epoch 110 (the best-validation weights: AUC 0.98392, rejection 1194.8). It is one run compared with its own earlier snapshot, so the gain is not a seed-to-seed comparison. Against the four-model ensemble (0.98396) it adds +0.00013 in place of the 60-epoch member (0.98409) and +0.00016 beside it (0.98413); added to the three 30-epoch seeds alone, +0.00031 (Current best).
 
 ### Representation screen (probe protocol, slot B)
 
@@ -510,6 +539,7 @@ GPU used this window: ~9.2 h (screen) + 5.2 h (headline seed 2) + ~0.7 h (profil
 | Large subagent workflows | 45 agents: 38 failed on the usage limit; 6 agents: 3 failed | keep workflows small; verify bounded claims directly |
 | Unverified agent output | a findings file said "zero runtime" for f_α and cited abstracts that do not make the claim | verify before building on it; record the verification |
 | Separate commands in a Bash script keep running after one fails | a status-doc edit raised and exited non-zero, and the `git commit` on the next line ran anyway (`6771158` has the code but not the doc update it was meant to carry) | chain every dependent step with `&&`, or `set -e` |
+| Kaggle refuses a kernel whose source is over 1 MB | the two-card continuation with two embedded K=64 checkpoints (1.45 MB) was refused: "The kernel source must be less than 1 megabytes in size" | mount the source kernel's output through `kernel_sources` and check the checkpoint against the committed copy's sha256 (`build_k64_continuation_dual`) |
 | Kaggle replaces a kernel's output when it is pushed again | trained weights and full logs of ~40 GPU-h of runs existed only in kernel outputs until `a76d837` | fetch checkpoints and logs into the results directory as soon as a run finishes |
 | Kaggle may hand out a **Tesla T4** (Python 3.12; torch 2.10 preinstalled, 2.11 by 2026-10-03) instead of the P100 | all three profile kernels on 2026-09-19 got a T4; timings do not transfer between cards blindly | record the device with every timing (the nvidia-smi cell, `summary.json`) |
 | Kaggle's API has **no cancel** (the status enum has CANCEL_REQUESTED, set only from the web UI) | the gap screen was already running on the old, 2× slower forward pass when the speedup landed | push expensive kernels only once the code they depend on is final; a cancel needs the user in the web UI |
@@ -540,6 +570,7 @@ GPU used this window: ~9.2 h (screen) + 5.2 h (headline seed 2) + ~0.7 h (profil
 | K=128 kNN(16) (from 100k jets) | ~2313 | 19.3 h |
 
 - The K=32 probe protocol (400k train jets, 20 epochs) costs 0.6–1.2 h per row.
+- Kaggle's T4 sessions have **two** T4s and charge quota per session hour. Two seeds run in parallel in one kernel, one per card, at 500–541 s per epoch at K=64 against 475–492 s alone (`build_k64_dual`, 2026-10-17): a 60-epoch K=64 seed costs about 4.6 GPU-h of quota instead of 8–9 h.
 - Quota is 30 GPU-h per week, resetting on Saturday. The current window is [2026-10-17 → 2026-10-24](#gpu-window-2026-10-17--2026-10-24-in-progress).
 - Rows not marked T4 are P100 wall clock on the old forward pass. Since `47ec4ad` the per-epoch cost is about half; the T4 profiles are in the 2026-09-19 GPU-window section and in `docs/so3c/experiments.md` (table O).
 

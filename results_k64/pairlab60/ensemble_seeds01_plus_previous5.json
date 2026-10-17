@@ -1,0 +1,69 @@
+{
+  "results_dir": [
+    "results_k64/pairlab60/seed0",
+    "results_k64/pairlab60/seed1",
+    "results_message/beams_k64",
+    "results_k64/headline",
+    "results_k64/headline60",
+    "results_k64/headline120"
+  ],
+  "model": "so3c_message_set",
+  "experiment": "top_tagging_canonical",
+  "members": [
+    {
+      "seed": 0,
+      "auc": 0.9839177411541911,
+      "bg_rej_30": 1201.8690476190477,
+      "bg_rej_50": 321.5191082802548,
+      "source": "results_k64/headline120"
+    },
+    {
+      "seed": 0,
+      "auc": 0.983627954928741,
+      "bg_rej_30": 1140.7570621468926,
+      "bg_rej_50": 314.50778816199374,
+      "source": "results_k64/headline60"
+    },
+    {
+      "seed": 0,
+      "auc": 0.9841706950893652,
+      "bg_rej_30": 1346.0933333333332,
+      "bg_rej_50": 324.62057877813504,
+      "source": "results_k64/pairlab60/seed0"
+    },
+    {
+      "seed": 0,
+      "auc": 0.9832551316698106,
+      "bg_rej_30": 1147.2386363636363,
+      "bg_rej_50": 287.6267806267806,
+      "source": "results_message/beams_k64"
+    },
+    {
+      "seed": 1,
+      "auc": 0.9846654727988882,
+      "bg_rej_30": 1246.3827160493827,
+      "bg_rej_50": 345.15213675213676,
+      "source": "results_k64/pairlab60/seed1"
+    },
+    {
+      "seed": 1,
+      "auc": 0.9834021000573947,
+      "bg_rej_30": 1115.546961325967,
+      "bg_rej_50": 297.36966126656847,
+      "source": "results_message/beams_k64"
+    },
+    {
+      "seed": 2,
+      "auc": 0.9831173649798066,
+      "bg_rej_30": 1004.5472636815921,
+      "bg_rej_50": 287.2176386913229,
+      "source": "results_k64/headline"
+    }
+  ],
+  "ensemble": {
+    "auc": 0.9845908278976022,
+    "bg_rej_30": 1411.986013986014,
+    "bg_rej_50": 357.3699115044248
+  },
+  "mean_score_correlation": 0.9931775881270962
+}

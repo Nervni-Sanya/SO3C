@@ -25,24 +25,42 @@ training, 403,000 validation and 404,000 test jets. It has not been reached.
 
 | Model | Parameters | AUC | 1/ε_B at ε_S = 0.3 |
 |---|---:|---|---|
-| **SO3C**, `so3c_message_set --beams --channels 8`, K = 64, 60 epochs continued to 120, 1 seed | 22,834 | **0.98392** | **1201.9** |
+| **SO3C** with lab-frame pair features, `so3c_message_set --beams --channels 8 --pair-lab`, K = 64, 60 epochs, mean of 2 seeds | 23,026 | **0.98442 ± 0.00035** | 1296 ± 71 |
+| the same, the better seed by test AUC (the other: 0.98417 / 1346.1) | 23,026 | 0.98467 | 1246.4 |
+| the same, ensemble of the 2 seeds | 2 × 23,026 | **0.98492** | **1463.1** |
+| SO3C without them, `so3c_message_set --beams --channels 8`, K = 64, 60 epochs continued to 120, 1 seed | 22,834 | 0.98392 | 1201.9 |
 | the same run at 60 epochs | 22,834 | 0.98363 | 1140.8 |
 | the same configuration, mean of 3 seeds at 30 epochs | 22,834 | 0.98326 ± 0.00014 | 1089 ± 75 |
 | ensemble: those 3 seeds plus the 60-epoch model | 4 × 22,834 | 0.98396 | 1231.2 |
-| ensemble: those 4 plus the 120-epoch model (two snapshots of one run) | 5 × 22,834 | **0.98413** | **1269.9** |
+| ensemble: those 4 plus the 120-epoch model (two snapshots of one run) | 5 × 22,834 | 0.98413 | 1269.9 |
 | PELICAN | 208,000 | 0.9870 | 2250 ± 75 |
 | LorentzNet | 224,000 | 0.9868 | 2195 ± 173 |
 | L-GATr, trained from scratch | 1,100,000 | 0.9870 ± 0.0001 | 2240 ± 70 |
 | PELICAN, its own size sweep | 11,000 | 0.9858 | 1879 ± 103 |
+| PELICAN, its own size sweep | 3,000 | 0.9850 | 1494 ± 43 |
 | PELICAN, its own size sweep | 1,000 | 0.9835 | 1145 ± 74 |
 
-Training longer appears to have helped: 60 epochs beat the 30-epoch mean by
+The lab-frame pair features (2026-10-17) give the largest gain since the beams:
++0.00100 AUC at K = 64 over a same-stack control without them (two runs each,
+0.98442 against 0.98342; Welch t = 3.5 on about 1.7 degrees of freedom, p ≈ 0.1,
+with both pair-feature runs above both controls). On its own that is suggestive;
+it repeats the gain measured earlier on a short probe (+0.00051, t = 5.9) and at
+K = 32 over 60 epochs (+0.00064, t = 6.8). Training time is about the control's
+(0.98–1.08×). The features are ParT's ln Δ, ln k_T, ln z and ln m² on every pair
+of distinct constituents (zero on the diagonal and on beam and padding edges), written in Minkowski products
+of the constituents with each other and with the beams, so the model stays
+exactly covariant when the beams move with the jet. The gap to PELICAN is now
+0.0021 AUC and a factor 1.54 in rejection for the two-seed ensemble (0.0026 and
+1.74 for the two-seed mean); PELICAN's 3,000-parameter model (0.9850 / 1494 ± 43)
+beats the better single seed and is level with the ensemble. Both seeds are being continued to 120 epochs.
+
+Without the pair features, training longer appears to have helped: 60 epochs beat the 30-epoch mean by
 +0.00037 AUC, 2.2 standard errors with only three 30-epoch seeds to compare
 against (t ≈ 2.2 on two degrees of freedom, p ≈ 0.15) — suggestive, not
 established. Its final validation loss, 0.16276, is below all three complete
 30-epoch runs. Continuing that run to 120 epochs (a warm restart of the cosine
-schedule) added +0.00029 AUC and 61 rejection against its own epoch 60. The gap
-to PELICAN from the best ensemble is 0.0029 AUC and a factor of 1.77 in
+schedule) added +0.00029 AUC and 61 rejection against its own epoch 60. Without
+the pair features, the gap to PELICAN from the best ensemble is 0.0029 AUC and a factor of 1.77 in
 background rejection; 0.0031 and 1.87 for the best single model; it is 0.0032 and 1.94 for the
 three-seed 30-epoch ensemble, and 0.0037 and 2.07 for a single 30-epoch
 model. PELICAN's 1,000-parameter model still matches SO3C's 60-epoch model
@@ -66,13 +84,13 @@ training set for 60 epochs, the 120,202-parameter `w128s32` gains +0.00048 AUC
 over the 22,834-parameter base, paired by seed over two seeds — about +0.0002
 per doubling of parameters. At K = 64 over 30 epochs the 60,834-parameter
 `w64s24` gains only +0.00008 (one seed), and weight decay 0.002 on the wide
-model costs −0.00011 (two seeds). Even a full transfer of the K = 32 gain would
-leave about 0.0024 AUC to PELICAN from the best ensemble, 0.0026 from the best
-single model. Our reading is that closing the gap needs a structural change,
-but none has yet been shown to help: the structural candidates screened so far,
-on a short 20-epoch probe, moved AUC by +0.00012 or less, and none has been run
-at the long schedule (on 2026-10-10 a lab-frame pair-feature arm gained
-+0.00051 on that probe and went to the long schedule). Training beyond 60 epochs
+model costs −0.00011 (two seeds). Even a full transfer of the K = 32 width gain
+would have left about 0.0024 AUC to PELICAN from the beams-only ensemble. The
+lab-frame pair features, an input change, are the first of the structural
+candidates shown to help at the long schedules: +0.00064 at K = 32 (two runs
+against five) and +0.00100 at K = 64 (two runs against two).
+The other structural candidates, screened on the 20-epoch probe, moved AUC by
++0.00012 or less and have not been run at the long schedule. Training beyond 60 epochs
 was tried once (continued to 120: +0.00029 AUC, unresolved); width at K = 64 over
 60 epochs and other weight-decay strengths are untested
 ([measurements below](#width-and-weight-decay)).
@@ -106,17 +124,18 @@ invariant once trained ([Models](#models)). With beams the network is exactly
 covariant when the jet and the beams are transformed together; its output
 changes when only the jet is boosted or tilted, and stays unchanged only under
 rotations about the beam axis. That is the intended physics. Measured in
-float64 on the headline architecture (`--beams --channels 8`) with its
+float64 on the beams-only architecture (`--beams --channels 8`) with its
 zero-initialised weight heads set to random values, on six random jets at
 boost scale 0.5: the logits move by 2×10⁻¹⁶ when the beams move with the jet,
 and by 3×10⁻² when they stay fixed
-([theory §11](docs/so3c/theory.md#11-beams-what-symmetry-survives)).
+([theory §11](docs/so3c/theory.md#11-beams-what-symmetry-survives)). With `--pair-lab` the same
+check holds in the unit tests to below 10⁻⁹ relative.
 
 ## Models
 
 | `--models` name | Parameters at the defaults | Output symmetry |
 |---|---|---|
-| `so3c_message_set` | 13,862; 15,038 with `--beams`; 22,834 with `--beams --channels 8` | Lorentz-invariant; with beams, covariant together with the beams and invariant under rotations about the beam axis |
+| `so3c_message_set` | 13,862; 15,038 with `--beams`; 22,834 with `--beams --channels 8`; 23,026 adding `--pair-lab` | Lorentz-invariant; with beams, covariant together with the beams and invariant under rotations about the beam axis |
 | `so3c_covariant_set` | 9,078 | Lorentz-invariant, exactly |
 | `so3c_invariant_set` | 5,122 | Lorentz-invariant by construction; no flow |
 | `so3c_interaction_set` | 5,652 | Lorentz-invariant to ODE tolerance |
@@ -127,7 +146,10 @@ and by 3×10⁻² when they stay fixed
 `--no-mass-input`, `--no-self-edges`, `--relnorm-edge`, `--falpha N`,
 `--vector-channel` and `--pair-latent N`. Each was screened on a short probe
 protocol and none showed a resolved gain; none has been trained on the full data
-([models](docs/so3c/models.md#switches-screened-on-the-probe-protocol)).
+([models](docs/so3c/models.md#switches-screened-on-the-probe-protocol)). Later switches are in
+[models](docs/so3c/models.md#lab-frame-features-added-and-screened-2026-10-10); of them,
+`--pair-lab` (ParT's four pair features, 23,026 parameters) passed the probe
+screen and gives the current best models on the full data.
 
 Three width flags scale the model: `--act-hidden` (the edge network that feeds
 the connection, the messages and the node update, default 16), `--msg-dim` (the edge message, default 8) and `--scalar-dim` (the
@@ -147,10 +169,12 @@ parameters and `--act-hidden 128 --msg-dim 32 --scalar-dim 32` (`w128s32`) has
 | `so3c_message_set` | 13,862 | 64 | 2 | 0.9807 ± 0.0001 | 850 ± 56 |
 | `so3c_message_set --beams --channels 8` | 22,834 | 64 | 3 | 0.98326 ± 0.00014 | 1089 ± 75 |
 | `so3c_message_set --beams --channels 8`, 60 epochs | 22,834 | 64 | 1 | 0.98363 | 1140.8 |
+| `so3c_message_set --beams --channels 8`, 60 epochs, same-stack control | 22,834 | 64 | 2 | 0.98342 ± 0.00021 | 1144 ± 14 |
+| `so3c_message_set --beams --channels 8 --pair-lab`, 60 epochs | 23,026 | 64 | 2 | 0.98442 ± 0.00035 | 1296 ± 71 |
 
 K is the number of leading constituents per jet; ± is the standard deviation
-over seeds; every row trains for 30 epochs except the last, which trains for
-60. The `eta_invariants` runs are in the untracked `results/` directory; every
+over seeds; every row trains for 30 epochs except the last three, which train
+for 60. The `eta_invariants` runs are in the untracked `results/` directory; every
 other row has its result files committed.
 
 Symmetry under boosts was tested on smaller models, trained for 8 epochs on
@@ -209,7 +233,8 @@ computes AUC and background rejection. The so33 repository ships a top-level
 import torch
 from benchmarks.models import build_model, count_parameters
 
-# The headline configuration. Input: (B, K, 5) = (E, px, py, pz, mask).
+# The beams-only configuration; add "pair_lab": True for the current best
+# (23026 parameters). Input: (B, K, 5) = (E, px, py, pz, mask).
 model = build_model("so3c_message_set", in_features=4, out_features=2,
                     representation="constituents",
                     so3c_kwargs={"beams": True, "channels": 8})
@@ -242,7 +267,9 @@ python -m benchmarks.run_top_tagging --cache-dir data --representation constitue
 ```bash
 # The headline configuration, one seed: 4.1 hours on a Kaggle T4 with --compile.
 # For the 60-epoch model use --epochs 60 (8.6 hours) and raise --max-seconds to
-# about 39000; the current best single model continues that run to 120 epochs
+# about 39000; add --pair-lab --keep-best for the current best models
+# (notebooks/kaggle_k64_pairlab60_seeds01.ipynb, two seeds in one two-T4 kernel).
+# The best beams-only model continues the 60-epoch run to 120 epochs
 # (notebooks/kaggle_k64_headline120_seed0.ipynb: --epochs 120 --resume on its checkpoint). A P100 falls back to eager; its time with the
 # rewritten forward pass has not been measured.
 # --max-seconds ends a session; rerunning the same command resumes from the checkpoint.

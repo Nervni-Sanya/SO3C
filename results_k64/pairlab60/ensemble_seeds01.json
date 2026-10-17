@@ -1,0 +1,28 @@
+{
+  "results_dir": [
+    "results_k64/pairlab60/seed0",
+    "results_k64/pairlab60/seed1"
+  ],
+  "model": "so3c_message_set",
+  "experiment": "top_tagging_canonical",
+  "members": [
+    {
+      "seed": 0,
+      "auc": 0.9841706950893652,
+      "bg_rej_30": 1346.0933333333332,
+      "bg_rej_50": 324.62057877813504
+    },
+    {
+      "seed": 1,
+      "auc": 0.9846654727988882,
+      "bg_rej_30": 1246.3827160493827,
+      "bg_rej_50": 345.15213675213676
+    }
+  ],
+  "ensemble": {
+    "auc": 0.9849177645807221,
+    "bg_rej_30": 1463.144927536232,
+    "bg_rej_50": 359.9180035650624
+  },
+  "mean_score_correlation": 0.9929483313314257
+}

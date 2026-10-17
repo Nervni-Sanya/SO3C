@@ -426,8 +426,8 @@ Two more, `lab_scalars` and `pair_lab`, were added on 2026-10-10 for the
 representation screen ([`so3c_notes/plan_2026-10-10.md`](../../so3c_notes/plan_2026-10-10.md)
 §3, R2 and R3; screened on 2026-10-10: `lab_scalars` closed at the probe
 level (ΔAUC +0.00004), `pair_lab` promoted to the long schedule (+0.00055 by
-seed, +0.00051 unpaired), where it gave +0.00064 at $K=32$
-([`SO3C_STATUS.md`](../../SO3C_STATUS.md)). They give the network ParT's lab-frame
+seed, +0.00051 unpaired), where it gave +0.00064 at $K=32$,
+and +0.00100 at $K=64$ ([`SO3C_STATUS.md`](../../SO3C_STATUS.md)). They give the network ParT's lab-frame
 features. Both need the beams, because every lab-frame quantity is written in
 Minkowski products with them. With $b_\pm=E_b(1,0,0,\pm1)$,
 $\langle p,b_\mp\rangle/E_b=E\pm p_z$ and $\langle b_+,b_-\rangle=2E_b^2$, so
