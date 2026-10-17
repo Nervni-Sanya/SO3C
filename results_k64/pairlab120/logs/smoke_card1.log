@@ -1,0 +1,13 @@
+[top_tagging_canonical] top_tagging_constituents(k=64,norm=global,split=canonical) | features=4 classes=2 | train=20000 val=403000 test=404000
+[top_tagging_canonical] so3c_message_set (equivariant_set) | train ...
+/usr/local/lib/python3.13/dist-packages/torch/_inductor/lowering.py:2212: UserWarning: Torchinductor does not support code generation for complex operators. Performance may be worse than eager.
+  warnings.warn(
+W1017 12:13:43.464000 90 torch/_inductor/utils.py:1731] [0/0] Not enough SMs to use max_autotune_gemm mode
+/usr/local/lib/python3.13/dist-packages/torch/_inductor/lowering.py:1960: FutureWarning: `torch._prims_common.check` is deprecated and will be removed in the future. Please use `torch._check*` functions instead.
+  check(
+[compile] backend=inductor, first batch: max |d logit| 1.6e-04, max |d grad| 2.4e-05 (relative)
+/usr/local/lib/python3.13/dist-packages/torch/_inductor/lowering.py:1960: FutureWarning: `torch._prims_common.check` is deprecated and will be removed in the future. Please use `torch._check*` functions instead.
+  check(
+/usr/local/lib/python3.13/dist-packages/torch/_inductor/lowering.py:1960: FutureWarning: `torch._prims_common.check` is deprecated and will be removed in the future. Please use `torch._check*` functions instead.
+  check(
+   val_acc=0.870  test_acc=0.871 auc=0.918 1/eB@0.3=20  (167.7s)

@@ -1,0 +1,46 @@
+{
+  "results_dir": [
+    "results_k64/pairlab60/seed0",
+    "results_k64/pairlab60/seed1",
+    "results_k64/pairlab120/seed0",
+    "results_k64/pairlab120/seed1"
+  ],
+  "model": "so3c_message_set",
+  "experiment": "top_tagging_canonical",
+  "members": [
+    {
+      "seed": 0,
+      "auc": 0.9843922986120341,
+      "bg_rej_30": 1238.7361963190185,
+      "bg_rej_50": 333.1914191419142,
+      "source": "results_k64/pairlab120/seed0"
+    },
+    {
+      "seed": 0,
+      "auc": 0.9841706950893652,
+      "bg_rej_30": 1346.0933333333332,
+      "bg_rej_50": 324.62057877813504,
+      "source": "results_k64/pairlab60/seed0"
+    },
+    {
+      "seed": 1,
+      "auc": 0.9847992103121007,
+      "bg_rej_30": 1364.2837837837837,
+      "bg_rej_50": 360.5607142857143,
+      "source": "results_k64/pairlab120/seed1"
+    },
+    {
+      "seed": 1,
+      "auc": 0.9846654727988882,
+      "bg_rej_30": 1246.3827160493827,
+      "bg_rej_50": 345.15213675213676,
+      "source": "results_k64/pairlab60/seed1"
+    }
+  ],
+  "ensemble": {
+    "auc": 0.9851279970592752,
+    "bg_rej_30": 1473.824817518248,
+    "bg_rej_50": 377.4093457943925
+  },
+  "mean_score_correlation": 0.9943402798552571
+}
