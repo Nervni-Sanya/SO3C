@@ -10,6 +10,7 @@
   "dataset_sources": [],
   "competition_sources": [],
   "kernel_sources": [
-    "nsanya/so3c-data-prep-k-128"
+    "nsanya/so3c-data-prep-k-128",
+    "nsanya/so3c-k64-pairlab60-seeds01"
   ]
 }

@@ -2988,15 +2988,16 @@ def build_k64_continuation_dual(blob: str, src: str, tag: str, flags: list[str],
                                 seeds: tuple[int, ...]) -> str:
     """60 -> 120 epochs for two K=64 seeds of one run, one per T4.
 
-    The epoch-60 checkpoints of results_k64/<src>/seed<s> are embedded, each
-    checked on the card against its sha256, epoch 60 and the final
-    validation loss its result JSON recorded, and written where --resume
-    looks. The command is the source run's (build_k64_dual) with --epochs
+    The epoch-60 checkpoints come from the source kernel's own output,
+    mounted through kernel_sources: Kaggle refuses a kernel whose source is
+    over 1 MB, and two embedded checkpoints come to 1.45 MB. Each is checked
+    on the card against the sha256 of the committed copy in
+    results_k64/<src>/seed<s>, epoch 60 and the final validation loss its
+    result JSON recorded, and copied where --resume looks. The command is the source run's (build_k64_dual) with --epochs
     120: the cosine schedule is re-anchored on the new horizon, a warm
     restart at learning rate 1.5e-3. A smoke test runs on both cards at once
     first; if either card fails it, the first seed continues alone.
     """
-    import base64
     import hashlib
     bundle_sha = hashlib.sha256(blob.encode()).hexdigest()[:12]
     base = ["--cache-dir", "DATA", "--representation", "constituents",
@@ -3012,16 +3013,19 @@ def build_k64_continuation_dual(blob: str, src: str, tag: str, flags: list[str],
         rec = json.loads(next(d.glob("*seed%d.json" % s)).read_text())
         assert rec["epochs_run"] == 60 and rec["env"]["torch"] == "2.11.0+cu128", (s, rec["epochs_run"])
         raw = next(d.glob("*seed%d.pt" % s)).read_bytes()
-        ckpts[s] = (base64.b64encode(raw).decode(), hashlib.sha256(raw).hexdigest(),
+        ckpts[s] = (None, hashlib.sha256(raw).hexdigest(),
                     rec["history"][-1]["val_loss"], rec["test_metrics"]["test_auc"],
                     rec["test_metrics"]["bg_rej_30"])
+    src_kernel = "nsanya/so3c-k64-%s-seeds%s" % (src.replace("_", "-"),
+                                                 "".join(str(s) for s in seeds))
     refs = {s: c[2:] for s, c in ckpts.items()}
     cells = [
         md("""
 # K=64 %s, 60 -> 120 epochs, two cards: seeds %s
 
-Resumes results_k64/%s (beams + channels 8 + %s, 60 epochs) from the
-embedded epoch-60 checkpoints to 120 epochs, one seed per T4. The cosine
+Resumes results_k64/%s (beams + channels 8 + %s, 60 epochs) from its
+epoch-60 checkpoints, mounted from that kernel's output, to 120 epochs, one
+seed per T4. The cosine
 schedule is re-anchored on the 120-epoch horizon (learning rate restarts at
 1.5e-3). T4 with torch 2.11.0+cu128 pinned and asserted.
 """ % (src, ", ".join(str(s) for s in seeds), src, " ".join(flags))),
@@ -3064,13 +3068,16 @@ assert "1 passed" in g.stdout, "golden guard did not pass on the card"
 """),
     ]
     for s in seeds:
-        b64, sha, vl, _, _ = ckpts[s]
+        _, sha, vl, _, _ = ckpts[s]
         cells.append(code("""
-# The embedded epoch-60 checkpoint of seed %d: verify it and write it where
-# --resume looks (the experiment and model in the file name are the run's).
-import base64, hashlib, pathlib, torch
-raw = base64.b64decode("%s")
-assert hashlib.sha256(raw).hexdigest() == %r, "checkpoint corrupted in transit"
+# The epoch-60 checkpoint of seed %d, from the mounted output of %s: check it
+# against the committed copy's sha256 and copy it where --resume looks (the
+# experiment and model in the file name are the run's).
+import glob, hashlib, pathlib, torch
+found = glob.glob("/kaggle/input/**/checkpoints/%s/seed%d/*seed%d.pt", recursive=True)
+assert len(found) == 1, "expected one mounted seed-%d checkpoint, found %%r" %% found
+raw = pathlib.Path(found[0]).read_bytes()
+assert hashlib.sha256(raw).hexdigest() == %r, "mounted checkpoint differs from the committed one"
 ck = pathlib.Path(CKPT) / "seed%d" / "top_tagging_canonical__so3c_message_set__seed%d.pt"
 ck.parent.mkdir(parents=True, exist_ok=True)
 ck.write_bytes(raw)
@@ -3079,7 +3086,7 @@ assert state["epoch"] == 60 and len(state["history"]) == 60, (state["epoch"], le
 assert abs(state["history"][-1]["val_loss"] - %r) < 1e-9, state["history"][-1]["val_loss"]
 print("seed %d checkpoint ok: epoch 60, val loss %%.5f" %% state["history"][-1]["val_loss"])
 del state, raw
-""" % (s, b64, sha, s, s, vl, s)))
+""" % (s, src_kernel, src, s, s, s, sha, s, s, vl, s)))
     cells += [
         code("""
 # Smoke on both cards at once (fresh models, separate directories): one epoch
@@ -3166,7 +3173,7 @@ assert not BAD, "seeds failed (exit code or no result): %%s" %% BAD
         "code_file": name, "language": "python", "kernel_type": "notebook",
         "is_private": True, "enable_gpu": True, "enable_internet": True,
         "dataset_sources": [], "competition_sources": [],
-        "kernel_sources": ["nsanya/so3c-data-prep-k-128"],
+        "kernel_sources": ["nsanya/so3c-data-prep-k-128", src_kernel],
     }
     (NB_DIR / ("kernel-metadata-%s.json" % slug)).write_text(
         json.dumps(meta, indent=2) + chr(10), encoding="utf-8")
