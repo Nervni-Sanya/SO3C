@@ -163,6 +163,10 @@ def main(argv: list[str] | None = None) -> int:
                    help="so3c_message_set with --beams, dense graph: ParT's pair "
                         "features (ln Delta, ln kT, ln z, ln m^2) on the edges, "
                         "in invariants of {p_a, p_b, beams}; beam pairs masked.")
+    p.add_argument("--pair-lab-set", choices=["all", "frame", "mass"], default=None,
+                   help="with --pair-lab: which of its features feed the edges -- "
+                        "all four (default), 'frame' (ln Delta, ln kT, ln z, "
+                        "which need the beams' frame) or 'mass' (ln m^2 alone).")
     p.add_argument("--ckpt-dir", type=str, default=None,
                    help="Directory for training checkpoints; --resume needs it.")
     p.add_argument("--compile", action="store_true",
@@ -189,6 +193,8 @@ def main(argv: list[str] | None = None) -> int:
         # Without beams the model has no beam particles, so the value would be
         # silently ignored.
         p.error("--beam-energy needs --beams")
+    if args.pair_lab_set is not None and not args.pair_lab:
+        p.error("--pair-lab-set needs --pair-lab")
 
     if args.quick:
         split = synthetic_tabular(n_samples=1_000, n_features=6,
@@ -244,6 +250,7 @@ def main(argv: list[str] | None = None) -> int:
         ("log_knee", True if args.log_knee else None),
         ("lab_scalars", True if args.lab_scalars else None),
         ("pair_lab", True if args.pair_lab else None),
+        ("pair_lab_set", args.pair_lab_set),
     ) if v is not None} or None
 
     kwargs = dict(

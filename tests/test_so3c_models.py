@@ -1179,6 +1179,63 @@ def test_lab_switches_finite_at_zero_pt_and_wired_in() -> None:
         assert grab(m).abs().max() > 0, "the new inputs do not reach the weights"
 
 
+def test_pair_lab_set_selects_features_and_keeps_all_identical() -> None:
+    """The 2026-10-18 ablation: pair_lab_set="all" is the existing model
+    bit for bit; "frame" (ln Delta, ln kT, ln z) and "mass" (ln m^2) feed 3
+    and 1 of the four features, each reaches trainable weights, and the model
+    stays exactly covariant with the beams moved along."""
+    import pytest
+    from benchmarks.so3c_models import (PAIR_LAB_FEATURES, PAIR_LAB_SETS,
+                                         SO3CMessageSetClassifier)
+    names = lambda key: tuple(PAIR_LAB_FEATURES[i] for i in PAIR_LAB_SETS[key])
+    assert names("frame") == ("ln_delta", "ln_kt", "ln_z") and names("mass") == ("ln_m2",)
+    assert names("all") == PAIR_LAB_FEATURES
+    p4, mask, _ = _lab_jets()
+    x = torch.cat([p4, mask[..., None]], -1)
+    # the 4th stacked feature really is ln m^2 = ln((p_a + p_b)^2)
+    from benchmarks.so3c_models import _lab_pair_features
+    beams = torch.tensor([[1.0, 0, 0, 1.0], [1.0, 0, 0, -1.0]], dtype=torch.float64)
+    m2 = 2 * (p4[..., 0, None] * p4[..., None, :, 0] - p4[..., 1:] @ p4[..., 1:].transpose(-1, -2))
+    got = _lab_pair_features(p4, beams, mask)[..., 3]
+    off = (mask[:, :, None] * mask[:, None, :] * (1 - torch.eye(p4.shape[1], dtype=torch.float64))).bool()
+    assert torch.allclose(got[off], torch.log(m2[off]), atol=1e-6)
+    count = lambda m: sum(q.numel() for q in m.parameters())
+    old, new = _lab_model(pair_lab=True), _lab_model(pair_lab=True, pair_lab_set="all")
+    assert [(k, v.shape) for k, v in old.state_dict().items()] == \
+           [(k, v.shape) for k, v in new.state_dict().items()]
+    assert torch.equal(old(x), new(x))
+    base = _lab_model()
+    L = _lorentz([0.6, -0.4, 0.9], angle_z=0.7)
+    for name, n_feat in (("frame", 3), ("mass", 1)):
+        m = _lab_model(pair_lab=True, pair_lab_set=name)
+        assert count(m) - count(base) == n_feat * 16 * 2, name     # act_hidden 16, 2 rounds
+        out = m(x)
+        assert torch.isfinite(out).all()
+        torch.nn.functional.cross_entropy(out, torch.tensor([0, 1, 1, 0])).backward()
+        w = m.edge[0][0].weight.grad[:, m._n_pair_in - n_feat:m._n_pair_in]
+        assert w.abs().max() > 0, "the selected features do not reach the weights: " + name
+        moved = _lab_model(pair_lab=True, pair_lab_set=name)
+        moved.load_state_dict(m.state_dict())
+        with torch.no_grad():
+            moved.beam_p4.copy_(m.beam_p4 @ L.T)
+            xb = x.clone()
+            xb[..., :4] = (p4 @ L.T) * mask[..., None]
+            ref = m(x)
+            assert (moved(xb) - ref).abs().max() < 1e-9 * max(1.0, ref.abs().max().item()), name
+    with pytest.raises(ValueError):
+        SO3CMessageSetClassifier(channels=4, rounds=2, beams=True, pair_lab_set="mass")
+    with pytest.raises(ValueError):
+        SO3CMessageSetClassifier(channels=4, rounds=2, beams=True, pair_lab=True,
+                                 pair_lab_set="no-such-set")
+
+
+def test_pair_lab_set_cli_guard() -> None:
+    import pytest
+    from benchmarks.run_top_tagging import main
+    with pytest.raises(SystemExit):
+        main(["--quick", "--beams", "--pair-lab-set", "mass"])
+
+
 def test_pair_lab_permutation_invariant_and_guards() -> None:
     import pytest
     from benchmarks.so3c_models import SO3CMessageSetClassifier

@@ -573,6 +573,14 @@ def _lab_node_features(p4: torch.Tensor, P: torch.Tensor, beam_p4: torch.Tensor,
     return feats * real.unsqueeze(-1)
 
 
+# The lab-frame pair features in the order _lab_pair_features stacks them,
+# and the subsets pair_lab_set selects (the 2026-10-18 ablation): the three
+# lab-frame features, which need the beams to define y, phi and pT, and ln m^2,
+# a direct <p_a, p_b> that needs no beams.
+PAIR_LAB_FEATURES = ("ln_delta", "ln_kt", "ln_z", "ln_m2")
+PAIR_LAB_SETS = {"all": (0, 1, 2, 3), "frame": (0, 1, 2), "mass": (3,)}
+
+
 def _lab_pair_features(p4: torch.Tensor, beam_p4: torch.Tensor,
                        real: torch.Tensor) -> torch.Tensor:
     """ParT's interaction features, (B, N, 4) -> (B, N, N, 4): ln Delta_ab,
@@ -752,6 +760,7 @@ class SO3CMessageSetClassifier(nn.Module):
         log_knee: bool = False,
         lab_scalars: bool = False,
         pair_lab: bool = False,
+        pair_lab_set: str = "all",
         dtype: torch.dtype = torch.float64,
     ) -> None:
         super().__init__()
@@ -782,8 +791,16 @@ class SO3CMessageSetClassifier(nn.Module):
                              "they need beams=True")
         if pair_lab and neighbors is not None:
             raise ValueError("pair_lab is implemented for the dense graph only")
+        if pair_lab_set not in PAIR_LAB_SETS:
+            raise ValueError("pair_lab_set must be one of %s" % sorted(PAIR_LAB_SETS))
+        if pair_lab_set != "all" and not pair_lab:
+            raise ValueError("pair_lab_set selects among the pair_lab features; "
+                             "it needs pair_lab=True")
         self.lab_scalars = lab_scalars
         self.pair_lab = pair_lab
+        self.pair_lab_set = pair_lab_set
+        self._pair_lab_cols = PAIR_LAB_SETS[pair_lab_set] if pair_lab else ()
+        n_lab = len(self._pair_lab_cols)
         if beams:
             # A buffer rather than a constant so a test can move the beams
             # with the jet and check exact covariance.
@@ -811,15 +828,15 @@ class SO3CMessageSetClassifier(nn.Module):
         # asinh.
         n_pair = (4 if relnorm_edge else 2) * channels
         self.falpha_embed = _SignedFAlpha(falpha, dtype) if falpha else None
-        edge_in = (n_pair * (falpha if falpha else 1) + (4 if pair_lab else 0)
+        edge_in = (n_pair * (falpha if falpha else 1) + n_lab
                    + 4 * channels + 2 * scalar_dim + (2 if vector_channel else 0))
         # Column layout of the edge input, in concatenation order: pair
         # invariants | Re, Im of z_a.z_a and z_b.z_b (C each) | h_a, h_b |
         # vector features | pair latent. _edge_pre uses it to apply the first
         # edge layer block by block instead of building the concatenation.
-        # pair_lab's four log features follow the compressed pair invariants
-        # in the same block.
-        self._n_pair_in = n_pair * (falpha if falpha else 1) + (4 if pair_lab else 0)
+        # pair_lab's log features (all four, or the pair_lab_set subset)
+        # follow the compressed pair invariants in the same block.
+        self._n_pair_in = n_pair * (falpha if falpha else 1) + n_lab
         self.edge = nn.ModuleList()
         self.w_head = nn.ModuleList()
         self.msg_head = nn.ModuleList()
@@ -1088,6 +1105,8 @@ class SO3CMessageSetClassifier(nn.Module):
         if self.pair_lab:
             real = torch.cat([mask, mask.new_zeros(p4.shape[0], 2)], dim=1)
             lab_pair = _lab_pair_features(p4_all, self.beam_p4, real)   # (B, N, N, 4)
+            if len(self._pair_lab_cols) < 4:
+                lab_pair = lab_pair[..., list(self._pair_lab_cols)]
         w = torch.complex(self.channel_weights[:, 0],
                           self.channel_weights[:, 1])            # (C,)
         zc = w[None, :, None, None] * z[:, None, :, :]           # (B, C, K, 3)

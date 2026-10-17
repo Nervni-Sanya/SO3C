@@ -2562,6 +2562,237 @@ if len(aucs) > 1:
     return name
 
 
+# 2026-10-18: which of the four lab-frame pair features carries the gain.
+# Probe protocol (the 10-05 control's command plus the flags), three seeds per
+# arm, read unpaired against the pooled probe controls and the full
+# --pair-lab probe runs. A fourth wave runs one full --pair-lab run and one
+# control at a new seed, so both reference levels are also measured in this
+# kernel (earlier kernels' levels differ by up to ~0.0001, about 15% of the
+# gain). All eight runs go through one two-card kernel as a queue: each card
+# takes the next run when it is free (four waves of ~0.5-0.6 h, about 2.3
+# GPU-h in all).
+PROBE_QUEUES = [
+    # the two arms interleaved, so a budget cut in the last wave leaves both
+    # arms with the same number of seeds
+    ("ablation-pairlab", [
+        (arm, ["--pair-lab", "--pair-lab-set", subset], s)
+        for s in (0, 1, 2)
+        for arm, subset in (("pairlab_mass", "mass"), ("pairlab_frame", "frame"))
+    ] + [
+        ("pairlab_full", ["--pair-lab"], 3),     # anchors: last, so a budget
+        ("control", [], 3),                      # cut drops them first
+    ], 2.6),
+]
+
+
+def _probe_references() -> dict:
+    """Test AUC and rejection of the probe runs the ablation is read against."""
+    refs = {}
+    for name, d in (("control", ["results_message/probe_screen/base", "results_message/repr_screen/base1010"]),
+                    ("pairlab", ["results_message/repr_screen/pairlab"])):
+        rows = []
+        for sub in d:
+            for f in sorted((ROOT / sub).glob("seed*/*.json")):
+                r = json.loads(f.read_text())
+                assert r["env"]["torch"] == "2.11.0+cu128" and r["epochs_run"] == 20, f
+                rows.append((r["test_metrics"]["test_auc"], r["test_metrics"]["bg_rej_30"]))
+        refs[name] = rows
+    assert len(refs["control"]) == 6 and len(refs["pairlab"]) == 3, {k: len(v) for k, v in refs.items()}
+    return refs
+
+
+def build_probe_queue(blob: str, tag: str, jobs: list, budget_h: float) -> str:
+    """Probe-protocol runs (arm, flags, seed) drained by two T4s as a queue.
+
+    The command is the 10-05 control's (build_probe_screen's `common`) plus
+    each job's flags, on the pinned T4 / torch 2.11 setup. A smoke test runs
+    on both cards at once first; the queue then hands the next job to
+    whichever card is free, and stops handing out jobs once less than one
+    run's time is left of `budget_h`. The summary reads each arm unpaired
+    against the pooled probe controls and the full --pair-lab runs.
+    """
+    import hashlib
+    bundle_sha = hashlib.sha256(blob.encode()).hexdigest()[:12]
+    common = ["--cache-dir", "DATA", "--representation", "constituents",
+              "--canonical-splits", "--normalize", "global",
+              "--max-train-samples", "400000", "--epochs", "20",
+              "--device", "cuda", "--dtype", "float32", "--batch-size", "256",
+              "--n-constituents", "32", "--eval-chunk-size", "2048",
+              "--models", "so3c_message_set", "--rounds", "3", "--beams",
+              "--channels", "8", "--compile"]
+    refs = _probe_references()
+    cells = [
+        md("""
+# Probe-protocol queue, two cards: %s
+
+%d runs (%s) on the probe protocol (K=32, 400k training jets, 20 epochs),
+the 2026-10-05 control's command plus each run's flags, drained by two T4s
+as a queue. T4 with torch 2.11.0+cu128 pinned and asserted. Kernel budget %.1f h.
+""" % (tag, len(jobs), ", ".join(sorted({j[0] for j in jobs})), budget_h)),
+        code("""
+import subprocess, time
+T0 = time.time()
+print(subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total",
+                      "--format=csv,noheader"], capture_output=True,
+                     text=True).stdout.strip())
+"""),
+        code(UNPACK.format(blob=blob)),
+        code(RUNNER),
+        code(GPU_SETUP_T4_PINNED),
+        code(DUAL_LAUNCH),
+        code("""
+import glob, pathlib
+cands = glob.glob("/kaggle/input/**/top_tagging_train.npz", recursive=True)
+assert cands, "attach the K=128 data-prep kernel output"
+DATA = str(pathlib.Path(cands[0]).parent)
+TAG, JOBS, BUDGET = %r, %r, %r * 3600
+OUT = "/kaggle/working/results_probe_queue"
+CKPT = "/kaggle/working/checkpoints"
+LOGS = "/kaggle/working/logs/" + TAG
+RUN_TIME = 0.55 * 3600       # one probe run end to end, two cards busy (0.49-0.60 h for pair_lab)
+BASE = %r
+BASE[BASE.index("DATA")] = DATA
+for d in (OUT, LOGS):
+    pathlib.Path(d).mkdir(parents=True, exist_ok=True)
+pathlib.Path(OUT, "bundle_sha256.txt").write_text(%r + chr(10))
+print("data:", DATA, "| bundle", %r, "|", len(JOBS), "jobs")
+""" % (tag, [list(j) for j in jobs], budget_h, common, bundle_sha, bundle_sha)),
+        code("""
+# On-card guard: the forward pass must be the published function on this
+# GPU too, in float64. "1 passed" is required; a skip means no CUDA.
+import subprocess, sys
+g = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
+                    "tests/test_so3c_models.py", "-k", "golden_cuda"],
+                   cwd="/kaggle/working/repo", capture_output=True, text=True)
+print(g.stdout[-1500:], g.stderr[-1500:])
+assert "1 passed" in g.stdout, "golden guard did not pass on the card"
+"""),
+        code("""
+# Smoke on both cards at once with the first job's flags: one epoch on 20k
+# jets per card. Each card must write a result to be given jobs.
+import glob
+smoke = []
+for i in range(NGPU):
+    d = "/kaggle/working/smoke/%s/card%d" % (TAG, i)
+    smoke.append((d, launch(["benchmarks.run_top_tagging"] + BASE + JOBS[0][1] +
+                            ["--epochs", "1", "--max-train-samples", "20000",
+                             "--seed", "0", "--results-dir", d],
+                            i, LOGS + "/smoke_card%d.log" % i)))
+codes = [p.wait() for _, p in smoke]
+CARDS = [i for i, ((d, _), rc) in enumerate(zip(smoke, codes)) if glob.glob(d + "/*.json")]
+for i, rc in enumerate(codes):
+    print("card %d: exit %d, result %s" % (i, rc, i in CARDS))
+    if i not in CARDS:
+        print(tail(LOGS + "/smoke_card%d.log" % i))
+assert CARDS, "the smoke run failed on every card"
+print("cards in use:", CARDS)
+"""),
+        code("""
+# The queue: each free card takes the next job; no job starts once less than
+# one run's time is left of the budget.
+import glob, time
+todo = list(JOBS)
+running = {}                     # card -> (arm, seed, process)
+BAD, SKIPPED = [], []
+while todo or running:
+    for c in CARDS:
+        if c in running:
+            arm, s, p = running[c]
+            if p.poll() is None and time.time() - T0 > BUDGET + 0.1 * 3600:
+                p.terminate(); p.wait()          # hung past the budget: its checkpoint is kept
+                print("card %d: %s seed %d terminated past the budget" % (c, arm, s), flush=True)
+            if p.poll() is None:
+                continue
+            ok = p.returncode == 0 and glob.glob(OUT + "/%s/seed%d/*.json" % (arm, s))
+            print("%7.2f h  card %d: %s seed %d %s" % ((time.time() - T0) / 3600, c, arm, s,
+                                                       "done" if ok else "FAILED, exit %d" % p.returncode), flush=True)
+            if not ok:
+                BAD.append((arm, s)); print(tail(LOGS + "/%s_seed%d.log" % (arm, s), 1500))
+            del running[c]
+        if todo and c not in running:
+            if time.time() - T0 + RUN_TIME > BUDGET:
+                SKIPPED += [(a, s) for a, _, s in todo]; todo = []
+                print("budget: the remaining jobs are skipped:", SKIPPED); continue
+            arm, flags, s = todo.pop(0)
+            cap = int(min(RUN_TIME * 1.5, BUDGET - (time.time() - T0) - 600))
+            running[c] = (arm, s, launch(["benchmarks.run_top_tagging"] + BASE + flags +
+                                         ["--seed", str(s), "--results-dir", OUT + "/%s/seed%d" % (arm, s),
+                                          "--ckpt-dir", CKPT + "/%s_seed%d" % (arm, s), "--resume",
+                                          "--max-seconds", str(cap)],
+                                         c, LOGS + "/%s_seed%d.log" % (arm, s)))
+            print("%7.2f h  card %d: start %s seed %d" % ((time.time() - T0) / 3600, c, arm, s), flush=True)
+    time.sleep(20)
+print("failed:", BAD or "none", "| skipped:", SKIPPED or "none")
+print("kernel time %.2f h" % ((time.time() - T0) / 3600))
+"""),
+        code("""
+# Each subset arm unpaired against the pooled probe controls (10-05, base1010
+# and this kernel's control) and the full --pair-lab runs (10-10 and this
+# kernel's), with the reading rule fixed before the push:
+#   f = (arm - control) / (full - control), the fraction of the gain recovered;
+#   "carries the gain" if f >= 0.7 and the arm beats the control at p < 0.05,
+#   "carries none" if f <= 0.3 and the arm is below the full set at p < 0.05,
+#   otherwise unresolved.
+import json, glob, statistics as st, math
+from scipy import stats
+REFS = %r
+def load(arm):
+    rs = [json.load(open(f)) for f in sorted(glob.glob(OUT + "/%%s/seed*/*.json" %% arm))]
+    for r in rs:
+        t = r["test_metrics"]; env = r["env"]
+        assert env["torch"] == "2.11.0+cu128" and "T4" in env.get("gpu", ""), env
+        print("%%-14s seed %%d: AUC %%.5f  rej@0.3 %%.1f  %%d epochs  %%.2f h  kwargs %%s"
+              %% (arm, r["seed"], t["test_auc"], t["bg_rej_30"], r["epochs_run"], r["walltime_sec"] / 3600, r["so3c_kwargs"]))
+    return [r["test_metrics"]["test_auc"] for r in rs if r["epochs_run"] == 20]
+def welch(a, b):
+    va, vb = st.variance(a) / len(a), st.variance(b) / len(b)
+    t = (st.mean(a) - st.mean(b)) / math.sqrt(va + vb)
+    df = (va + vb) ** 2 / (va ** 2 / (len(a) - 1) + vb ** 2 / (len(b) - 1))
+    return st.mean(a) - st.mean(b), t, df, 2 * stats.t.sf(abs(t), df)
+new_full, new_ctrl = load("pairlab_full"), load("control")
+old_full = [r[0] for r in REFS["pairlab"]]; old_ctrl = [r[0] for r in REFS["control"]]
+for name, new, old in (("full pair_lab", new_full, old_full), ("control", new_ctrl, old_ctrl)):
+    if new:
+        print("anchor %%s here %%s against the earlier runs' %%.5f +- %%.5f: offset %%+.5f"
+              %% (name, " ".join("%%.5f" %% x for x in new), st.mean(old), st.stdev(old), st.mean(new) - st.mean(old)))
+full, ctrl = old_full + new_full, old_ctrl + new_ctrl
+print("references: control %%d runs %%.5f +- %%.5f | full pair_lab %%d runs %%.5f +- %%.5f"
+      %% (len(ctrl), st.mean(ctrl), st.stdev(ctrl), len(full), st.mean(full), st.stdev(full)))
+for arm in ("pairlab_mass", "pairlab_frame"):
+    a = load(arm)
+    if len(a) < 2:
+        print("  %%s: %%d complete runs, no reading" %% (arm, len(a))); continue
+    d, t, df, pc = welch(a, ctrl); d2, t2, df2, pf = welch(a, full)
+    A, C, F = st.mean(a), st.mean(ctrl), st.mean(full); D = F - C
+    vA, vC, vF = st.variance(a) / len(a), st.variance(ctrl) / len(ctrl), st.variance(full) / len(full)
+    f = (A - C) / D
+    se = math.sqrt(vA / D ** 2 + vF * ((A - C) / D ** 2) ** 2 + vC * ((A - F) / D ** 2) ** 2)
+    if f >= 0.7 and d > 0 and pc < 0.05:
+        verdict = "carries the gain"
+    elif f <= 0.3 and d2 < 0 and pf < 0.05:
+        verdict = "carries none of the gain"
+    else:
+        verdict = "unresolved"
+    print("  %%s: mean %%.5f +- %%.5f | vs control %%+.5f (t %%.1f, df %%.1f, p %%.3f) | vs full %%+.5f (t %%.1f, df %%.1f, p %%.3f) | fraction of the gain %%.2f +- %%.2f -> %%s"
+          %% (arm, A, st.stdev(a), d, t, df, pc, d2, t2, df2, pf, f, se, verdict))
+assert not BAD, "jobs failed: %%s" %% BAD
+""" % refs),
+    ]
+    name = "kaggle_probe_queue_%s.ipynb" % tag.replace("-", "_")
+    _finalise(cells, NB_DIR / name)
+    meta = {
+        "id": "nsanya/so3c-probe-queue-" + tag,
+        "title": "SO3C probe queue %s" % tag,
+        "code_file": name, "language": "python", "kernel_type": "notebook",
+        "is_private": True, "enable_gpu": True, "enable_internet": True,
+        "dataset_sources": [], "competition_sources": [],
+        "kernel_sources": ["nsanya/so3c-data-prep-k-128"],
+    }
+    (NB_DIR / ("kernel-metadata-probe-queue-%s.json" % tag)).write_text(
+        json.dumps(meta, indent=2) + chr(10), encoding="utf-8")
+    return name
+
+
 def build_width_profile(blob: str) -> None:
     """Time the capacity candidates on the card before a window commits to them.
 
@@ -3509,6 +3740,9 @@ def _registry() -> dict:
     for tag, flags, seed, epochs in K64_RUNS:
         reg["k64_%s_seed%d" % (tag, seed)] = (
             lambda b, t=tag, f=flags, s=seed, e=epochs: build_k64_run(b, t, f, s, epochs=e))
+    for tag, jobs, budget_h in PROBE_QUEUES:
+        reg["probe_queue_%s" % tag.replace("-", "_")] = (
+            lambda b, t=tag, j=jobs, h=budget_h: build_probe_queue(b, t, j, h))
     for src, tag, flags, seeds in K64_DUAL_CONTINUATIONS:
         reg["k64_%s_seeds%s" % (tag, "".join(str(s) for s in seeds))] = (
             lambda b, sr=src, t=tag, f=flags, s=seeds: build_k64_continuation_dual(b, sr, t, f, s))

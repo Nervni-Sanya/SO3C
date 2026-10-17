@@ -190,3 +190,25 @@ def test_k64_pair_lab_continuation_resumes_the_60_epoch_runs(nb_dir) -> None:
     for s in (0, 1):
         pt = next((ROOT / "results_k64" / "pairlab60" / ("seed%d" % s)).glob("*.pt"))
         assert hashlib.sha256(pt.read_bytes()).hexdigest() in text, s
+
+
+def test_probe_queue_is_the_stored_control_command_plus_each_jobs_flags(nb_dir) -> None:
+    """The 2026-10-18 pair-feature ablation: one two-card queue kernel whose
+    command is the committed 10-05 probe control's, each job adding exactly
+    --pair-lab --pair-lab-set mass|frame, seeds 0-2 per arm, interleaved."""
+    import json
+    control = _assigned_list(ROOT / "notebooks" / "kaggle_probe_screen_base.ipynb", "BASE")
+    assert B.main(["--only", "probe_queue_ablation_pairlab"]) == 0
+    nb = nb_dir / "kaggle_probe_queue_ablation_pairlab.ipynb"
+    assert _assigned_list(nb, "BASE") == control
+    text = "".join("".join(c["source"]) for c in
+                   json.loads(nb.read_text(encoding="utf-8"))["cells"])
+    jobs = [j for _, js, _ in B.PROBE_QUEUES for j in js]
+    assert [(a, f[-1], s) for a, f, s in jobs[:6]] == [
+        (arm, sub, s) for s in (0, 1, 2) for arm, sub in (("pairlab_mass", "mass"), ("pairlab_frame", "frame"))]
+    assert all(f[:2] == ["--pair-lab", "--pair-lab-set"] for _, f, _ in jobs[:6])
+    # the in-kernel anchors come last: the full feature set and the control
+    assert jobs[6:] == [("pairlab_full", ["--pair-lab"], 3), ("control", [], 3)]
+    assert 'WANT = "2.11.0+cu128"' in text and "CUDA_VISIBLE_DEVICES" in text
+    meta = json.loads((nb_dir / "kernel-metadata-probe-queue-ablation-pairlab.json").read_text())
+    assert meta["id"] == "nsanya/so3c-probe-queue-ablation-pairlab"
