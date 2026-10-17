@@ -173,3 +173,20 @@ def test_k64_two_card_runs_are_the_60_epoch_headline_plus_their_flags(nb_dir) ->
         assert "CUDA_VISIBLE_DEVICES" in text and "PARALLEL" in text
         meta = json.loads((nb_dir / ("kernel-metadata-k64-%s-seeds01.json" % tag)).read_text())
         assert meta["id"] == "nsanya/so3c-k64-%s-seeds01" % tag
+
+
+def test_k64_pair_lab_continuation_resumes_the_60_epoch_runs(nb_dir) -> None:
+    """The 60 -> 120 continuation runs the two-card pair-feature command with
+    --epochs 120 and embeds exactly the committed epoch-60 checkpoints."""
+    import hashlib
+    import json
+    base = _assigned_list(ROOT / "notebooks" / "kaggle_k64_pairlab60_seeds01.ipynb", "BASE")
+    assert B.main(["--only", "k64_pairlab120_seeds01"]) == 0
+    nb = nb_dir / "kaggle_k64_pairlab120_seeds01.ipynb"
+    assert _assigned_list(nb, "BASE") == base
+    text = "".join("".join(c["source"]) for c in
+                   json.loads(nb.read_text(encoding="utf-8"))["cells"])
+    assert "TAG, SEEDS, EPOCHS, MAX_SECONDS = 'pairlab120', [0, 1], 120, 39000" in text
+    for s in (0, 1):
+        pt = next((ROOT / "results_k64" / "pairlab60" / ("seed%d" % s)).glob("*.pt"))
+        assert hashlib.sha256(pt.read_bytes()).hexdigest() in text, s
