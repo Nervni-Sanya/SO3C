@@ -170,11 +170,15 @@ python -m benchmarks.run_top_tagging --cache-dir data --representation constitue
     --device cuda --dtype float32 --batch-size 256 --n-constituents 64 \
     --rounds 3 --beams --channels 8 --eval-chunk-size 1024 --models so3c_message_set \
     --compile --results-dir results_headline60 --ckpt-dir ckpt_headline60 --resume --max-seconds 39000
-# The current best models: the same 60-epoch command plus --pair-lab --keep-best
+# The pair-feature runs: the same 60-epoch command plus --pair-lab --keep-best
 # (notebooks/kaggle_k64_pairlab60_seeds01.ipynb, seeds 0 and 1 in one two-T4
 # kernel; the control without --pair-lab is notebooks/kaggle_k64_base60_seeds01.ipynb).
-# Their ensemble:
-#   python -m benchmarks.ensemble_scores --results-dir results_k64/pairlab60/seed0 results_k64/pairlab60/seed1
+# The current best models continue both to 120 epochs
+# (notebooks/kaggle_k64_pairlab120_seeds01.ipynb: --epochs 120 --resume on the epoch-60 checkpoints).
+# Their ensembles (two 120-epoch seeds; all four snapshots):
+#   python -m benchmarks.ensemble_scores --results-dir results_k64/pairlab120/seed0 results_k64/pairlab120/seed1
+#   python -m benchmarks.ensemble_scores --allow-shared-seed --results-dir results_k64/pairlab60/seed0 \
+#       results_k64/pairlab60/seed1 results_k64/pairlab120/seed0 results_k64/pairlab120/seed1
 # Ensembles of the committed runs: the three 30-epoch seeds, then four, then five models
 python -m benchmarks.ensemble_scores --results-dir results_message/beams_k64 results_k64/headline
 python -m benchmarks.ensemble_scores --allow-shared-seed \
@@ -405,8 +409,8 @@ directories were accepted); when seeds are shared, each member also records its
 
 Published split, full training set. ✗ marks the model that is not
 Lorentz-invariant once trained; bold marks the best configuration by AUC
-(mean over seeds; the better pair-feature seed scored 0.98467 / 1246) and the
-best ensemble. GPU runs used float32 according to their
+(mean over seeds; the better pair-feature seed scored 0.98480 / 1364 at 120
+epochs) and the best ensembles by AUC and by rejection. GPU runs used float32 according to their
 notebook commands; `results/` is not committed.
 
 | Model | Params | $K$ | Seeds | Epochs | AUC | Acc. | $1/\varepsilon_B$ @ 0.3 | $1/\varepsilon_B$ @ 0.5 | Hours / seed | Source |
@@ -426,12 +430,15 @@ notebook commands; `results/` is not committed.
 | `so3c_message_set` + beams, 8 channels | 22,834 | 64 | 1 | 60 | 0.98363 | 0.9355 | 1141 | 315 | 8.59 GPU ‡ | `results_k64/headline60/` |
 | the same run continued to 120 (warm restart) | 22,834 | 64 | 1 | 120 | 0.98392 | 0.9361 | 1202 | 322 | +7.91 GPU | `results_k64/headline120/` |
 | the same configuration, same-stack control (torch 2.11, `--keep-best`) | 22,834 | 64 | 2 | 60 | 0.98342 ± 0.00021 | 0.9351 | 1144 ± 14 | 295 ± 4 | 8.33–8.81 GPU § | `results_k64/base60/` |
-| `so3c_message_set` + beams, 8 channels, **lab-frame pair features** (`--pair-lab`) | 23,026 | 64 | 2 | 60 | **0.98442 ± 0.00035** | 0.9370 | **1296 ± 71** | 335 ± 15 | 8.61–9.01 GPU § | `results_k64/pairlab60/` |
+| `so3c_message_set` + beams, 8 channels, **lab-frame pair features** (`--pair-lab`) | 23,026 | 64 | 2 | 60 | 0.98442 ± 0.00035 | 0.9370 | 1296 ± 71 | 335 ± 15 | 8.61–9.01 GPU § | `results_k64/pairlab60/` |
+| the same two runs continued to 120 (warm restart) | 23,026 | 64 | 2 | 120 | **0.98460 ± 0.00029** | 0.9376 | 1302 ± 89 | 347 ± 19 | +8.46–8.48 GPU § | `results_k64/pairlab120/` |
 | seeds 0 and 1 at 30 epochs, scores averaged | — | 64 | 2 | 30 | 0.98373 | — | 1174 | 306 | — | `results_message/beams_k64/ensemble_seeds01.json` |
 | seeds 0, 1 and 2 at 30 epochs, scores averaged | — | 64 | 3 | 30 | 0.98378 | — | 1160 | 316 | — | `results_k64/headline/ensemble_seeds012.json` |
 | those three and the 60-epoch run, scores averaged | — | 64 | 4 | 30, 60 | 0.98396 | — | 1231 | 328 | — | `results_k64/headline60/ensemble_seeds012_plus_60ep.json` |
 | those four and the 120-epoch run, scores averaged | — | 64 | 5 | 30, 60, 120 | 0.98413 | — | 1270 | 340 | — | `results_k64/headline120/ensemble_seeds012_plus_60ep_120ep.json` |
-| the two pair-feature seeds, scores averaged | — | 64 | 2 | 60 | **0.98492** | — | **1463** | 360 | — | `results_k64/pairlab60/ensemble_seeds01.json` |
+| the two pair-feature seeds, scores averaged | — | 64 | 2 | 60 | 0.98492 | — | 1463 | 360 | — | `results_k64/pairlab60/ensemble_seeds01.json` |
+| the two pair-feature seeds at 120 epochs, scores averaged | — | 64 | 2 | 120 | **0.98515** | — | 1422 | 385 | — | `results_k64/pairlab120/ensemble_seeds01.json` |
+| the four pair-feature snapshots (60 and 120 epochs of both seeds), scores averaged | — | 64 | 4 | 60, 120 | 0.98513 | — | **1474** | 377 | — | `results_k64/pairlab120/ensemble_seeds01_plus_60ep.json` |
 | `relu_mlp` (Deep Sets, matched) | 9,053 | 32 | 1 | 30 | 0.7636 | 0.7129 | 8.5 | 5 | 4.24 CPU | `results_matched_canonical/` |
 | `gelu_mlp` (Deep Sets, matched) | 9,053 | 32 | 1 | 30 | 0.7633 | 0.7123 | 8.6 | 5 | 5.65 CPU | `results_matched_canonical/` |
 
@@ -440,12 +447,14 @@ model has 5,122 parameters ([models.md](models.md#so3c_invariant_set)).
 
 ‡ Tesla T4 with the rewritten forward pass (seed 2 eager, the 60-epoch run with
 `--compile`). The other GPU rows with committed logs ran on a P100 with the
-original code, except the 120-epoch continuation (T4, torch 2.11) and the §
-rows.
+original code, except the beams-only 120-epoch continuation (T4, torch 2.11)
+and the § rows.
 
 § T4, torch 2.11, `--compile --keep-best`; two seeds ran in parallel in one
-kernel, one per card. Hours are each seed's wall clock; the quota charged was
-the kernel's 9.01 h (control) and 9.22 h (pair features) for both seeds.
+kernel, one per card. Hours are each seed's wall clock (for the continuation,
+the hours added after epoch 60); the quota charged was the kernel's 9.01 h
+(control), 9.22 h (pair features) and 8.68 h (their continuation to 120) for
+both seeds.
 
 - At $K=32$ and about 9k parameters the exactly invariant covariant model
   matches the non-invariant one (0.9746 against 0.9744); the matched generic
@@ -467,13 +476,17 @@ the kernel's 9.01 h (control) and 9.22 h (pair features) for both seeds.
   epochs reached 1147): +0.00037 AUC over the three-seed 30-epoch mean, 2.2 standard
   errors with three seeds to compare against, and a final validation loss of
   0.16276, below all three 30-epoch runs (0.16318 to 0.16455). One seed.
-- The lab-frame pair features give the best models: 0.98442 ± 0.00035 at 60
-  epochs over two seeds against 0.98342 ± 0.00021 for a same-stack control
+- The lab-frame pair features give the best models. At 60 epochs: 0.98442 ±
+  0.00035 over two seeds against 0.98342 ± 0.00021 for a same-stack control
   without them (+0.00100; two runs each, Welch t = 3.5 on ≈1.7 df, p ≈ 0.1,
   both pair-feature runs above both controls; it repeats +0.00051 on the probe
   protocol and +0.00064 at the K=32 long schedule), 0.98467 / 1246 for the
-  better seed (picked on test AUC), and 0.98492 / 1463 for the two seeds'
-  ensemble.
+  better seed and 0.98492 / 1463 for the two seeds' ensemble. Both runs
+  continued to 120 epochs (cosine re-anchored) reach 0.98460 ± 0.00029 / 1302
+  ± 89 (+0.00022 and +0.00013 against their own epoch 60; the validation −
+  train gap grows from 0.0048–0.0053 to 0.0067–0.0068), 0.98480 / 1364 for the
+  better seed (picked on test AUC), 0.98515 / 1422 for the two 120-epoch seeds'
+  ensemble and 0.98513 / 1474 for all four snapshots.
 - Without them, continuing the 60-epoch run to 120 epochs (the cosine schedule re-anchored, a warm
   restart at learning rate 1.5e-3) gives 0.98392 / 1202:
   +0.00029 AUC and +61 rejection against its own epoch 60, final validation
@@ -732,12 +745,13 @@ Values checked against the source tables, from
 
 PELICAN at 1,000 parameters (0.9835 / 1145 ± 74) matches the 60-epoch
 beams-only SO3C model (22,834 parameters, 0.98363 / 1141) and is 0.0004 AUC
-below its 120-epoch continuation (0.98392 / 1202). The best single SO3C model,
-with the lab-frame pair features (23,026 parameters, 0.98467 / 1246), lies
-between PELICAN's 1,000- and 3,000-parameter models; PELICAN from 3,000
-parameters up, LorentzNet, ParticleNet and L-GATr are ahead of it on both
-metrics, and PELICAN's 3,000-parameter model is level with the two-seed
-pair-feature ensemble (0.98492 / 1463).
+below its 120-epoch continuation (0.98392 / 1202). The best single SO3C run,
+with the lab-frame pair features (23,026 parameters, 120 epochs, 0.98480 /
+1364), lies between PELICAN's 1,000- and 3,000-parameter models; PELICAN from
+3,000 parameters up, LorentzNet, ParticleNet and L-GATr are ahead of it on both
+metrics. The pair-feature ensembles match PELICAN's 3,000-parameter model in
+AUC (0.98515 and 0.98513 against 0.9850) and come within 72 and 20 of its
+rejection (1422 and 1474 against 1494 ± 43).
 L-GATr trained from scratch matches PELICAN; its fine-tuned variant, the
 highest entry in the reference table, was pretrained on JetClass and is a
 different comparison class. LGN has lower AUC than every SO3C set model, and
@@ -900,10 +914,11 @@ predates the L-GATr row of the reference table.
 
 ## 8. Limitations and open issues
 
-1. **Not state of the art.** The best SO3C single model (lab-frame pair
-   features, 60 epochs) is 0.0023 AUC and a factor of 1.81 in rejection behind
-   PELICAN, the best ensemble (its two seeds) 0.0021 and 1.54, and PELICAN's
-   3,000-parameter model beats the single model (table K).
+1. **Not state of the art.** The best SO3C single run (lab-frame pair
+   features, 120 epochs) is 0.0022 AUC and a factor of 1.65 in rejection behind
+   PELICAN, the best ensembles 0.0018–0.0019 and 1.53–1.58; PELICAN's
+   3,000-parameter model beats the single run, and the ensembles match it in AUC
+   but not quite in rejection (table K).
 2. **With beams, the output is not Lorentz-invariant**, by design: it is
    covariant together with the beams and invariant only under rotations about
    the beam axis ([theory.md §11](theory.md#11-beams-what-symmetry-survives)).
@@ -923,10 +938,12 @@ predates the L-GATr row of the reference table.
 8. **Few seeds.** Tables B, C, D, F and N, the screen rows of table L and the
    `w64s24` arm of table M are single-seed, and so is the best beams-only single
    model (120 epochs). The pair-feature and control rows at $K=64$ over 60
-   epochs have two seeds each; the best single model is the better pair-feature
-   seed, picked on test AUC. Measured spreads: ±0.00014 AUC and ±75 rejection
-   for the 30-epoch headline (three seeds), ±0.00021 and ±0.00035 AUC for the
-   two-seed 60-epoch control and pair-feature runs, ±0.00017 and ±58 on the probe protocol, ±0.00020 and ±32 on
+   epochs have two seeds each, and so does the pair-feature continuation to 120
+   epochs (the same two runs, not new seeds); the best single model is the
+   better pair-feature seed at 120 epochs, picked on test AUC. Measured spreads:
+   ±0.00014 AUC and ±75 rejection for the 30-epoch headline (three seeds),
+   ±0.00021 and ±0.00035 AUC for the two-seed 60-epoch control and pair-feature
+   runs (±0.00029 for the pair-feature runs at 120), ±0.00017 and ±58 on the probe protocol, ±0.00020 and ±32 on
    the long schedule. Runs that share a seed on the same stack see the same
    batch order, but whether they pair has to be measured: paired differences
    scattered by 0.00001 for `w128s32` (torch 2.10, long schedule), 0.00006 for
@@ -937,13 +954,16 @@ predates the L-GATr row of the reference table.
    seed (table N).
 9. **Provenance gaps.** `results/` is not committed. Result JSONs written
    before 2026-09-13 do not record the model's constructor arguments or the
-   dtype, and no JSON records the GPU or the torch version. The kernel logs give
+   dtype, and JSONs written before 2026-10-10 do not record the GPU or the torch
+   version (later ones do, in `env`). The kernel logs give
    the card for most GPU runs and the torch version for the T4 runs; for the
    P100 runs it comes from the notebooks' pinned setup, and `results_fixed/`,
    `results_kappa/` and `results_scaling/` have no logs.
 10. **The switches of [theory.md §12](theory.md#12-switches-screened-on-the-probe-protocol)
-    were screened only on the probe protocol** (table L): none showed a
-    resolved gain there, and none has been trained on the full training set or at $K=64$.
+    other than `pair_lab` were screened only on the probe protocol** (table L):
+    none of them showed a resolved gain there, and none has been trained on the
+    full training set or at $K=64$. `pair_lab` passed the screen and gives the
+    best rows of table A.
 11. **`SO3CInteraction` is not integrated into LorentzNet.** It was written as
     a candidate replacement for the nonlinearity in LorentzNet's LGEB blocks;
     no such model exists in this repository.

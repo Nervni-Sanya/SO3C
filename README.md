@@ -25,9 +25,11 @@ training, 403,000 validation and 404,000 test jets. It has not been reached.
 
 | Model | Parameters | AUC | 1/ε_B at ε_S = 0.3 |
 |---|---:|---|---|
-| **SO3C** with lab-frame pair features, `so3c_message_set --beams --channels 8 --pair-lab`, K = 64, 60 epochs, mean of 2 seeds | 23,026 | **0.98442 ± 0.00035** | 1296 ± 71 |
-| the same, the better seed by test AUC (the other: 0.98417 / 1346.1) | 23,026 | 0.98467 | 1246.4 |
-| the same, ensemble of the 2 seeds | 2 × 23,026 | **0.98492** | **1463.1** |
+| **SO3C** with lab-frame pair features, `so3c_message_set --beams --channels 8 --pair-lab`, K = 64, 60 epochs continued to 120, mean of 2 seeds | 23,026 | **0.98460 ± 0.00029** | 1302 ± 89 |
+| the same, the better seed by test AUC (the other: 0.98439 / 1238.7) | 23,026 | 0.98480 | 1364.3 |
+| the same, ensemble of the 2 seeds | 2 × 23,026 | **0.98515** | 1421.9 |
+| the same, ensemble of the 2 seeds at 60 and at 120 epochs (four snapshots) | 4 × 23,026 | 0.98513 | **1473.8** |
+| the same at 60 epochs, mean of 2 seeds | 23,026 | 0.98442 ± 0.00035 | 1296 ± 71 |
 | SO3C without them, `so3c_message_set --beams --channels 8`, K = 64, 60 epochs continued to 120, 1 seed | 22,834 | 0.98392 | 1201.9 |
 | the same run at 60 epochs | 22,834 | 0.98363 | 1140.8 |
 | the same configuration, mean of 3 seeds at 30 epochs | 22,834 | 0.98326 ± 0.00014 | 1089 ± 75 |
@@ -49,10 +51,12 @@ K = 32 over 60 epochs (+0.00064, t = 6.8). Training time is about the control's
 (0.98–1.08×). The features are ParT's ln Δ, ln k_T, ln z and ln m² on every pair
 of distinct constituents (zero on the diagonal and on beam and padding edges), written in Minkowski products
 of the constituents with each other and with the beams, so the model stays
-exactly covariant when the beams move with the jet. The gap to PELICAN is now
-0.0021 AUC and a factor 1.54 in rejection for the two-seed ensemble (0.0026 and
-1.74 for the two-seed mean); PELICAN's 3,000-parameter model (0.9850 / 1494 ± 43)
-beats the better single seed and is level with the ensemble. Both seeds are being continued to 120 epochs.
+exactly covariant when the beams move with the jet. Continuing both runs to 120 epochs added
++0.00018 AUC on the mean. The gap to PELICAN is now 0.0018 AUC and a factor 1.58
+in rejection for the two-seed ensemble (0.0024 and 1.73 for the two-seed mean).
+PELICAN's 3,000-parameter model (0.9850 / 1494 ± 43) beats the best single run
+on both metrics; the ensembles match it in AUC and come within 20–72 of its
+rejection.
 
 Without the pair features, training longer appears to have helped: 60 epochs beat the 30-epoch mean by
 +0.00037 AUC, 2.2 standard errors with only three 30-epoch seeds to compare
@@ -91,7 +95,8 @@ candidates shown to help at the long schedules: +0.00064 at K = 32 (two runs
 against five) and +0.00100 at K = 64 (two runs against two).
 The other structural candidates, screened on the 20-epoch probe, moved AUC by
 +0.00012 or less and have not been run at the long schedule. Training beyond 60 epochs
-was tried once (continued to 120: +0.00029 AUC, unresolved); width at K = 64 over
+was tried on three runs (continued to 120: +0.00029 AUC on the beams-only run,
++0.00022 and +0.00013 on the two pair-feature runs; unresolved on each run alone); width at K = 64 over
 60 epochs and other weight-decay strengths are untested
 ([measurements below](#width-and-weight-decay)).
 
@@ -171,10 +176,11 @@ parameters and `--act-hidden 128 --msg-dim 32 --scalar-dim 32` (`w128s32`) has
 | `so3c_message_set --beams --channels 8`, 60 epochs | 22,834 | 64 | 1 | 0.98363 | 1140.8 |
 | `so3c_message_set --beams --channels 8`, 60 epochs, same-stack control | 22,834 | 64 | 2 | 0.98342 ± 0.00021 | 1144 ± 14 |
 | `so3c_message_set --beams --channels 8 --pair-lab`, 60 epochs | 23,026 | 64 | 2 | 0.98442 ± 0.00035 | 1296 ± 71 |
+| `so3c_message_set --beams --channels 8 --pair-lab`, continued to 120 epochs | 23,026 | 64 | 2 | 0.98460 ± 0.00029 | 1302 ± 89 |
 
 K is the number of leading constituents per jet; ± is the standard deviation
-over seeds; every row trains for 30 epochs except the last three, which train
-for 60. The `eta_invariants` runs are in the untracked `results/` directory; every
+over seeds; every row trains for 30 epochs except the last four: three train
+for 60, and the last continues the pair-feature runs to 120. The `eta_invariants` runs are in the untracked `results/` directory; every
 other row has its result files committed.
 
 Symmetry under boosts was tested on smaller models, trained for 8 epochs on
@@ -267,8 +273,10 @@ python -m benchmarks.run_top_tagging --cache-dir data --representation constitue
 ```bash
 # The headline configuration, one seed: 4.1 hours on a Kaggle T4 with --compile.
 # For the 60-epoch model use --epochs 60 (8.6 hours) and raise --max-seconds to
-# about 39000; add --pair-lab --keep-best for the current best models
-# (notebooks/kaggle_k64_pairlab60_seeds01.ipynb, two seeds in one two-T4 kernel).
+# about 39000; add --pair-lab --keep-best for the pair-feature runs
+# (notebooks/kaggle_k64_pairlab60_seeds01.ipynb, two seeds in one two-T4 kernel);
+# the current best models continue both to 120 epochs
+# (notebooks/kaggle_k64_pairlab120_seeds01.ipynb, --epochs 120 --resume on their checkpoints).
 # The best beams-only model continues the 60-epoch run to 120 epochs
 # (notebooks/kaggle_k64_headline120_seed0.ipynb: --epochs 120 --resume on its checkpoint). A P100 falls back to eager; its time with the
 # rewritten forward pass has not been measured.
@@ -340,6 +348,7 @@ in the infrastructure table of [`SO3C_STATUS.md`](SO3C_STATUS.md).
 | [`so3c_notes/`](so3c_notes/) | Research notes and the related-work survey |
 | `results_message/`, `results_sweep/`, `results_long_seeds/`, `results_k64/`, `results_cleanup/`, `results_matched/`, `results_matched_canonical/`, `results_60ep/` | Committed results with per-jet test scores |
 | `results_kappa/`, `results_fixed/`, `results_boost/`, `results_scaling/`, `results_init/` | Committed result files, no per-jet scores |
+| `results_kcheck/` | Constituent-tail diagnostic: what K = 64 leaves out (`benchmarks/diag_constituent_tail.py`) |
 | `results_profile/` | GPU timing profiles and kernel logs |
 | `results_higgs_ablation/` | HIGGS feature-set ablation (matched bottleneck, three feature sets) |
 

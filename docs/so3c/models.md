@@ -147,8 +147,8 @@ particle and complex channel mixing
 ([theory.md §10](theory.md#10-covariant-message-passing-so3c_message_set)).
 The readout adds the masked mean and max of the scalar state, so its input is
 $11C+C(C+1)+2D+7=87$ features at the defaults. The best configuration measured
-so far is `beams=True, channels=8, pair_lab=True` at $K=64$, 60 epochs (0.98467
-for the better of two seeds); without `pair_lab`, `beams=True, channels=8`
+so far is `beams=True, channels=8, pair_lab=True` at $K=64$, 60 epochs continued
+to 120 (0.98460 over two seeds, 0.98480 for the better one); without `pair_lab`, `beams=True, channels=8`
 trained for 60 epochs and continued to 120 (0.98392; [experiments.md, table A](experiments.md#a-canonical-top-tagging)).
 
 | Argument | Default | CLI flag | Meaning |
