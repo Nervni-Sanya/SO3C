@@ -115,7 +115,7 @@ The 30-epoch seeds, for the record:
 
 ## Open — candidates
 
-**Lead (2026-10-11, confirmed 2026-10-17): lab-frame pair features (`--pair-lab`).** Promoted on the probe protocol (+0.00051 against the pooled control, t = 5.9), confirmed at the K=32 long schedule (+0.00064, t = 6.8, free) and replicated at K=64 over 60 epochs (+0.00100 against a same-stack control, two runs each, Welch t = 3.5 on ≈1.7 degrees of freedom, p ≈ 0.1 on its own), where they give the current best models. Their four features (ln Δ, ln k_T, ln z, ln m²) have not been separated.
+**Lead (2026-10-11, confirmed 2026-10-17): lab-frame pair features (`--pair-lab`).** Promoted on the probe protocol (+0.00051 against the pooled control, t = 5.9), confirmed at the K=32 long schedule (+0.00064, t = 6.8, free) and replicated at K=64 over 60 epochs (+0.00100 against a same-stack control, two runs each, Welch t = 3.5 on ≈1.7 degrees of freedom, p ≈ 0.1 on its own), where they give the current best models. On the probe protocol (2026-10-18 ablation, three seeds per arm; window section) ln Δ, ln k_T and ln z alone recover all of the gain within errors (f = 1.05 ± 0.27, "carries the gain"), and ln m² alone about a third (f = 0.30 ± 0.16, unresolved). ln m² is nearly a linear combination of the three (≈ 2 ln k_T − ln z for massless pairs), so the ablation does not show that it carries none.
 
 Ranked literature and generic-ML candidates, every literature number checked against its paper's table: [`so3c_notes/gap_thesis.md`](so3c_notes/gap_thesis.md) and [`so3c_notes/gap_generic_ml.md`](so3c_notes/gap_generic_ml.md), with the 2026-10-06 audit's corrections applied. Their two measured leads were conditioning problems — round-0 inputs in asinh's linear range (about 95% of pair invariants below 0.1) and edge-tanh saturation in rounds 1–2 (61–84% of pre-activations beyond |x| > 2), with no normalisation layer in the network. Both were screened on 2026-10-05 and **neither moves AUC** (Closed table). The plan for the window opening 2026-10-10 is [`so3c_notes/plan_2026-10-10.md`](so3c_notes/plan_2026-10-10.md).
 
@@ -192,7 +192,27 @@ The arm is read unpaired against the two same-stack controls, with the 2.10 head
 - +0.00022 and +0.00013 against each run's own epoch 60 (+0.00018 on the mean), like the beams-only headline's +0.00029. These are the same runs continued, so they are not seed-to-seed comparisons. Rejection moved −107 and +118.
 - The lowest validation loss is at epoch 97 in both (0.15932 and 0.15690), and the best-validation weights score within 0.00002 AUC of the final ones (0.98438 and 0.98482).
 - Ensembles: the two 120-epoch seeds 0.98515 / 1421.9 (the best AUC); all four snapshots 0.98513 / 1473.8 (the best rejection).
-- Budget: 26.9 GPU-h used this window (9.01 + 9.22 + 8.68), about 3.1 h left.
+- Budget after the continuation: 26.9 GPU-h used this window (9.01 + 9.22 + 8.68).
+
+**Which pair features carry the gain (2026-10-18): the three lab-frame ones suffice; ln m² alone gives about a third.** The probe protocol, one two-card kernel draining a queue of eight runs (`probe_queue_ablation_pairlab`, (SO3C) `3f9d923`, 1.99 h; results `results_message/repr_screen/ablation/`): `--pair-lab-set frame` (ln Δ, ln k_T, ln z) and `--pair-lab-set mass` (ln m² alone), three seeds each, then one full `--pair-lab` run and one control at seed 3 as in-kernel anchors. Read unpaired against all seven probe controls and all four full `--pair-lab` runs, by a rule fixed before the push: f = (arm − control) / (full − control) is the fraction of the gain recovered; "carries the gain" if f ≥ 0.7 and the arm beats the control at p < 0.05; "carries none" if f ≤ 0.3 and it is below the full set at p < 0.05.
+
+| probe protocol, K=32, 20 epochs | runs | params | AUC | 1/ε_B@0.3 |
+|---|---|---|---|---|
+| control (10-05, `base1010`, this kernel) | 7 | 22,834 | 0.98106 ± 0.00009 | 804.7 |
+| all four pair features (10-10, this kernel) | 4 | 23,026 | 0.98150 ± 0.00022 | 815.1 |
+| **ln Δ, ln k_T, ln z** | 3 | 22,978 | **0.98153 ± 0.00004** | 856.5 |
+| ln m² alone | 3 | 22,882 | 0.98119 ± 0.00010 | 836.2 |
+
+- **The lab-frame three recover all of the gain within errors:** +0.00047 against the control (Welch t = 12, df ≈ 7.9, p < 0.001), +0.00002 against the full set (p = 0.84); f = 1.05 ± 0.27 (0.87 ± 0.15 against the earlier references only), "carries the gain".
+- **ln m² alone recovers about a third:** +0.00013 against the control (p = 0.12), −0.00031 against the full set (p = 0.061); f = 0.30 ± 0.16. That is "unresolved" by the rule, on its edge: f is at the 0.3 line and the shortfall misses p < 0.05.
+- With the earlier references only, without this kernel's anchors, f = 0.87 for the lab-frame three and 0.21 for ln m² (whose shortfall against the full set then reaches p = 0.021, which by itself would read "carries none").
+- The anchors came out low: the full set 0.98123 (−0.00037 against its earlier mean), the control 0.98090 (−0.00018). One run each cannot separate a low seed from a kernel offset. Inside this kernel the lab-frame three are +0.00063 and ln m² +0.00029 above the control anchor, and the full-set anchor is +0.00032 above it. Inside the kernel, then, ln m² is level with the full set (−0.00003) and the three are +0.00030 above it. If the anchors' offsets (−0.00018 to −0.00037) were a kernel offset, f would be 0.57–0.94 for ln m² and 1.22–1.59 for the three. The three's best validation loss (0.17118, level with the earlier full runs' 0.17103) argues against a kernel-wide offset, so the anchors more likely reflect seed 3, which they share; one run each cannot show it.
+- The full set's gain is +0.00045 here, not the +0.00051 of the 10-10 screen, because the pooled references include this kernel's two low anchors.
+- Batch orders equal the controls' by seed; all eight runs completed (0.42–0.46 h each, two cards in parallel).
+
+**The two subsets overlap.** For massless constituents m²_ab = 2 p_Ta p_Tb (cosh Δy − cos Δφ) ≈ p_Ta p_Tb Δ², so ln m² ≈ 2 ln k_T − ln z + ln(1 − z): the three nearly contain ln m² (a linear fit of ln m² on them gives R² = 0.97 on 2.8M test-jet pairs; on ln Δ and ln z alone, R² = 0.49). So the three alone are expected to match the full set whatever ln m² contributes: their match says ln m² adds nothing on top of them, not that it carries none. What the ablation does separate: ln m² alone, the log of 2⟨p_a,p_b⟩ for massless constituents, recovers about a third. (The vector channel, which fed asinh⟨p_a,p_b⟩ to the edges, was null; asinh is linear where most pair products lie, so the log scale may be what counts.) The three, which carry the pair mass and also its split into lab-frame angle and momentum sharing, recover all of it, and beat ln m² alone by +0.00034 (Welch t = 5.6, df ≈ 2.6, p = 0.017). None of the four is an input of the base edges. An arm with ln Δ and ln z only, which cannot form ln m², would separate the angle and sharing from the mass scale. Measured on the probe protocol only, three seeds per arm, where the full gain is +0.0005 against +0.0010 at K=64.
+
+Budget: 28.9 GPU-h used this window (26.9 + 1.99), about 1.1 h left until the quota resets on Saturday 2026-10-24.
 
 ## GPU window 2026-10-10 → 2026-10-17 (closed)
 
@@ -324,7 +344,7 @@ This agrees with L-GATr's Table 3: lab-frame particle features add nothing once 
 - Each seed's batch order equals the fresh control's.
 - Cost: 23,026 parameters (+192); training time 1.04–1.13× the fresh control's per seed on the T4 (`walltime_sec`), against 1.50× per step on the CPU; kernel 1.49 h (log span).
 
-This is the largest gain on the probe protocol since the beams (+0.0023). Our edges already see the pair invariants s_ab, compressed by asinh. R3 adds four log-scaled features: three lab-frame ones (ln Δ, ln k_T, ln z), which need the beams to define y, φ and p_T, and ln m²_ab, a direct ⟨p_a,p_b⟩ that the edges otherwise see only inside Re z_a·z_b = ⟨p_a,P⟩⟨p_b,P⟩ − ⟨p_a,p_b⟩M². One arm cannot say which carries the gain. The log knee (log-compressed s_ab) and the vector channel (asinh⟨p_a,p_b⟩ on the edges) were both null, which points to the lab-frame three, but that is not measured. Whether the gain survives the long schedule is phase 2.
+This is the largest gain on the probe protocol since the beams (+0.0023). Our edges already see the pair invariants s_ab, compressed by asinh. R3 adds four log-scaled features: three lab-frame ones (ln Δ, ln k_T, ln z), which need the beams to define y, φ and p_T, and ln m²_ab, a direct ⟨p_a,p_b⟩ that the edges otherwise see only inside Re z_a·z_b = ⟨p_a,P⟩⟨p_b,P⟩ − ⟨p_a,p_b⟩M². One arm could not say which carries the gain. The 2026-10-18 ablation (window section 2026-10-17 → 2026-10-24) found, on the probe, that the lab-frame three recover all of it within errors and ln m² alone about a third (unresolved). Because ln m² ≈ 2 ln k_T − ln z for massless pairs, it does not fully separate them. Whether the gain survives the long schedule is phase 2.
 
 **Reading R2 and R3.** Their notebooks print deltas against the stored 10-05 control by seed. The plan's letter reads them against `base1010` by seed, and the fingerprint confirms the batch order. On this stack that is an unpaired comparison too, so the pooled six-run control is read alongside it.
 

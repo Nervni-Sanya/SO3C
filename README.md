@@ -51,7 +51,10 @@ K = 32 over 60 epochs (+0.00064, t = 6.8). Training time is about the control's
 (0.98–1.08×). The features are ParT's ln Δ, ln k_T, ln z and ln m² on every pair
 of distinct constituents (zero on the diagonal and on beam and padding edges), written in Minkowski products
 of the constituents with each other and with the beams, so the model stays
-exactly covariant when the beams move with the jet. Continuing both runs to 120 epochs added
+exactly covariant when the beams move with the jet. An ablation on the short probe
+(three seeds per arm) finds that ln Δ, ln k_T and ln z alone recover the gain
+within errors and ln m² alone about a third (unresolved); since ln m² is nearly
+2 ln k_T − ln z for massless pairs, the two subsets are not fully separated. Continuing both runs to 120 epochs added
 +0.00018 AUC on the mean. The gap to PELICAN is now 0.0018 AUC and a factor 1.58
 in rejection for the two-seed ensemble (0.0024 and 1.73 for the two-seed mean).
 PELICAN's 3,000-parameter model (0.9850 / 1494 ± 43) beats the best single run

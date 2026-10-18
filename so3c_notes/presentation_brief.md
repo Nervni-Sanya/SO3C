@@ -121,7 +121,17 @@ AUC column shows it well.
      extra overfitting at K=32, while at K=64 the validation − train gap is a
      little larger (0.0048–0.0053 against 0.0039–0.0042 at epoch 60) and grows
      to 0.0067–0.0068 by epoch 120.
-   Which of the four features carries the gain is not known.
+   Which features carry it (probe-protocol ablation, 2026-10-18, three runs per
+   arm against seven controls and four full-feature runs): ln Δ, ln k_T and
+   ln z alone recover all of the gain within errors (+0.00047 against +0.00045
+   for the four once that kernel's runs are pooled, p < 0.001 against the
+   control). ln m² alone recovers about a third (+0.00013, p = 0.12,
+   unresolved). ln m² is almost a combination of the other three
+   (≈ 2 ln k_T − ln z for massless pairs; R² = 0.97 on real jet pairs). The
+   three beat ln m² alone by +0.00034 (p = 0.017), which suggests that each
+   pair's lab-frame angle and momentum sharing add to its mass; it does not
+   show that the mass carries none. Measured on the
+   short probe only.
 4. **A reproducibility lesson** (useful for an ML audience). On Kaggle's T4 with
    torch 2.11 and `torch.compile`, the same seed and the same code in two
    kernels give different training runs: with equal batch order (checked by a

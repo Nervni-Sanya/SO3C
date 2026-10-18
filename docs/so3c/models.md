@@ -256,6 +256,8 @@ Parameter counts are on the headline configuration.
 | `lab_scalars=True` | `--lab-scalars` | 22,890 | ParT's seven particle features in the scalar initialisation |
 | `pair_lab=True` | `--pair-lab` | 23,026 | ParT's four interaction features on the edges; dense graph only |
 | both | both flags | 23,082 | |
+| `pair_lab=True, pair_lab_set="frame"` | `--pair-lab --pair-lab-set frame` | 22,978 | only ln Δ, ln k_T, ln z (ablation, 2026-10-18) |
+| `pair_lab=True, pair_lab_set="mass"` | `--pair-lab --pair-lab-set mass` | 22,882 | only ln m² (ablation, 2026-10-18) |
 
 On the CPU (K=32, batch 256, float32) `lab_scalars` costs 0.98×, `pair_lab`
 1.50× and both 1.53× the headline per step. On the T4 (probe protocol)

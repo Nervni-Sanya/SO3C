@@ -427,7 +427,8 @@ representation screen ([`so3c_notes/plan_2026-10-10.md`](../../so3c_notes/plan_2
 §3, R2 and R3; screened on 2026-10-10: `lab_scalars` closed at the probe
 level (ΔAUC +0.00004), `pair_lab` promoted to the long schedule (+0.00055 by
 seed, +0.00051 unpaired), where it gave +0.00064 at $K=32$,
-and +0.00100 at $K=64$ ([`SO3C_STATUS.md`](../../SO3C_STATUS.md)). They give the network ParT's lab-frame
+and +0.00100 at $K=64$ ([`SO3C_STATUS.md`](../../SO3C_STATUS.md)). `lab_scalars` and
+`pair_lab` give the network ParT's lab-frame
 features. Both need the beams, because every lab-frame quantity is written in
 Minkowski products with them. With $b_\pm=E_b(1,0,0,\pm1)$,
 $\langle p,b_\mp\rangle/E_b=E\pm p_z$ and $\langle b_+,b_-\rangle=2E_b^2$, so
@@ -454,6 +455,14 @@ features stay finite at $p_T\to0$, on padding and for collinear pairs.
   $\ln z=\ln\big(\min(p_{Ta},p_{Tb})/(p_{Ta}+p_{Tb})\big)$ and $\ln m^2_{ab}$. They
   are computed once per jet and are zero on the diagonal and on every pair
   that involves padding or a beam node.
+  An ablation on the probe protocol (2026-10-18, `pair_lab_set`, three seeds
+  per arm) finds that $\ln\Delta$, $\ln k_T$ and $\ln z$ alone recover the gain
+  within errors (+0.00047 against +0.00045 for the four, both against the
+  seven pooled controls; the four's +0.00051 falls to +0.00045 once that
+  kernel's two low anchors are pooled), and $\ln m^2$ alone about a third
+  (+0.00013, unresolved). For massless constituents
+  $m^2_{ab}\approx p_{Ta}p_{Tb}\Delta^2_{ab}$, so
+  $\ln m^2\approx 2\ln k_T-\ln z+\ln(1-z)$ and the three nearly contain it.
 
 `beam_energy` ($E_b$, default 1 in the normalised input units, about 47 GeV at
 $K=32$) has been a CLI flag since the same day (`--beam-energy`, R1). It sets
