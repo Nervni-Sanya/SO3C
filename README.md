@@ -2,6 +2,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![DOI](https://zenodo.org/badge/1373346556.svg)](https://doi.org/10.5281/zenodo.23448864)
 
 > **Scope.** This repository is SO3C only. The SO(3,3) activation it grew out
 > of — the `so33` package, its preprint and its own benchmarks — lives in a
