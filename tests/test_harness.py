@@ -351,6 +351,50 @@ def test_compile_matches_eager_and_keeps_checkpoint_keys(tmp_path) -> None:
     assert runs["compiled"][2] == 3, "resume under compile did not continue"
 
 
+def test_compile_check_falls_back_to_eager_or_stops(monkeypatch) -> None:
+    """The first-batch check against eager: a compiled model within
+    COMPILE_FALLBACK trains compiled; one off by more (float32 rounding through
+    badly conditioned inputs) trains eager instead of stopping the run; one off
+    by more than COMPILE_LIMIT stops it. The record says which happened."""
+    import benchmarks.train as T
+    split = _tiny_split()
+
+    class OffBy(nn.Module):                               # shares the model's weights
+        def __init__(self, model, rel):
+            super().__init__()
+            self.inner, self.rel = model, rel
+
+        def forward(self, x):
+            return self.inner(x) * (1.0 + self.rel)
+
+        def regularization_loss(self):                    # as torch.compile's wrapper forwards it
+            return self.inner.regularization_loss()
+
+    def run(rel):
+        def fake_compile(model, backend=None):
+            return OffBy(model, rel)
+        monkeypatch.setattr(T.torch, "compile", fake_compile)
+        torch.manual_seed(0)
+        return T.train_classifier(_small_model(), split.X_train, split.y_train,
+                                  split.X_val, split.y_val,
+                                  TrainConfig(epochs=1, batch_size=32, seed=0, compile=True,
+                                              compile_backend="aot_eager"))
+
+    ok = run(0.0)
+    assert ok.compile_check["used"] == "compiled" and ok.compile_check["d_logit"] == 0.0
+    slow = run(3 * T.COMPILE_FALLBACK)
+    assert slow.compile_check["used"] == "eager-fallback"
+    assert abs(slow.compile_check["d_logit"] - 3 * T.COMPILE_FALLBACK) < 1e-6
+    # eager trains the same function as the plain eager run
+    torch.manual_seed(0)
+    eager = T.train_classifier(_small_model(), split.X_train, split.y_train,
+                               split.X_val, split.y_val,
+                               TrainConfig(epochs=1, batch_size=32, seed=0))
+    assert slow.history == eager.history and eager.compile_check is None
+    with pytest.raises(RuntimeError):
+        run(3 * T.COMPILE_LIMIT)
+
+
 def test_keep_best_holds_the_lowest_val_loss_weights() -> None:
     """keep_best returns the weights of the epoch with the lowest validation
     loss -- reproducing that loss exactly -- and not merely the last ones.

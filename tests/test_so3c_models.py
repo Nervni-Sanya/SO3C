@@ -1252,6 +1252,50 @@ def test_pair_lab_permutation_invariant_and_guards() -> None:
         SO3CMessageSetClassifier(channels=4, rounds=2, beams=True, pair_lab=True, neighbors=4)
 
 
+def test_pair_lab_with_pair_latent_and_width() -> None:
+    """Window 2026-10-24: --pair-lab on top of the pair latent and of w64s24.
+    The four features reach the edge layer and, with the pair latent, its
+    initial state E (pair_init reads the same edge input); the parameter
+    count grows by exactly that; the model stays exactly covariant with the
+    beams moved along, invariant under a rotation about the beam axis and
+    under relabelling the constituents."""
+    p4, mask, _ = _lab_jets()
+    x = torch.cat([p4, mask[..., None]], -1)
+    count = lambda m: sum(q.numel() for q in m.parameters())
+    L = _lorentz([0.6, -0.4, 0.9], angle_z=0.7)
+    Rz = _lorentz([0.0, 0.0, 1e-30], angle_z=1.3)
+    perm = torch.tensor([3, 0, 8, 5, 1, 7, 2, 6, 4])
+    for kw, hid, extra in (({"pair_latent": 3}, 16, 4 * 3),
+                           ({"act_hidden": 32, "msg_dim": 12, "scalar_dim": 12}, 32, 0)):
+        without, m = _lab_model(**kw), _lab_model(pair_lab=True, **kw)
+        assert count(m) - count(without) == 4 * hid * 2 + extra, kw   # 2 rounds
+        out = m(x)
+        assert torch.isfinite(out).all() and out.abs().max() > 1e-3, kw
+        torch.nn.functional.cross_entropy(out, torch.tensor([0, 1, 1, 0])).backward()
+        # every input column of every round's edge layer, and of the pair
+        # state's initialisation, reaches the loss: no block of the edge input
+        # (pair | lab | node | h | E) is mis-sliced into dead columns
+        o = m._n_pair_in
+        for r in range(m.rounds):
+            live = m.edge[r][0].weight.grad.abs().amax(0) > 0
+            assert live.all(), (kw, r, (~live).nonzero().flatten().tolist())
+            assert live[o - 4:o].all(), (kw, r)
+        if m.pair_latent:
+            assert (m.pair_init.weight.grad.abs().amax(0) > 0).all(), "E does not see pair_lab"
+        tol = 1e-9 * max(1.0, out.abs().max().item())
+        moved = _lab_model(pair_lab=True, **kw)
+        moved.load_state_dict(m.state_dict())
+        with torch.no_grad():
+            moved.beam_p4.copy_(m.beam_p4 @ L.T)
+            xb, xr = x.clone(), x.clone()
+            xb[..., :4] = (p4 @ L.T) * mask[..., None]
+            xr[..., :4] = (p4 @ Rz.T) * mask[..., None]
+            ref = m(x)
+            assert (moved(xb) - ref).abs().max() < tol, kw
+            assert (m(xr) - ref).abs().max() < tol, kw
+            assert (m(x[:, perm]) - ref).abs().max() < 1e-10 * max(1.0, ref.abs().max().item()), kw
+
+
 def test_message_set_matches_golden() -> None:
     """Logits and parameter gradients equal those of the implementation the
     published numbers were measured with, for every switch combination.

@@ -1,6 +1,6 @@
 # SO3C status
 
-Last updated 2026-10-18. This is the single place to start from. Commit hashes point at the evidence for every number. Hashes of work from before the snapshot (2026-09-16) are commits in the **so33** repository this one was split from; hashes of later work, some marked **(SO3C)**, are commits in this repository; `git cat-file -t <hash>` tells which (see [Provenance](#provenance)).
+Last updated 2026-10-24. This is the single place to start from. Commit hashes point at the evidence for every number. Hashes of work from before the snapshot (2026-09-16) are commits in the **so33** repository this one was split from; hashes of later work, some marked **(SO3C)**, are commits in this repository; `git cat-file -t <hash>` tells which (see [Provenance](#provenance)).
 
 ## Scope and goal
 
@@ -132,7 +132,7 @@ Both are now switchable and default to the old behaviour: `--no-mass-input --no-
 
 ### Best-motivated architectural candidates
 
-- **Rank-2 pair latent** with a reduced Eq2→2 aggregator basis (7 of PELICAN's 15). PELICAN carries a [B,N,N,C] state through its blocks; we collapse pairs to nodes every round. The verified table-2 comparison — 1k PELICAN parameters match our 22.8k — is consistent with this being the dominant carrier. Outcome likely bimodal: a real step toward 1400–1800 rejection, or under +0.0005 if our flow already supplies it. **Implemented** as `--pair-latent N`: 3680 parameters at C_p = 8 on beams + channels 8, CPU cost 1.56x the headline, 1.64x combined with the vector channel and both fixes; on a T4 1.55x per step, an estimated ~7.7 h per 30-epoch seed at K=64 (~5.8 h compiled). Exactly Lorentz covariant (1.7e-16) and permutation invariant (0.0), with the 7 aggregator maps checked for permutation equivariance on their own. Screened on GPU on 2026-09-20 and replicated over three seeds: +0.00012 AUC by seed (paired t = 1.42; unpaired t = 1.2), not resolved. Agent estimate: screen at 20% data × 3 seeds ≈ 11 GPU-h.
+- **Rank-2 pair latent** with a reduced Eq2→2 aggregator basis (7 of PELICAN's 15). PELICAN carries a [B,N,N,C] state through its blocks; we collapse pairs to nodes every round. The verified table-2 comparison — 1k PELICAN parameters match our 22.8k — is consistent with this being the dominant carrier. Outcome likely bimodal: a real step toward 1400–1800 rejection, or under +0.0005 if our flow already supplies it. **Implemented** as `--pair-latent N`: 3680 parameters at C_p = 8 on beams + channels 8, CPU cost 1.56x the headline, 1.64x combined with the vector channel and both fixes; on a T4 1.55x per step, an estimated ~7.7 h per 30-epoch seed at K=64 (~5.8 h compiled). Exactly Lorentz covariant (1.7e-16) and permutation invariant (0.0), with the 7 aggregator maps checked for permutation equivariance on their own. Screened on GPU on 2026-09-20 and replicated over three seeds: +0.00012 AUC by seed (paired t = 1.42; unpaired t = 1.2), not resolved. Agent estimate: screen at 20% data × 3 seeds ≈ 11 GPU-h. On top of `--pair-lab` at the K=32 long schedule: the first run of the 2026-10-24 window (`long_pairlatlab211_seeds01`).
 - **A vector channel alongside the bivector.** Two reasons, one measured elsewhere and one structural:
   - arXiv:2606.21790 (abstract, verified) finds that in L-GATr "bivector channels are negligible for top-quark tagging while vector-like channels are dominant". The LLoCa (2505.20280) and slim L-GATr (2512.17011) abstracts do not address grades; their bodies are unchecked.
   - Our lift `z_a = bivec(p_a, P)` is **unchanged under p_a → p_a + λP**, so it discards each constituent's component along the jet axis (**correction, 2026-10-05:** for the massless constituents of this dataset p_a² = 0 fixes that component, and z_a·z_a = ⟨p_a,P⟩², M² = Σ⟨p_a,P⟩ and Re z_a·z_b recover every ⟨p_a,p_b⟩, so the lift loses no information; `so3c_notes/gap_thesis.md` §3). The scalar channel recovers ⟨p_a, P⟩ only as an invariant. A covariant vector v_a = p_a keeps it — the same kind of missing-information problem that beams fixed. **Implemented** as `--vector-channel`: 531 parameters on beams + channels 8, CPU cost 1.10x the headline, exactly covariant to 7e-15 with and without beams, and the vector update moves the logits by 7e-2 to 9e-2. Screened on GPU on 2026-09-20 and replicated over three seeds: −0.00002 AUC by seed, bounded near zero if those runs pair (paired differences sd 0.00006; read unpaired, the 95% bound is about ±0.00035).
@@ -149,7 +149,23 @@ Both are now switchable and default to the old behaviour: `--no-mass-input --no-
 
 Full agent text: `so3c_notes/gap_to_sota_2026-09-13.md`. Three of the workflow's six agents failed on the usage limit, so the findings there are unranked.
 
-## GPU window 2026-10-17 → 2026-10-24 (in progress)
+## GPU window 2026-10-24 → 2026-10-31 (in progress)
+
+**Two structural candidates on top of `--pair-lab`, at the K=32 long schedule.** Both keep all four pair features (`--pair-lab-set all`, as every pair-feature result so far). Each runs seeds 0 and 1 in one two-card kernel (`build_long_dual`, `LONG_DUAL_RUNS`) on the pinned T4 / torch 2.11 setup, and is read unpaired against `pairlab211` (the same command without the arm's own flags) and `base211`. Run order: the pair latent first, then width.
+
+| kernel | arm | params | estimated kernel time |
+|---|---|---|---|
+| `long_pairlatlab211_seeds01` | `--keep-best --pair-lab --pair-latent 8`: PELICAN-style rank-2 pair state carried through the rounds | 26,738 | ~4.4–5.7 h (pairlab211 took 3.30–3.35 h; the pair latent costs 1.29–1.36× on the probe protocol, 1.49× per epoch at K=64; two cards in parallel cost 1.00–1.04× at K=32) |
+| `long_w64s24lab211_seeds01` | `--keep-best --pair-lab --act-hidden 64 --msg-dim 24 --scalar-dim 24` | 61,602 | ~4.3–5.2 h (w64s24 took 4.39 h here on torch 2.10) |
+
+**Decision rule** (fixed before the push, final weights, `LONG_DUAL_RULE`): against pairlab211's two runs (0.98310, 0.98300), an arm **pays**, and goes to a K=64 confirmation, if its two-run mean gains at least +0.0003 AUC and both its runs lie above both pairlab211 runs. It **closes** if the mean gains nothing (≤ 0); otherwise it is unresolved. Rejection, the best-validation weights and the validation − train gap are reported but do not decide. For scale: the pooled within-configuration sd of the AUC at this schedule is 0.00021 (6 df, `results_long_seeds`), so two runs against two give the difference an SE of about 0.0002; pairlab211's two runs differ by only 0.00010. `--pair-lab` itself gained +0.00064 here. The close line sits as far below the pays line as that sits above zero: a review estimated that the +0.0001 line of earlier rules would close a real +0.0003 about one time in six. The pays clause has a false-positive rate of about 6–9% and 46% power at a true +0.0003 (80% at +0.0005), acceptable for a gate followed by a K=64 confirmation. The notebook prints Welch t on the runs' own spread and also t against the pooled sd, since two runs' sample sd can be far from it. The two arm runs share a kernel, so a per-kernel offset would move both; a PAYS is weaker evidence than two independent kernels would give.
+
+- Checked before the push: both commands are pairlab211's plus exactly the arm's flags, the width flags as in the committed w64s24 run (`test_long_two_card_arms_are_pairlab211_plus_their_flags`). `--pair-lab` combined with the pair latent and with w64s24 stays exactly covariant with the beams moved along and invariant under rotations about the beam axis and under relabelling, and its features reach both the edge layer and the pair state's initialisation (`test_pair_lab_with_pair_latent_and_width`). CPU replays of each notebook's own cells passed with both seeds in parallel, with seed 1 failing, and with one card. The smoke runs each seed on its own card, so both seeds' initial weights pass the compile check before the long runs start.
+- **Compile check (`benchmarks/train.py`).** Before training, the compiled model is compared with eager on the first batch. A relative logit difference above 1e-3 used to stop the run. The largest in the committed Kaggle logs is 2.8e-4 (pair-lab runs 8e-5 to 2.6e-4). A float32-versus-float64 proxy put `--pair-lab` with the pair latent or w64s24 at 2e-4 to 1e-3, driven by the logs of near-collinear pairs. Between 1e-3 and 1e-2 the run now trains eager (the reference function, about 1.3× slower) instead of stopping; above 1e-2 it still stops. Every result records what happened as `compile_check`.
+- Cost of a K=64 confirmation if an arm pays: the 60-epoch `--pair-lab` two-card kernel took 9.22 h. Scaling by the measured per-epoch ratios (pair latent 702/470 s, w64s24 6.72/4.10 h over 30 epochs) gives about 13.8 h for the pair latent and 15.1 h for w64s24. Either exceeds the 12 h session cap, so it needs a two-card finish kernel that mounts the first kernel's output (as `build_k64_continuation_dual` does); none exists yet. That is about 14–16 GPU-h for two seeds.
+- Budget: ~9–11 GPU-h for the two kernels, leaving ~19–21 h: enough for one K=64 confirmation, not two.
+
+## GPU window 2026-10-17 → 2026-10-24 (closed)
 
 **First run: the lab-frame pair features at K=64**, the protocol the headline numbers are measured on, with a same-stack control. Two kernels, pushed when the quota resets on Saturday 10-17:
 
@@ -212,7 +228,7 @@ The arm is read unpaired against the two same-stack controls, with the 2.10 head
 
 **The two subsets overlap.** For massless constituents m²_ab = 2 p_Ta p_Tb (cosh Δy − cos Δφ) ≈ p_Ta p_Tb Δ², so ln m² ≈ 2 ln k_T − ln z + ln(1 − z): the three nearly contain ln m² (a linear fit of ln m² on them gives R² = 0.97 on 2.8M test-jet pairs; on ln Δ and ln z alone, R² = 0.49). So the three alone are expected to match the full set whatever ln m² contributes: their match says ln m² adds nothing on top of them, not that it carries none. What the ablation does separate: ln m² alone, the log of 2⟨p_a,p_b⟩ for massless constituents, recovers about a third. (The vector channel, which fed asinh⟨p_a,p_b⟩ to the edges, was null; asinh is linear where most pair products lie, so the log scale may be what counts.) The three, which carry the pair mass and also its split into lab-frame angle and momentum sharing, recover all of it, and beat ln m² alone by +0.00034 (Welch t = 5.6, df ≈ 2.6, p = 0.017). None of the four is an input of the base edges. An arm with ln Δ and ln z only, which cannot form ln m², would separate the angle and sharing from the mass scale. Measured on the probe protocol only, three seeds per arm, where the full gain is +0.0005 against +0.0010 at K=64.
 
-Budget: 28.9 GPU-h used this window (26.9 + 1.99), about 1.1 h left until the quota resets on Saturday 2026-10-24.
+Budget: 28.9 GPU-h used this window (26.9 + 1.99); the last ~1.1 h was not used.
 
 ## GPU window 2026-10-10 → 2026-10-17 (closed)
 
@@ -608,7 +624,7 @@ GPU used this window: ~9.2 h (screen) + 5.2 h (headline seed 2) + ~0.7 h (profil
 
 - The K=32 probe protocol (400k train jets, 20 epochs) costs 0.6–1.2 h per row.
 - Kaggle's T4 sessions have **two** T4s and charge quota per session hour. Two seeds run in parallel in one kernel, one per card, at 500–541 s per epoch at K=64 against 475–492 s alone (`build_k64_dual`, 2026-10-17): a 60-epoch K=64 seed costs about 4.6 GPU-h of quota instead of 8–9 h.
-- Quota is 30 GPU-h per week, resetting on Saturday. The current window is [2026-10-17 → 2026-10-24](#gpu-window-2026-10-17--2026-10-24-in-progress).
+- Quota is 30 GPU-h per week, resetting on Saturday. The current window is [2026-10-24 → 2026-10-31](#gpu-window-2026-10-24--2026-10-31-in-progress).
 - Rows not marked T4 are P100 wall clock on the old forward pass. Since `47ec4ad` the per-epoch cost is about half; the T4 profiles are in the 2026-09-19 GPU-window section and in `docs/so3c/experiments.md` (table O).
 
 ## Provenance

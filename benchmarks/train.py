@@ -63,6 +63,9 @@ class TrainResult:
     # instead of inferring it from losses.
     batch_order_epoch1:  str | None = None
     batch_order_chain:   str | None = None
+    # what --compile did: the first-batch check against eager and the model
+    # that trained ("compiled", "eager-fallback" or "skipped"); None without it
+    compile_check:   dict[str, Any] | None = None
     history:         list[dict[str, float]] = field(default_factory=list)
     config:          dict[str, Any] = field(default_factory=dict)
 
@@ -120,23 +123,35 @@ def lorentznet_lr_factor(epoch: int, total_epochs: int, warmup: int = 4,
     return gamma ** (epoch - (warmup + span) + 1)
 
 
+# Limits of the first-batch check, relative to the largest eager logit and
+# gradient. Past COMPILE_LIMIT the compiled model has diverged and the run
+# stops. Between COMPILE_FALLBACK and COMPILE_LIMIT the likely cause is
+# float32 rounding through badly conditioned inputs, such as pair_lab's logs
+# of near-collinear pairs: the largest d logit in the committed Kaggle logs is
+# 2.8e-4, but a float32-vs-float64 proxy put pair_lab with the pair latent or
+# with w64s24 at 2e-4 to 1e-3 (2026-10-24). The run then trains eager -- the
+# reference function -- instead of stopping, at about 1.3x the time.
+COMPILE_FALLBACK, COMPILE_LIMIT = 1e-3, 1e-2
+
+
 def _maybe_compile(model, device, cfg, sample):
     """torch.compile(model), or the model unchanged when that cannot help.
 
     Triton needs compute capability 7.0+, so a P100 (sm_60) stays eager.
     Before training, the compiled model is checked against the eager one on
     one real batch, in value and in gradient: a silent divergence here would
-    be invisible in the results and expensive.
+    be invisible in the results and expensive. Returns (model, record), the
+    record saying which model trains and what the check measured.
     """
     if device.type != "cuda":
         if cfg.compile_backend == "inductor":
             print("[compile] skipped: not CUDA")
-            return model
+            return model, {"used": "skipped", "reason": "not CUDA"}
     elif torch.cuda.get_device_capability(device)[0] < 7:
         print("[compile] skipped: %s is sm_%d%d, Triton needs sm_70+"
               % (torch.cuda.get_device_name(device),
                  *torch.cuda.get_device_capability(device)))
-        return model
+        return model, {"used": "skipped", "reason": "sm < 70"}
     compiled = torch.compile(model, backend=cfg.compile_backend)
     x = sample.to(device)
     out_e = model(x)
@@ -150,10 +165,15 @@ def _maybe_compile(model, device, cfg, sample):
     d_grad = max((a - b).abs().max().item() for a, b in zip(g_c, g_e)) / max(gs, 1e-12)
     print("[compile] backend=%s, first batch: max |d logit| %.1e, "
           "max |d grad| %.1e (relative)" % (cfg.compile_backend, d_out, d_grad))
-    if d_out > 1e-3 or d_grad > 1e-2:
+    record = {"backend": cfg.compile_backend, "d_logit": d_out, "d_grad": d_grad}
+    if d_out > COMPILE_LIMIT or d_grad > COMPILE_LIMIT:
         raise RuntimeError("compiled model differs from eager: "
                            "d_logit %.2e, d_grad %.2e" % (d_out, d_grad))
-    return compiled
+    if d_out > COMPILE_FALLBACK:
+        print("[compile] d logit %.1e is over %.0e: training eager instead"
+              % (d_out, COMPILE_FALLBACK))
+        return model, dict(record, used="eager-fallback")
+    return compiled, dict(record, used="compiled")
 
 
 def train_classifier(
@@ -183,8 +203,9 @@ def train_classifier(
     # state_dict keys carry an "_orig_mod." prefix, so checkpoints must always
     # be written and read through this one, never through the wrapper.
     base_model = model
+    compile_check = None
     if cfg.compile:
-        model = _maybe_compile(model, device, cfg, X_train[:cfg.batch_size])
+        model, compile_check = _maybe_compile(model, device, cfg, X_train[:cfg.batch_size])
 
     X_train = X_train.to(device)
     y_train = y_train.to(device)
@@ -417,6 +438,7 @@ def train_classifier(
         best_epoch      = best_epoch,
         batch_order_epoch1 = order_epoch1,
         batch_order_chain  = order_chain,
+        compile_check   = compile_check,
         history         = history,
         config          = asdict(cfg),
     )

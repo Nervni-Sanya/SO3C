@@ -245,6 +245,15 @@ batch order was not checked directly, though the long-schedule weight-decay
 runs (2.11) tracked their 2.10 counterparts seed by seed; the 2.11 base at the
 long schedule did not (`SO3C_STATUS.md`, phase 2).
 
+With `--compile`, the compiled model is checked against eager on the first
+training batch before training starts. Since 2026-10-24 the result records
+the outcome as `compile_check`: the relative logit and gradient differences
+and which model trained. Above 1e-2 in either, the run stops. A logit
+difference between 1e-3 and 1e-2 is taken as float32 rounding through badly
+conditioned inputs, such as `pair_lab`'s logs of near-collinear pairs, and the
+run trains eager (`"eager-fallback"`, about 1.3× slower) instead of stopping.
+The largest difference in the committed Kaggle logs is 2.8e-4.
+
 ### Lab-frame features (added and screened 2026-10-10)
 
 Off by default; both need `beams=True`

@@ -3035,6 +3035,307 @@ for seed in SEEDS:
     return name
 
 
+# Window 2026-10-24: two structural candidates on top of --pair-lab (all four
+# features) at the K=32 long schedule, seeds 0 and 1 in one two-card kernel
+# each, read unpaired against pairlab211 (the same command without the
+# candidate's flags; one single-card kernel per seed, 3.30 and 3.35 h). Run
+# order: the pair latent first (PELICAN's rank-2 pair state, the structural
+# candidate aimed at the remaining gap; +0.00012 by seed on the probe
+# protocol), then width (w64s24; at this schedule without --pair-lab, torch
+# 2.10, seed 0: 0.98286 against the base's 0.98261, 4.39 h).
+LONG_DUAL_RUNS = [
+    ("pairlatlab211", ["--keep-best", "--pair-lab", "--pair-latent", "8"], (0, 1)),
+    ("w64s24lab211", ["--keep-best", "--pair-lab", "--act-hidden", "64",
+                      "--msg-dim", "24", "--scalar-dim", "24"], (0, 1)),
+]
+
+# Decision rule, fixed before the push. On the final weights, the arm's runs
+# against pairlab211's two runs: it pays (confirm at K=64) if the mean gains
+# at least +0.0003 AUC and every run lies above both pairlab211 runs; close if
+# the mean gains nothing (<= 0); otherwise unresolved. Two runs against two,
+# unpaired, at a per-run sd of ~0.0002 give the difference an SE of ~0.0002,
+# so the close line sits 1.5 SE below the pays line as that sits above zero
+# (a +0.0001 close line, as in plan_2026-10-10 section 2, would close a real
+# +0.0003 about one time in six). Rejection, the best-validation weights and
+# the validation - train gap are reported but do not decide.
+LONG_DUAL_RULE = (0.0003, 0.0)
+
+
+def _long_pooled_sd() -> tuple[float, int]:
+    """Pooled within-configuration sd of the final test AUC at the K=32 long
+    schedule, and its degrees of freedom: every results_long_seeds
+    configuration with two or more complete runs."""
+    import math
+    ss, df = 0.0, 0
+    for d in sorted((ROOT / "results_long_seeds").iterdir()):
+        runs = [json.loads(f.read_text()) for f in sorted(d.glob("seed*/*.json"))]
+        a = [r["test_metrics"]["test_auc"] for r in runs if r["epochs_run"] == 60]
+        if len(a) > 1:
+            m = sum(a) / len(a)
+            ss += sum((x - m) ** 2 for x in a)
+            df += len(a) - 1
+    return math.sqrt(ss / df), df
+
+
+def _long_references() -> dict:
+    """The same-stack K=32 long runs a two-card arm is read against:
+    pairlab211 and base211, seeds 0 and 1 each, final weights."""
+    refs = {}
+    for tag in ("pairlab211", "base211"):
+        rows = []
+        for f in sorted((ROOT / "results_long_seeds" / tag).glob("seed*/*.json")):
+            r = json.loads(f.read_text())
+            assert r["env"]["torch"] == "2.11.0+cu128" and r["epochs_run"] == 60, f
+            t, h = r["test_metrics"], r["history"][-1]
+            rows.append({"seed": r["seed"], "auc": t["test_auc"], "rej30": t["bg_rej_30"],
+                         "val_loss": h["val_loss"], "gap": h["val_loss"] - h["train_loss"],
+                         "hours": r["walltime_sec"] / 3600, "params": r["n_params"],
+                         "order": r["batch_order"]["epoch1"]})
+        refs[tag] = rows
+    assert [[x["seed"] for x in v] for v in refs.values()] == [[0, 1], [0, 1]], refs
+    return refs
+
+
+def build_long_dual(blob: str, tag: str, flags: list[str],
+                    seeds: tuple[int, ...] = (0, 1)) -> str:
+    """Two seeds of one configuration at the K=32 long schedule, one per T4.
+
+    The command is build_long_seeds's (K=32, all 1.211M training jets, 60
+    epochs, beams + channels 8, compiled) plus ``flags``, on the pinned T4 /
+    torch 2.11 setup. As in build_k64_dual, a smoke test runs one epoch on
+    20k jets on both cards at once; the seeds run in parallel only if both
+    cards pass it, otherwise the first seed runs alone. Both get what is
+    left of an 11.2 h session budget as --max-seconds, minus a margin for
+    the final evaluation; a run that would overrun stops cleanly with a
+    checkpoint and is reported as incomplete. The summary reads the runs
+    against pairlab211 and base211 by LONG_DUAL_RULE.
+    """
+    import hashlib
+    bundle_sha = hashlib.sha256(blob.encode()).hexdigest()[:12]
+    base = ["--cache-dir", "DATA", "--representation", "constituents",
+            "--canonical-splits", "--normalize", "global", "--epochs", "60",
+            "--device", "cuda", "--dtype", "float32", "--batch-size", "256",
+            "--n-constituents", "32", "--eval-chunk-size", "2048",
+            "--models", "so3c_message_set", "--rounds", "3", "--beams",
+            "--channels", "8", "--compile"] + list(flags)
+    refs = _long_references()
+    pooled = _long_pooled_sd()
+    seeds_s = "".join(str(s) for s in seeds)
+    cells = [
+        md("""
+# Long schedule, two cards: %s, seeds %s
+
+K=32, all 1.211M training jets, 60 epochs, beams + channels 8 + %s, compiled,
+one seed per T4 in parallel. T4 with torch 2.11.0+cu128 pinned and asserted.
+Read unpaired against pairlab211 (the same command without the arm's own
+flags) and base211, seeds 0 and 1 each.
+""" % (tag, ", ".join(str(s) for s in seeds), " ".join(flags))),
+        code("""
+import subprocess, time
+T0 = time.time()
+print(subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total",
+                      "--format=csv,noheader"], capture_output=True,
+                     text=True).stdout.strip())
+"""),
+        code(UNPACK.format(blob=blob)),
+        code(RUNNER),
+        code(GPU_SETUP_T4_PINNED),
+        code(DUAL_LAUNCH),
+        code("""
+import glob, pathlib
+cands = glob.glob("/kaggle/input/**/top_tagging_train.npz", recursive=True)
+assert cands, "attach the K=128 data-prep kernel output"
+DATA = str(pathlib.Path(cands[0]).parent)
+TAG, SEEDS, EPOCHS = %r, %r, 60
+OUT = "/kaggle/working/results_long_seeds/" + TAG
+CKPT = "/kaggle/working/checkpoints/" + TAG
+LOGS = "/kaggle/working/logs/" + TAG
+BASE = %r
+BASE[BASE.index("DATA")] = DATA
+BUDGET = 11.2 * 3600          # the whole session, minus a margin under 12 h
+EVAL_MARGIN = 900             # final test evaluation and writing results
+for d in (OUT, LOGS):
+    pathlib.Path(d).mkdir(parents=True, exist_ok=True)
+pathlib.Path(OUT, "bundle_sha256.txt").write_text(%r + chr(10))
+print("data:", DATA, "| bundle", %r)
+""" % (tag, list(seeds), base, bundle_sha, bundle_sha)),
+        code("""
+# On-card guard: the forward pass must be the published function on this
+# GPU too, in float64. "1 passed" is required; a skip means no CUDA.
+import subprocess, sys
+g = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
+                    "tests/test_so3c_models.py", "-k", "golden_cuda"],
+                   cwd="/kaggle/working/repo", capture_output=True, text=True)
+print(g.stdout[-1500:], g.stderr[-1500:])
+assert "1 passed" in g.stdout, "golden guard did not pass on the card"
+"""),
+        code("""
+# Smoke on both cards at once, as the real runs will start, each card with
+# its own seed, so both seeds' initial weights go through the first-batch
+# compile check (on 20k jets' normalisation, not the full set's): one epoch
+# on 20k jets per card. Each must write a result.
+import glob, json, time
+smoke = []
+for i in range(min(NGPU, len(SEEDS))):
+    d = "/kaggle/working/smoke/%s/card%d" % (TAG, i)
+    smoke.append((d, launch(["benchmarks.run_top_tagging"] + BASE +
+                            ["--epochs", "1", "--max-train-samples", "20000",
+                             "--seed", str(SEEDS[i]), "--results-dir", d],
+                            i, LOGS + "/smoke_card%d.log" % i)))
+codes = [p.wait() for _, p in smoke]
+works = []
+for i, ((d, _), rc) in enumerate(zip(smoke, codes)):
+    found = glob.glob(d + "/*.json")
+    print("card %d: exit %d, result %s" % (i, rc, bool(found)))
+    if found:
+        r = json.load(open(found[0]))
+        print("   seed %d: %.0f s, AUC %.4f, %d params, compile %s, %s"
+              % (r["seed"], r["walltime_sec"], r["test_metrics"]["test_auc"], r["n_params"],
+                 r.get("compile_check"), r["env"]))
+        works.append(i)
+    else:
+        print(tail(LOGS + "/smoke_card%d.log" % i))
+assert works, "the smoke run failed on every card"
+PARALLEL = len(works) >= len(SEEDS)
+print("parallel:" if PARALLEL else "only card(s) %s work: seed %d alone" % (works, SEEDS[0]),
+      "seeds", SEEDS if PARALLEL else SEEDS[:1])
+"""),
+        code("""
+import glob, time
+todo = SEEDS if PARALLEL else SEEDS[:1]
+left = int(BUDGET - (time.time() - T0) - EVAL_MARGIN)
+print("%.2f h of session budget left for each run" % (left / 3600), flush=True)
+assert left > 3600, "not enough session left"
+procs = []
+for i, s in enumerate(todo):
+    gpu = i if PARALLEL else works[0]
+    procs.append((s, launch(["benchmarks.run_top_tagging"] + BASE +
+                            ["--seed", str(s), "--results-dir", OUT + "/seed%d" % s,
+                             "--ckpt-dir", CKPT + "/seed%d" % s,
+                             "--resume", "--max-seconds", str(left)],
+                            gpu, LOGS + "/seed%d.log" % s)))
+    print("seed %d on card %d" % (s, gpu), flush=True)
+BAD = []
+for s, p in procs:
+    rc = p.wait()
+    print("=== seed %d: exit %d ===" % (s, rc))
+    print(tail(LOGS + "/seed%d.log" % s, 2000))
+    if rc != 0 or not glob.glob(OUT + "/seed%d/*.json" % s):
+        BAD.append(s)
+# a failed seed is reported after the summary below, so the other seed's
+# result is still printed
+print("failed seeds:", BAD or "none")
+print("kernel time %.2f h" % ((time.time() - T0) / 3600))
+"""),
+        code("""
+# Every result against the same-stack long runs: pairlab211 (this command
+# without the arm's own flags) and base211, seeds 0 and 1 each. Same-seed
+# runs in different kernels do not reproduce on this stack, so the reading
+# is unpaired, by the rule fixed before the push (final weights): pays if
+# the mean gains >= %+.4f AUC on pairlab211 and every run lies above both
+# pairlab211 runs; close if it gains <= %+.4f; otherwise unresolved. The two
+# arm runs share a kernel, so a per-kernel offset would move both.
+import json, glob, math, statistics
+REFS, RULE = %r, %r
+POOLED_SD, POOLED_DF = %r   # within-configuration sd of the AUC at this schedule
+mean = statistics.mean
+done = []
+for f in sorted(glob.glob(OUT + "/seed*/*.json")):
+    r = json.load(open(f)); t = r["test_metrics"]; env = r["env"]; bo = r["batch_order"]
+    h = r["history"]; vl = [e["val_loss"] for e in h]
+    print("seed %%d: %%d epochs, %%.2f h (%%.0f s/epoch), %%d params | torch %%s on %%s | compile %%s"
+          %% (r["seed"], r["epochs_run"], r["walltime_sec"] / 3600,
+             r["walltime_sec"] / max(r["epochs_run"], 1), r["n_params"], env["torch"], env.get("gpu"),
+             r.get("compile_check")))
+    assert env["torch"] == "2.11.0+cu128" and "T4" in env.get("gpu", ""), env
+    ref = {x["seed"]: x for x in REFS["pairlab211"]}.get(r["seed"])
+    print("  batch order epoch 1 %%s: %%s pairlab211's at this seed"
+          %% (bo["epoch1"][:12], "same as" if ref and ref["order"] == bo["epoch1"] else "DIFFERENT from"))
+    print("  AUC %%.5f  rej@0.3 %%.1f  rej@0.5 %%.1f  final val loss %%.5f (lowest %%.5f at epoch %%d)  val - train %%+.5f"
+          %% (t["test_auc"], t["bg_rej_30"], t.get("bg_rej_50", float("nan")), vl[-1],
+             min(vl), h[vl.index(min(vl))]["epoch"], vl[-1] - h[-1]["train_loss"]))
+    if r.get("test_metrics_best_val"):
+        tb = r["test_metrics_best_val"]
+        print("  best-val weights (epoch %%d): AUC %%.5f, rej@0.3 %%.1f"
+              %% (r["best_val_epoch"], tb["test_auc"], tb["bg_rej_30"]))
+    if r["epochs_run"] < EPOCHS:
+        print("  INCOMPLETE (epoch %%d of %%d): stopped on the session budget; finish before reading"
+              %% (r["epochs_run"], EPOCHS))
+        continue
+    done.append({"auc": t["test_auc"], "rej30": t["bg_rej_30"], "val_loss": vl[-1],
+                 "gap": vl[-1] - h[-1]["train_loss"]})
+for name, rows in REFS.items():
+    print("%%-11s AUC %%s | rej@0.3 %%s | final val loss %%s | val - train %%s | %%s h"
+          %% (name, " ".join("%%.5f" %% x["auc"] for x in rows),
+             " ".join("%%.1f" %% x["rej30"] for x in rows),
+             " ".join("%%.5f" %% x["val_loss"] for x in rows),
+             " ".join("%%+.5f" %% x["gap"] for x in rows),
+             " ".join("%%.2f" %% x["hours"] for x in rows)))
+
+def p_two_sided(t, df):
+    try:
+        from scipy import stats
+        return 2 * stats.t.sf(abs(t), df)
+    except Exception:
+        return float("nan")
+
+def welch(a, b):
+    va, vb = statistics.variance(a) / len(a), statistics.variance(b) / len(b)
+    t = (mean(a) - mean(b)) / math.sqrt(va + vb)
+    df = (va + vb) ** 2 / (va ** 2 / (len(a) - 1) + vb ** 2 / (len(b) - 1))
+    return t, df, p_two_sided(t, df)
+
+def pooled(a, b):
+    # two runs' sample sd can be far from this schedule's spread (pairlab211's
+    # two runs differ by only 0.0001), so also against the pooled sd
+    t = (mean(a) - mean(b)) / (POOLED_SD * math.sqrt(1 / len(a) + 1 / len(b)))
+    return t, POOLED_DF, p_two_sided(t, POOLED_DF)
+
+if done:
+    a = [x["auc"] for x in done]
+    for name, rows in REFS.items():
+        b = [x["auc"] for x in rows]
+        line = "%%s (%%d runs) - %%s: dAUC %%+.5f, d rej@0.3 %%+.1f, d final val loss %%+.5f, d val - train %%+.5f" %% (
+            TAG, len(done), name, mean(a) - mean(b),
+            mean(x["rej30"] for x in done) - mean(x["rej30"] for x in rows),
+            mean(x["val_loss"] for x in done) - mean(x["val_loss"] for x in rows),
+            mean(x["gap"] for x in done) - mean(x["gap"] for x in rows))
+        if len(a) > 1:
+            line += " | Welch t %%.2f, df %%.1f, p %%.3f" %% welch(a, b)
+        line += " | against the pooled sd %%.5f: t %%.2f, df %%d, p %%.3f" %% ((POOLED_SD,) + pooled(a, b))
+        print(line)
+    ref = [x["auc"] for x in REFS["pairlab211"]]
+    d = mean(a) - mean(ref)
+    if len(done) < len(SEEDS):
+        verdict = "no verdict: %%d of %%d runs complete" %% (len(done), len(SEEDS))
+    elif d >= RULE[0] and min(a) > max(ref):
+        verdict = "PAYS: confirm at K=64"
+    elif d <= RULE[1]:
+        verdict = "CLOSE"
+    else:
+        verdict = "unresolved"
+    print("verdict (%%s against pairlab211, dAUC %%+.5f, runs above both pairlab211 runs: %%d of %%d): %%s"
+          %% (TAG, d, sum(x > max(ref) for x in a), len(a), verdict))
+assert not BAD, "seeds failed (exit code or no result): %%s" %% BAD
+""" % (LONG_DUAL_RULE[0], LONG_DUAL_RULE[1], refs, LONG_DUAL_RULE, pooled)),
+    ]
+    stem = "long_%s_seeds%s" % (tag, seeds_s)
+    name = "kaggle_%s.ipynb" % stem
+    _finalise(cells, NB_DIR / name)
+    slug = "long-%s-seeds%s" % (tag.replace("_", "-"), seeds_s)
+    meta = {
+        "id": "nsanya/so3c-" + slug,
+        "title": "SO3C long %s seeds%s" % (tag, seeds_s),
+        "code_file": name, "language": "python", "kernel_type": "notebook",
+        "is_private": True, "enable_gpu": True, "enable_internet": True,
+        "dataset_sources": [], "competition_sources": [],
+        "kernel_sources": ["nsanya/so3c-data-prep-k-128"],
+    }
+    (NB_DIR / ("kernel-metadata-%s.json" % slug)).write_text(
+        json.dumps(meta, indent=2) + chr(10), encoding="utf-8")
+    return name
+
+
 HEADLINE60_CKPT = ("results_k64/headline60/checkpoints/"
                    "top_tagging_canonical__so3c_message_set__seed0.pt")
 CONT_TAG = "headline120"
@@ -3723,6 +4024,9 @@ def _registry() -> dict:
         reg["long_seeds_%s_s%d" % (tag, seed)] = (
             lambda b, t=tag, f=flags, s=seed: build_long_seeds(
                 b, t, f, (s,), part="s%d" % s, pinned=True))
+    for tag, flags, seeds in LONG_DUAL_RUNS:
+        reg["long_%s_seeds%s" % (tag, "".join(str(s) for s in seeds))] = (
+            lambda b, t=tag, f=flags, s=seeds: build_long_dual(b, t, f, s))
     for tag, flags, seeds in PROBE_SEED_RUNS:
         reg["probe_seeds_%s" % tag] = (
             lambda b, t=tag, f=flags, s=seeds: build_probe_seeds(b, t, f, s))

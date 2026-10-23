@@ -225,6 +225,7 @@ def run_tabular_experiment(
             "so3c_kwargs":   dict(so3c_kwargs or {}),
             "dtype":         str(dtype).replace("torch.", ""),
             "compile":       bool(compile),
+            "compile_check": train_res.compile_check,
             "keep_best":     bool(keep_best),
             "seed":          seed,
             "n_params":      train_res.n_params,

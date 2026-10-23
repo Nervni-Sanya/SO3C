@@ -212,3 +212,37 @@ def test_probe_queue_is_the_stored_control_command_plus_each_jobs_flags(nb_dir) 
     assert 'WANT = "2.11.0+cu128"' in text and "CUDA_VISIBLE_DEVICES" in text
     meta = json.loads((nb_dir / "kernel-metadata-probe-queue-ablation-pairlab.json").read_text())
     assert meta["id"] == "nsanya/so3c-probe-queue-ablation-pairlab"
+
+
+def test_long_two_card_arms_are_pairlab211_plus_their_flags(nb_dir) -> None:
+    """Window 2026-10-24: the pair latent and w64s24 on top of --pair-lab at
+    the K=32 long schedule are the committed pairlab211 command plus exactly
+    the arm's flags (the width flags as in the committed w64s24 run), seeds 0
+    and 1 in one two-card kernel each, pinned, read against pairlab211."""
+    import json
+    pairlab = _assigned_list(ROOT / "notebooks" / "kaggle_long_seeds_pairlab211_s0.ipynb", "BASE")
+    long_base = _assigned_list(ROOT / "notebooks" / "kaggle_long_seeds_base_s0.ipynb", "BASE")
+    width = _assigned_list(ROOT / "notebooks" / "kaggle_long_seeds_w64s24_s0.ipynb", "BASE")
+    assert pairlab == long_base + ["--keep-best", "--pair-lab"]
+    assert width[:len(long_base)] == long_base
+    extras = {"pairlatlab211": ["--pair-latent", "8"], "w64s24lab211": width[len(long_base):]}
+    assert extras["w64s24lab211"] == ["--act-hidden", "64", "--msg-dim", "24", "--scalar-dim", "24"]
+    assert [t for t, _, _ in B.LONG_DUAL_RUNS] == ["pairlatlab211", "w64s24lab211"]   # run order
+    for tag, extra in extras.items():
+        assert B.main(["--only", "long_%s_seeds01" % tag]) == 0
+        nb = nb_dir / ("kaggle_long_%s_seeds01.ipynb" % tag)
+        assert _assigned_list(nb, "BASE") == pairlab + extra, tag
+        text = "".join("".join(c["source"]) for c in
+                       json.loads(nb.read_text(encoding="utf-8"))["cells"])
+        assert "TAG, SEEDS, EPOCHS = %r, [0, 1], 60" % tag in text
+        assert 'OUT = "/kaggle/working/results_long_seeds/" + TAG' in text
+        assert 'WANT = "2.11.0+cu128"' in text and "ensure_torch_for_this_gpu" not in text
+        assert "CUDA_VISIBLE_DEVICES" in text and "PARALLEL" in text
+        assert "REFS, RULE = " in text and repr(B.LONG_DUAL_RULE) in text
+        assert "POOLED_SD, POOLED_DF = %r" % (B._long_pooled_sd(),) in text
+        assert '"--seed", str(SEEDS[i])' in text   # the smoke checks each seed's own init
+        for row in B._long_references()["pairlab211"]:
+            assert repr(row["auc"]) in text
+        meta = json.loads((nb_dir / ("kernel-metadata-long-%s-seeds01.json" % tag)).read_text())
+        assert meta["id"] == "nsanya/so3c-long-%s-seeds01" % tag
+        assert meta["kernel_sources"] == ["nsanya/so3c-data-prep-k-128"]
