@@ -164,6 +164,7 @@ Full agent text: `so3c_notes/gap_to_sota_2026-09-13.md`. Three of the workflow's
 - **Compile check (`benchmarks/train.py`).** Before training, the compiled model is compared with eager on the first batch. A relative logit difference above 1e-3 used to stop the run. The largest in the committed Kaggle logs is 2.8e-4 (pair-lab runs 8e-5 to 2.6e-4). A float32-versus-float64 proxy put `--pair-lab` with the pair latent or w64s24 at 2e-4 to 1e-3, driven by the logs of near-collinear pairs. Between 1e-3 and 1e-2 the run now trains eager (the reference function, about 1.3× slower) instead of stopping; above 1e-2 it still stops. Every result records what happened as `compile_check`.
 - Cost of a K=64 confirmation if an arm pays: the 60-epoch `--pair-lab` two-card kernel took 9.22 h. Scaling by the measured per-epoch ratios (pair latent 702/470 s, w64s24 6.72/4.10 h over 30 epochs) gives about 13.8 h for the pair latent and 15.1 h for w64s24. Either exceeds the 12 h session cap, so it needs a two-card finish kernel that mounts the first kernel's output (as `build_k64_continuation_dual` does); none exists yet. That is about 14–16 GPU-h for two seeds.
 - Budget: ~9–11 GPU-h for the two kernels, leaving ~19–21 h: enough for one K=64 confirmation, not two.
+- **Pushed:** `nsanya/so3c-long-pairlatlab211-seeds01` at 03:13 on 2026-10-24 (`154d821`), running. The width kernel goes up when it finishes.
 
 ## GPU window 2026-10-17 → 2026-10-24 (closed)
 
