@@ -16,3 +16,6 @@ results/
 # holds small committed fixtures.
 /data/
 checkpoints/**/*.npz
+
+# per-jet geometry for results_kcheck/k_gain_by_bin.py (26 MB), rebuilt by results_kcheck/jet_geometry.py
+results_kcheck/jet_geometry.npz
