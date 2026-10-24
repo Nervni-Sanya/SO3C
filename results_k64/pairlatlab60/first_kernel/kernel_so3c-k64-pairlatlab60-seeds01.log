@@ -1,0 +1,63 @@
+[{"stream_name":"stderr","time":7.684066726,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":7.6841110740000005,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":7.684115627,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":7.684118291,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stderr","time":8.293449106,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":8.29347749,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":8.293481002,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":8.293483492,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stdout","time":9.46270473,"data":"Tesla T4, 15360 MiB\n"}
+,{"stream_name":"stdout","time":9.462733746,"data":"Tesla T4, 15360 MiB\n"}
+,{"stream_name":"stdout","time":9.589763361,"data":"['benchmarks', 'so3c', 'tests']\n"}
+,{"stream_name":"stderr","time":9.590839913,"data":"/tmp/ipykernel_24/780211894.py:3: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n"}
+,{"stream_name":"stderr","time":9.590859649,"data":"  tarfile.open(fileobj=io.BytesIO(base64.b64decode(CODE_B64)), mode=\"r:gz\").extractall(\"/kaggle/working/repo\")\n"}
+,{"stream_name":"stderr","time":9.590864442,"data":"\n"}
+,{"stream_name":"stderr","time":9.590867883,"data":"/tmp/ipykernel_24/780211894.py:3: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n"}
+,{"stream_name":"stderr","time":9.590871574,"data":"  tarfile.open(fileobj=io.BytesIO(base64.b64decode(CODE_B64)), mode=\"r:gz\").extractall(\"/kaggle/working/repo\")\n"}
+,{"stream_name":"stdout","time":9.662521946,"data":"device: Tesla T4\n"}
+,{"stream_name":"stdout","time":9.662544601,"data":"Tesla T4\n"}
+,{"stream_name":"stdout","time":20.034864256,"data":"torch 2.11.0+cu128 on Tesla T4\n"}
+,{"stream_name":"stdout","time":20.034911089,"data":"Tesla T4\n"}
+,{"stream_name":"stdout","time":23.133239076,"data":"cards: ['Tesla T4', 'Tesla T4']\n"}
+,{"stream_name":"stdout","time":23.392586597,"data":"data: /kaggle/input/notebooks/nsanya/so3c-data-prep-k-128/data | bundle 721784810ac0\n"}
+,{"stream_name":"stdout","time":35.483826868,"data":".                                                                        [100%]\n"}
+,{"stream_name":"stdout","time":35.48386821,"data":"1 passed, 33 deselected in 9.48s\n"}
+,{"stream_name":"stdout","time":35.483873256,"data":" \n"}
+,{"stream_name":"stdout","time":756.729456568,"data":"card 0: exit 0, result True\n"}
+,{"stream_name":"stdout","time":756.729508925,"data":"   seed 0: 239 s, AUC 0.9258, compile {'backend': 'inductor', 'd_logit': 0.000327777088386938, 'd_grad': 5.077728731503584e-05, 'used': 'compiled'}, {'torch': '2.11.0+cu128', 'cuda': '12.8', 'python': '3.13.15', 'device': 'cuda', 'gpu': 'Tesla T4'}\n"}
+,{"stream_name":"stdout","time":756.729517412,"data":"card 1: exit 0, result True\n"}
+,{"stream_name":"stdout","time":756.729522032,"data":"   seed 1: 240 s, AUC 0.9235, compile {'backend': 'inductor', 'd_logit': 0.0004445812664926052, 'd_grad': 3.761816329582723e-05, 'used': 'compiled'}, {'torch': '2.11.0+cu128', 'cuda': '12.8', 'python': '3.13.15', 'device': 'cuda', 'gpu': 'Tesla T4'}\n"}
+,{"stream_name":"stdout","time":756.729537234,"data":"parallel: seeds [0, 1]\n"}
+,{"stream_name":"stdout","time":756.745170081,"data":"seed 0 on card 0\n"}
+,{"stream_name":"stdout","time":756.747042747,"data":"seed 1 on card 1\n"}
+,{"stream_name":"stdout","time":40643.785637661,"data":"=== seed 0: exit 0 ===\n"}
+,{"stream_name":"stdout","time":40643.785694237,"data":"[top_tagging_canonical] top_tagging_constituents(k=64,norm=global,split=canonical) | features=4 classes=2 | train=1211000 val=403000 test=404000\n"}
+,{"stream_name":"stdout","time":40643.785698887,"data":"[top_tagging_canonical] so3c_message_set (equivariant_set) | train ...\n"}
+,{"stream_name":"stdout","time":40643.785702065,"data":"[compile] backend=inductor, first batch: max |d logit| 2.4e-04, max |d grad| 1.1e-05 (relative)\n"}
+,{"stream_name":"stdout","time":40643.785705062,"data":"[train] stopping at epoch 51: this session ran 39550s, over max_seconds=39000. Rerun with --resume.\n"}
+,{"stream_name":"stdout","time":40643.785708168,"data":"   val_acc=0.936  test_acc=0.938 auc=0.985 1/eB@0.3=1239  (39550.2s)\n"}
+,{"stream_name":"stdout","time":40643.785711106,"data":"\n"}
+,{"stream_name":"stdout","time":40761.945381535,"data":"=== seed 1: exit 0 ===\n"}
+,{"stream_name":"stdout","time":40761.945414094,"data":"[top_tagging_canonical] top_tagging_constituents(k=64,norm=global,split=canonical) | features=4 classes=2 | train=1211000 val=403000 test=404000\n"}
+,{"stream_name":"stdout","time":40761.945421178,"data":"[top_tagging_canonical] so3c_message_set (equivariant_set) | train ...\n"}
+,{"stream_name":"stdout","time":40761.945426941,"data":"[compile] backend=inductor, first batch: max |d logit| 2.8e-04, max |d grad| 1.1e-04 (relative)\n"}
+,{"stream_name":"stdout","time":40761.945432222,"data":"[train] stopping at epoch 47: this session ran 39657s, over max_seconds=39000. Rerun with --resume.\n"}
+,{"stream_name":"stdout","time":40761.945436951,"data":"   val_acc=0.937  test_acc=0.938 auc=0.985 1/eB@0.3=1364  (39657.3s)\n"}
+,{"stream_name":"stdout","time":40761.94544176,"data":"\n"}
+,{"stream_name":"stdout","time":40761.945446774,"data":"failed seeds: none\n"}
+,{"stream_name":"stdout","time":40761.945451306,"data":"kernel time 11.32 h\n"}
+,{"stream_name":"stdout","time":40761.963579775,"data":"seed 0: 51 epochs, 10.99 h (775 s/epoch) | torch 2.11.0+cu128 on Tesla T4 | batch order epoch 1 4956a97c5cb4356c52e25711c90c47b09d1f3aa680704b0f679fb5adca1bb0fe\n"}
+,{"stream_name":"stdout","time":40761.963613513,"data":"  AUC 0.98462  rej@0.3 1238.7  rej@0.5 343.4  final val loss 0.15844  (lowest 0.15844 at epoch 51)\n"}
+,{"stream_name":"stdout","time":40761.963619398,"data":"  INCOMPLETE (epoch 51 of 60): stopped on the time cap; finish before comparing\n"}
+,{"stream_name":"stdout","time":40761.963624141,"data":"seed 1: 47 epochs, 11.02 h (844 s/epoch) | torch 2.11.0+cu128 on Tesla T4 | batch order epoch 1 99fdd6358841957e8d3d1294d0b55f55527b4b711eccacdafa8445ab04e904ae\n"}
+,{"stream_name":"stdout","time":40761.963628886,"data":"  AUC 0.98480  rej@0.3 1364.3  rej@0.5 339.4  final val loss 0.15721  (lowest 0.15721 at epoch 47)\n"}
+,{"stream_name":"stdout","time":40761.9636347,"data":"  INCOMPLETE (epoch 47 of 60): stopped on the time cap; finish before comparing\n"}
+,{"stream_name":"stderr","time":40764.275331627,"data":"/usr/local/lib/python3.13/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\\|'\n"}
+,{"stream_name":"stderr","time":40764.275358933,"data":"  cells[i][c] = re.sub('\\\\\\\\\\|', '|', cell)\n"}
+,{"stream_name":"stderr","time":40764.449180094,"data":"/usr/local/lib/python3.13/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\\_'\n"}
+,{"stream_name":"stderr","time":40764.449213019,"data":"  text = re.sub(r'_', '\\_', text) # Escape underscores in display text\n"}
+,{"stream_name":"stderr","time":40765.219404389,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to notebook\n"}
+,{"stream_name":"stderr","time":40765.301528688,"data":"[NbConvertApp] Writing 308947 bytes to __notebook__.ipynb\n"}
+,{"stream_name":"stderr","time":40767.687677258,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to html\n"}
+,{"stream_name":"stderr","time":40768.235889073,"data":"[NbConvertApp] Writing 615315 bytes to __results__.html\n"}
+]
