@@ -246,3 +246,32 @@ def test_long_two_card_arms_are_pairlab211_plus_their_flags(nb_dir) -> None:
         meta = json.loads((nb_dir / ("kernel-metadata-long-%s-seeds01.json" % tag)).read_text())
         assert meta["id"] == "nsanya/so3c-long-%s-seeds01" % tag
         assert meta["kernel_sources"] == ["nsanya/so3c-data-prep-k-128"]
+
+
+def test_k64_pair_latent_confirmation_and_its_finish(nb_dir) -> None:
+    """Window 2026-10-24: the K=64 confirmation of the pair latent is the
+    committed two-card pairlab60 command plus exactly --pair-latent 8, and its
+    finish kernel runs the same command and horizon, mounting the first
+    kernel's output and reading the result against pairlab60."""
+    import json
+    pairlab60 = _assigned_list(ROOT / "notebooks" / "kaggle_k64_pairlab60_seeds01.ipynb", "BASE")
+    assert B.main(["--only", "k64_pairlatlab60_seeds01", "k64_pairlatlab60_finish_seeds01"]) == 0
+    run = nb_dir / "kaggle_k64_pairlatlab60_seeds01.ipynb"
+    fin = nb_dir / "kaggle_k64_pairlatlab60_finish_seeds01.ipynb"
+    assert _assigned_list(run, "BASE") == pairlab60 + ["--pair-latent", "8"]
+    assert _assigned_list(fin, "BASE") == _assigned_list(run, "BASE")
+    texts = {n: "".join("".join(c["source"]) for c in
+                        json.loads(n.read_text(encoding="utf-8"))["cells"]) for n in (run, fin)}
+    assert "TAG, SEEDS, EPOCHS, MAX_SECONDS = 'pairlatlab60', [0, 1], 60, 39000" in texts[run]
+    assert "TAG, SEEDS, EPOCHS, MAX_SECONDS = 'pairlatlab60', [0, 1], 60, 39000" in texts[fin]
+    for text in texts.values():
+        assert '"--seed", str(' in text and 'WANT = "2.11.0+cu128"' in text
+    assert "--resume" in texts[fin] and "st[\"epoch\"] >= EPOCHS" in texts[fin]
+    assert "REFS, RULE = " in texts[fin] and repr(B.K64_CONFIRM_RULE) in texts[fin]
+    for row in B._k64_references()["pairlab60"]:
+        assert repr(row["auc"]) in texts[fin]
+    meta = json.loads((nb_dir / "kernel-metadata-k64-pairlatlab60-finish-seeds01.json").read_text())
+    assert meta["id"] == "nsanya/so3c-k64-pairlatlab60-finish-seeds01"
+    assert meta["kernel_sources"] == ["nsanya/so3c-data-prep-k-128", "nsanya/so3c-k64-pairlatlab60-seeds01"]
+    meta = json.loads((nb_dir / "kernel-metadata-k64-pairlatlab60-seeds01.json").read_text())
+    assert meta["id"] == "nsanya/so3c-k64-pairlatlab60-seeds01"

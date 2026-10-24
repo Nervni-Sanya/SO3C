@@ -125,10 +125,11 @@ The two defect fixes, the vector channel, the relative-norm edge, the pair laten
 
 ### Verified defects in the current model (free to fix)
 
-Both are now switchable and default to the old behaviour: `--no-mass-input --no-self-edges` (22634 params on beams + channels 8, CPU cost 1.00x the headline, `6771158`). Screened on GPU on 2026-09-20: one seed, no resolved gain.
+The first two are now switchable and default to the old behaviour: `--no-mass-input --no-self-edges` (22634 params on beams + channels 8, CPU cost 1.00x the headline, `6771158`). Screened on GPU on 2026-09-20: one seed, no resolved gain.
 
 - **m² fed as noise.** `h_init` takes `asinh(m²)` per node, and three of the seven `_minkowski_stats` readout features are per-particle m² moments. All of it is rounding noise (see Closed).
 - **Self-edges in the dense graph.** The dense path includes `a = b` in the scalar message sum and counts N, not N−1, in the denominator. The flow itself is unaffected, since `z_a × w_aa z_a = 0`. LorentzNet masks the self-edge; our sparse path already excludes it.
+- **`pair_lab` loses precision in float32 on near-collinear pairs** (found 2026-10-24, not fixed, not switchable). `_lab_pair_features` builds Δ and m² from ⟨p_a,p_b⟩ = E_aE_b − p⃗_a·p⃗_b, which cancels catastrophically when the two constituents are nearly parallel. Measured on 3000 K=32 test jets (2.76M pairs), float32 against float64: ln Δ and ln k_T are off by more than 0.1 in log units on 0.11% of pairs (p99.9 0.32, max 6.9), ln m² on 0.15% (max 10.1); ln z is exact to 1e-6. So every `--pair-lab` result so far trained on these features with a small fraction of them garbled. It is also what pushes the compiled-versus-eager first-batch check past 1e-3 when the pair latent is added (the window section). Computing the four features in float64 and casting back keeps exact covariance at negligible cost. It changes the function, so it needs its own measurement against the float32 runs, not a silent swap.
 
 ### Best-motivated architectural candidates
 
@@ -178,6 +179,13 @@ Full agent text: `so3c_notes/gap_to_sota_2026-09-13.md`. Three of the workflow's
 - Both runs also have a lower final validation loss than both pairlab211 runs (mean −0.0012). Rejection at 30% moves +43 on the mean (957 and 1122 against 1057 and 935), not resolved. The validation − train gap grows by +0.0011. The best-validation weights (epochs 53 and 56) score within 0.00002 of the final ones.
 - **Compile fallback, used.** Seed 0 trained compiled (first-batch d logit 7.5e-4; 270 s per epoch, 1.35× pairlab211). Seed 1's check gave 1.3e-3, so it trained eager (355 s per epoch, 5.92 h). Under the rule before 2026-10-24 it would have stopped at its first batch, and the arm would have had one seed. The smoke had already shown it (8.3e-4 and 3.0e-3 on 20k jets' normalisation).
 - Batch orders equal pairlab211's seed by seed. The two runs share one kernel, so a kernel offset would move both. The K=64 confirmation decides.
+
+**K=64 confirmation of the pair latent: prepared, not pushed** (it needs the user's go-ahead). Two two-card kernels, both with the committed pairlab60 command plus `--pair-latent 8`:
+- `k64_pairlatlab60_seeds01` (`build_k64_dual`): seeds 0 and 1, 60 epochs. At ~1.49× pairlab60's 517–541 s per epoch it stops on `--max-seconds` 39000 near epoch 49, or near epoch 37 for a seed that trains eager.
+- `k64_pairlatlab60_finish_seeds01` (`build_k64_finish_dual`, new): mounts the first kernel's output and checks each seed's last checkpoint against the result JSON written when it stopped (epoch, batch order). It resumes with the same command and horizon, then reads both runs against pairlab60 by `K64_CONFIRM_RULE`, the same form as the long-schedule rule: confirmed if the mean gains ≥ +0.0003 over pairlab60 (0.98417, 0.98467) and both runs lie above both of its runs; not confirmed if it gains ≤ 0; otherwise unresolved. At K=64 the pooled sd of base60 and pairlab60 is 0.00029 (2 df), so +0.0003 is about one standard error here.
+- A CPU replay of the two-kernel path matched an uninterrupted run exactly: the first kernel stopped at epochs 3 and 4, and the finished runs reproduced the same loss history, test AUC, batch-order chain and best epoch.
+- Cost: about 10.9 h plus 2.5–7 h, so 13.5–18 GPU-h depending on whether a seed falls back to eager. That is about all of what is left after the width kernel.
+- `build_k64_dual`'s smoke now runs each seed on its own card, as `build_long_dual`'s does.
 
 ## GPU window 2026-10-17 → 2026-10-24 (closed)
 
