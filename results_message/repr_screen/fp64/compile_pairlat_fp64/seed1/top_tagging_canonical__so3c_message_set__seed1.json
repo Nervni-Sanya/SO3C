@@ -1,0 +1,87 @@
+{
+  "experiment": "top_tagging_canonical",
+  "dataset": "top_tagging_constituents(k=32,norm=global,split=canonical)",
+  "model": "so3c_message_set",
+  "family": "equivariant_set",
+  "so3c_kwargs": {
+    "channels": 8,
+    "rounds": 3,
+    "beams": true,
+    "pair_latent": 8,
+    "pair_lab": true,
+    "pair_lab_fp64": true
+  },
+  "dtype": "float32",
+  "compile": true,
+  "compile_check": {
+    "backend": "inductor",
+    "d_logit": 0.00011233267287025228,
+    "d_grad": 1.0359420795114552e-06,
+    "used": "compiled"
+  },
+  "keep_best": false,
+  "seed": 1,
+  "n_params": 26738,
+  "n_train": 20000,
+  "n_val": 403000,
+  "n_test": 404000,
+  "n_features": 4,
+  "walltime_sec": 39.196591210000406,
+  "env": {
+    "torch": "2.11.0+cu128",
+    "cuda": "12.8",
+    "python": "3.13.15",
+    "device": "cuda",
+    "gpu": "Tesla T4"
+  },
+  "batch_order": {
+    "epoch1": "349f970a017ce0093cb9fd0cdb30c7be6d8f11f63539ae9f7aef118ebbdfd545",
+    "chain": "be7161445983d45824c1c348c610de9e9962fa771b74aba60211a62e20075c05"
+  },
+  "epochs_run": 1,
+  "train_metrics": {
+    "final_train_acc": 0.87325,
+    "final_val_acc": 0.8936402201652527,
+    "best_val_acc": 0.8936402201652527
+  },
+  "test_metrics": {
+    "test_acc": 0.8946732878684998,
+    "test_auc": 0.9344122927020223,
+    "bg_rej_30": 32.18265859101052,
+    "bg_rej_50": 18.203570140641904
+  },
+  "best_val_epoch": null,
+  "best_val_loss": null,
+  "test_metrics_best_val": null,
+  "config": {
+    "epochs": 1,
+    "batch_size": 256,
+    "lr": 0.003,
+    "weight_decay": 0.0,
+    "grad_clip": 1.0,
+    "cosine_schedule": true,
+    "optimizer": "adam",
+    "schedule": "cosine",
+    "warmup_epochs": 4,
+    "early_stop_patience": null,
+    "seed": 1,
+    "device": "cuda",
+    "eval_chunk_size": 2048,
+    "ckpt_path": "/kaggle/working/checkpoints/compile_pairlat_fp64_seed1/top_tagging_canonical__so3c_message_set__seed1.pt",
+    "ckpt_every": 1,
+    "resume": true,
+    "max_seconds": 2964.0,
+    "compile": true,
+    "compile_backend": "inductor",
+    "keep_best": false
+  },
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 0.3399039529323578,
+      "train_acc": 0.87325,
+      "val_loss": 0.28357580304145813,
+      "val_acc": 0.8936402201652527
+    }
+  ]
+}

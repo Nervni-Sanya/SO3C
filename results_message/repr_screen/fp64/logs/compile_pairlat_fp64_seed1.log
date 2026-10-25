@@ -1,0 +1,4 @@
+[top_tagging_canonical] top_tagging_constituents(k=32,norm=global,split=canonical) | features=4 classes=2 | train=20000 val=403000 test=404000
+[top_tagging_canonical] so3c_message_set (equivariant_set) | train ...
+[compile] backend=inductor, first batch: max |d logit| 1.1e-04, max |d grad| 1.0e-06 (relative)
+   val_acc=0.894  test_acc=0.895 auc=0.934 1/eB@0.3=32  (39.2s)
