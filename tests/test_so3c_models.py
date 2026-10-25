@@ -1248,8 +1248,144 @@ def test_pair_lab_permutation_invariant_and_guards() -> None:
     assert (m(xp) - out).abs().max() < 1e-10 * max(1.0, out.abs().max().item())
     with pytest.raises(ValueError):
         SO3CMessageSetClassifier(channels=4, rounds=2, lab_scalars=True)
+    with pytest.raises(ValueError):          # the ranking metric needs a sparse graph
+        SO3CMessageSetClassifier(channels=4, rounds=2, beams=True, knn_metric="angle")
     with pytest.raises(ValueError):
-        SO3CMessageSetClassifier(channels=4, rounds=2, beams=True, pair_lab=True, neighbors=4)
+        SO3CMessageSetClassifier(channels=4, rounds=2, beams=True, neighbors=4,
+                                 knn_metric="no-such-metric")
+
+
+def _knn_model(**kw):
+    """A small so3c_knn_set-style model with every zero-init head excited."""
+    from benchmarks.so3c_models import SO3CMessageSetClassifier
+    torch.manual_seed(0)
+    m = SO3CMessageSetClassifier(channels=4, rounds=2, beams=True, dtype=torch.float64, **kw)
+    g = torch.Generator().manual_seed(5)
+    with torch.no_grad():
+        for head in list(m.w_head) + list(m.att_head):
+            head.weight.copy_(0.4 * torch.randn(head.weight.shape, dtype=torch.float64, generator=g))
+            head.bias.copy_(0.2 * torch.randn(head.bias.shape, dtype=torch.float64, generator=g))
+    return m
+
+
+def test_knn_set_angle_graph_is_the_jet_frame_angle_and_frame_independent() -> None:
+    """so3c_knn_set's ranking key is 1 - cos theta*_ab in the jet rest frame
+    (checked against an explicit boost to that frame), its neighbour sets
+    are the same in every frame (beams moved along), and the beams are in
+    every real node's list."""
+    p4, mask, _ = _lab_jets()
+    m = _knn_model(neighbors=3, knn_metric="angle", attention=True, pair_lab=True)
+    beam = m.beam_p4.unsqueeze(0).expand(p4.shape[0], 2, 4)
+    p4_all = torch.cat([p4 * mask[..., None], beam], 1)
+    mask_all = torch.cat([mask, mask.new_ones(p4.shape[0], 2)], 1)
+    z = torch.zeros(p4_all.shape[:2] + (3,), dtype=torch.complex128)
+    idx, em = m._neighbour_graph(z, mask_all, n_forced=2, p4=p4_all)
+    # the angle by brute force: boost each jet to its rest frame
+    for b in range(p4.shape[0]):
+        n = int(mask[b].sum())
+        P = p4[b, :n].sum(0)
+        beta = P[1:] / P[0]
+        g = 1.0 / torch.sqrt(1 - beta @ beta)
+        bb = beta @ beta
+        L = torch.eye(4, dtype=torch.float64)
+        L[0, 0] = g
+        L[0, 1:] = -g * beta
+        L[1:, 0] = -g * beta
+        L[1:, 1:] += (g - 1) * torch.outer(beta, beta) / bb
+        q = p4[b, :n] @ L.T
+        u = q[:, 1:] / q[:, 1:].norm(dim=-1, keepdim=True)
+        ang = 1 - u @ u.T
+        ang.fill_diagonal_(float("inf"))
+        for a in range(n):
+            want = set(ang[a].argsort()[:min(3, n - 1)].tolist())
+            got = set(idx[b, a, :3][em[b, a, :3] > 0].tolist())
+            assert got == want, (b, a, got, want)
+            assert idx[b, a, 3:].tolist() == [p4.shape[1], p4.shape[1] + 1]   # the beams
+    # the same sets after a general Lorentz transformation of jet and beams
+    L = _lorentz([0.6, -0.4, 0.9], angle_z=0.7)
+    idx2, em2 = m._neighbour_graph(z, mask_all, n_forced=2, p4=p4_all @ L.T)
+    for b in range(p4.shape[0]):
+        for a in range(int(mask[b].sum())):
+            assert set(idx[b, a][em[b, a] > 0].tolist()) == set(idx2[b, a][em2[b, a] > 0].tolist())
+
+
+def test_knn_set_attention_starts_as_the_mean_and_full_graph_equals_dense() -> None:
+    """Zero-init attention is the mean aggregation exactly; and a sparse graph
+    that covers every partner reproduces the dense model (self-edges off), with
+    the pair features gathered per edge in the dense layout."""
+    from benchmarks.so3c_models import SO3CMessageSetClassifier
+    p4, mask, _ = _lab_jets()
+    x = torch.cat([p4, mask[..., None]], -1)
+
+    def build(**kw):
+        torch.manual_seed(0)
+        return SO3CMessageSetClassifier(channels=4, rounds=2, beams=True, pair_lab=True,
+                                        self_edges=False, dtype=torch.float64, **kw)
+    g = torch.Generator().manual_seed(9)
+    dense = build()
+    with torch.no_grad():
+        for head in dense.w_head:
+            head.weight.copy_(0.4 * torch.randn(head.weight.shape, dtype=torch.float64, generator=g))
+    ref = dense(x)
+    assert ref.abs().max() > 1e-3
+    for kw in ({"attention": True}, {"neighbors": 9}, {"neighbors": 9, "knn_metric": "angle"},
+               {"neighbors": 9, "knn_metric": "angle", "attention": True}):
+        m = build(**kw)
+        missing, unexpected = m.load_state_dict(dense.state_dict(), strict=False)
+        assert not unexpected and all(k.startswith("att_head") for k in missing), (missing, unexpected)
+        assert (m(x) - ref).abs().max() < 1e-12 * max(1.0, ref.abs().max().item()), kw
+
+
+def test_knn_set_is_covariant_permutation_invariant_and_trains() -> None:
+    """The default so3c_knn_set (angle kNN, attention, beams, pair_lab), with
+    every head excited and a graph smaller than the jet: exactly covariant with
+    the beams moved along, invariant under rotations about the beam axis and
+    under relabelling; attention changes the function once excited; finite
+    gradients reach the attention heads."""
+    from benchmarks.models import build_model
+    m = build_model("so3c_knn_set", in_features=4, out_features=2,
+                    representation="constituents", so3c_kwargs={"channels": 4, "rounds": 2})
+    assert (m.neighbors, m.knn_metric, m.attention, m.pair_lab, m.beams) == (16, "angle", True, True, True)
+    p4, mask, _ = _lab_jets()
+    x = torch.cat([p4, mask[..., None]], -1)
+    kw = dict(neighbors=3, knn_metric="angle", attention=True, pair_lab=True)
+    m = _knn_model(**kw)
+    out = m(x)
+    tol = 1e-9 * max(1.0, out.abs().max().item())
+    L = _lorentz([0.6, -0.4, 0.9], angle_z=0.7)
+    moved = _knn_model(**kw)
+    moved.load_state_dict(m.state_dict())
+    with torch.no_grad():
+        moved.beam_p4.copy_(m.beam_p4 @ L.T)
+        xb, xr = x.clone(), x.clone()
+        xb[..., :4] = (p4 @ L.T) * mask[..., None]
+        Rz = _lorentz([0.0, 0.0, 1e-30], angle_z=1.3)
+        xr[..., :4] = (p4 @ Rz.T) * mask[..., None]
+        assert (moved(xb) - out).abs().max() < tol
+        assert (m(xr) - out).abs().max() < tol
+        perm = torch.tensor([3, 0, 8, 5, 1, 7, 2, 6, 4])
+        assert (m(x[:, perm]) - out).abs().max() < tol
+        mean = _knn_model(neighbors=3, knn_metric="angle", attention=False, pair_lab=True)
+        mean.load_state_dict({k: v for k, v in m.state_dict().items() if not k.startswith("att_head")})
+        assert (mean(x) - out).abs().max() > 1e-4, "excited attention changes nothing"
+    torch.nn.functional.cross_entropy(m(x), torch.tensor([0, 1, 1, 0])).backward()
+    assert all(torch.isfinite(q.grad).all() for q in m.parameters() if q.grad is not None)
+    assert m.att_head[0].weight.grad.abs().max() > 0
+
+
+def test_knn_set_runs_at_k128() -> None:
+    """At K=128 the default so3c_knn_set builds a 16 + 2 graph per node and
+    trains a step in float32 (shapes and finiteness; synthetic jets)."""
+    from benchmarks.models import build_model
+    g = torch.Generator().manual_seed(1)
+    x = _random_jets(3, 128, g).float()
+    torch.manual_seed(0)
+    m = build_model("so3c_knn_set", in_features=4, out_features=2, dtype=torch.float32,
+                    representation="constituents", so3c_kwargs={})
+    out = m(x)
+    assert out.shape == (3, 2) and torch.isfinite(out).all()
+    torch.nn.functional.cross_entropy(out, torch.tensor([0, 1, 1])).backward()
+    assert all(torch.isfinite(q.grad).all() for q in m.parameters() if q.grad is not None)
 
 
 def test_pair_lab_fp64_fixes_collinear_pairs_and_changes_nothing_else() -> None:

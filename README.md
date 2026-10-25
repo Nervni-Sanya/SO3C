@@ -149,6 +149,7 @@ check holds in the unit tests to below 10⁻⁹ relative.
 | `so3c_invariant_set` | 5,122 | Lorentz-invariant by construction; no flow |
 | `so3c_interaction_set` | 5,652 | Lorentz-invariant to ODE tolerance |
 | `so3c_equivariant_set` | 9,056 | **not invariant once trained**; kept to reproduce the results measured on it |
+| `so3c_knn_set` | 23,485 | as `so3c_message_set` with beams; message passing over each particle's 16 nearest partners by jet-frame angle, with attention, for K = 128 (added 2026-10-25, not yet trained) |
 | `so3c`, `so3c_static`, `so3c_multi` | depends on the input width | none: flat tabular models on a learned embedding |
 
 `so3c_message_set` also has six switches, all off by default:

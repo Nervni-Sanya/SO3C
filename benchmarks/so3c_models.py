@@ -670,6 +670,20 @@ class SO3CMessageSetClassifier(nn.Module):
     appended to every node's neighbour list instead, so they always reach
     every constituent; the sparse graph then costs (k + 2) edges per node.
 
+    ``knn_metric="angle"`` ranks each particle's NEAREST partners instead of
+    its strongest: the opening angle in the jet rest frame,
+    1 - cos theta*_ab = M^2 <p_a, p_b> / (<p_a, P> <p_b, P>) for massless
+    constituents, a function of Minkowski products only, so the graph is the
+    same in every frame. It is computed in float64 (the same cancellation as
+    pair_lab's). ``attention=True`` replaces the mean over each node's
+    partners by a softmax over them, one per channel for the flow and one for
+    the scalar messages, with logits from the invariant edge state; the logit
+    heads start at zero, so at initialisation it is exactly the mean.
+    ``so3c_knn_set`` (benchmarks.models) is this class with neighbors=16,
+    knn_metric="angle", attention, beams, channels 8 and pair_lab, meant for
+    K=128, where dense rounds cost 4x K=64 and the sparse graph has fewer
+    edges (130 x 18) than dense K=64 (66 x 66).
+
     ``scalar_dim=0`` drops the scalar channel entirely, which makes
     "rounds=R with h" against "rounds=R without h" a single-variable
     ablation. Note that ``rounds=1`` is NOT the same thing as
@@ -762,6 +776,8 @@ class SO3CMessageSetClassifier(nn.Module):
         pair_lab: bool = False,
         pair_lab_set: str = "all",
         pair_lab_fp64: bool = False,
+        knn_metric: str = "strength",
+        attention: bool = False,
         dtype: torch.dtype = torch.float64,
     ) -> None:
         super().__init__()
@@ -790,8 +806,10 @@ class SO3CMessageSetClassifier(nn.Module):
         if (lab_scalars or pair_lab) and not beams:
             raise ValueError("lab_scalars and pair_lab are built from the beams; "
                              "they need beams=True")
-        if pair_lab and neighbors is not None:
-            raise ValueError("pair_lab is implemented for the dense graph only")
+        if knn_metric not in ("strength", "angle"):
+            raise ValueError("knn_metric must be 'strength' or 'angle'")
+        if knn_metric != "strength" and neighbors is None:
+            raise ValueError("knn_metric ranks the sparse graph; it needs neighbors")
         if pair_lab_set not in PAIR_LAB_SETS:
             raise ValueError("pair_lab_set must be one of %s" % sorted(PAIR_LAB_SETS))
         if pair_lab_set != "all" and not pair_lab:
@@ -804,6 +822,8 @@ class SO3CMessageSetClassifier(nn.Module):
         self.pair_lab = pair_lab
         self.pair_lab_set = pair_lab_set
         self.pair_lab_fp64 = pair_lab_fp64
+        self.knn_metric = knn_metric
+        self.attention = attention
         self._pair_lab_cols = PAIR_LAB_SETS[pair_lab_set] if pair_lab else ()
         n_lab = len(self._pair_lab_cols)
         if beams:
@@ -864,6 +884,16 @@ class SO3CMessageSetClassifier(nn.Module):
                 self.node.append(nn.Sequential(
                     nn.Linear(scalar_dim + msg_dim, act_hidden), nn.ReLU(),
                     nn.Linear(act_hidden, scalar_dim)).to(dtype))
+        # neighbour attention: per edge, one logit per flow channel and one
+        # for the scalar messages; zero-init, so the softmax starts uniform
+        # over each node's partners, which is the mean aggregation
+        self.att_head = nn.ModuleList()
+        if attention:
+            for _ in range(rounds):
+                ah = nn.Linear(act_hidden, channels + (1 if scalar_dim else 0)).to(dtype)
+                nn.init.zeros_(ah.weight)
+                nn.init.zeros_(ah.bias)
+                self.att_head.append(ah)
 
         if pair_latent:
             self.pair_init = nn.Linear(edge_in, pair_latent).to(dtype)
@@ -1024,8 +1054,11 @@ class SO3CMessageSetClassifier(nn.Module):
         q = (v * v).sum(dim=-1)
         return 1.0 + (q.real.pow(2) + q.imag.pow(2) + 1e-12).sqrt().sqrt()
 
-    def _neighbour_graph(self, z, mask, n_forced: int = 0):
+    def _neighbour_graph(self, z, mask, n_forced: int = 0, p4=None):
         """(B, N, 3), (B, N) -> neighbour indices (B, N, k') and their mask.
+
+        With knn_metric="angle", p4 (B, N, 4) are the nodes' momenta and the
+        ranking is by the smallest jet-frame opening angle instead.
 
         Ranked by the invariant |Re(z_a . z_b)|, self-edges excluded. The
         last ``n_forced`` nodes -- the beams -- are excluded from the ranking
@@ -1036,15 +1069,33 @@ class SO3CMessageSetClassifier(nn.Module):
         frame, so equivariance is untouched.
         """
         k, N = self.neighbors, z.shape[1]
-        S = (z @ z.transpose(-1, -2)).real.abs()                 # (B, N, N)
         pair = mask.unsqueeze(-1) * mask.unsqueeze(-2)
         eye = torch.eye(N, dtype=pair.dtype, device=pair.device)
         pair = pair * (1.0 - eye)
         if n_forced:
             pair[..., N - n_forced:] = 0.0            # not ranked; appended
-        key = torch.where(pair.bool(), S, torch.full_like(S, -1.0))
-        val, idx = key.topk(min(k, N - n_forced), dim=-1)         # (B, N, k)
-        emask = (val >= 0).to(z.real.dtype) * mask.unsqueeze(-1)
+        if self.knn_metric == "angle":
+            # 1 - cos theta*_ab in the jet rest frame, from Minkowski products
+            # of the real constituents (the beams, if any, are the last
+            # n_forced nodes and are not ranked); nearest first
+            q = p4.double()
+            real = mask.double().clone()
+            if n_forced:
+                real[..., N - n_forced:] = 0.0
+            P = (q * real.unsqueeze(-1)).sum(dim=1, keepdim=True)          # (B, 1, 4)
+            E, pv = q[..., 0], q[..., 1:]
+            inner = E.unsqueeze(-1) * E.unsqueeze(-2) - pv @ pv.transpose(-1, -2)
+            pP = (q[..., 0] * P[..., 0] - (pv * P[..., 1:]).sum(-1)).clamp_min(1e-30)
+            M2 = (P[..., 0] ** 2 - (P[..., 1:] ** 2).sum(-1)).unsqueeze(-1)   # (B, 1, 1)
+            angle = M2 * inner / (pP.unsqueeze(-1) * pP.unsqueeze(-2))
+            key = torch.where(pair.bool(), -angle, torch.full_like(angle, -float("inf")))
+            val, idx = key.topk(min(k, N - n_forced), dim=-1)     # (B, N, k)
+            emask = torch.isfinite(val).to(z.real.dtype) * mask.unsqueeze(-1)
+        else:
+            S = (z @ z.transpose(-1, -2)).real.abs()             # (B, N, N)
+            key = torch.where(pair.bool(), S, torch.full_like(S, -1.0))
+            val, idx = key.topk(min(k, N - n_forced), dim=-1)     # (B, N, k)
+            emask = (val >= 0).to(z.real.dtype) * mask.unsqueeze(-1)
         if n_forced:
             forced = torch.arange(N - n_forced, N, device=z.device)
             fidx = forced.view(1, 1, n_forced).expand(z.shape[0], N, n_forced)
@@ -1131,9 +1182,13 @@ class SO3CMessageSetClassifier(nn.Module):
         sparse = self.neighbors is not None and self.neighbors < K
         if sparse:
             idx, edge_mask = self._neighbour_graph(
-                z, mask_all, n_forced=2 if self.beams else 0)     # (B, N, k')
+                z, mask_all, n_forced=2 if self.beams else 0, p4=p4_all)   # (B, N, k')
             bat = torch.arange(B, device=z.device).view(B, 1, 1)
             k = idx.shape[-1]
+            if lab_pair is not None:
+                # each node's partners' pair features, gathered once
+                arow = torch.arange(K, device=z.device).view(1, K, 1)
+                lab_e = lab_pair[bat, arow, idx]                  # (B, N, k', F)
             denom = edge_mask.sum(-1).clamp_min(1.0)             # (B, K)
         else:
             pair_mask = mask_all.unsqueeze(-1) * mask_all.unsqueeze(-2)
@@ -1195,6 +1250,8 @@ class SO3CMessageSetClassifier(nn.Module):
                 kn = self.knee_node[r] if self.knee_node is not None else None
                 pair = (self.falpha_embed(pair) if self.falpha_embed is not None
                         else self._knee(pair, kp))
+                if lab_pair is not None:
+                    pair = torch.cat([pair, lab_e], dim=-1)   # the dense layout
                 e = torch.cat([
                     pair,
                     self._knee(row.real, kn), self._knee(row.imag, kn),
@@ -1221,6 +1278,12 @@ class SO3CMessageSetClassifier(nn.Module):
                     self.edge[r][0], pair, ar, ai, h, vfeat,
                     E if self.pair_latent else None), r)
             wts = self.w_head[r](hid) * emask                    # (B, K, *, C)
+            if self.attention:
+                # softmax over each node's partners (axis 2), masked; at zero
+                # logits it is emask / denom, i.e. the mean used without it
+                logit = self.att_head[r](hid) - (1.0 - emask) * 1e30
+                att = torch.softmax(logit, dim=2) * emask          # (B, K, *, C[+1])
+                wts = wts * att[..., :C]
             if self.vector_channel:
                 u = self.v_head[r](hid).squeeze(-1) * pair_mask   # (B, K, K)
                 v = v + (u @ v) / denom.unsqueeze(-1)
@@ -1228,8 +1291,9 @@ class SO3CMessageSetClassifier(nn.Module):
 
             if self.scalar_dim:
                 msg = self.msg_head[r](hid) * emask              # (B, K, *, M)
-                h = h + self.node[r](torch.cat(
-                    [h, msg.sum(dim=2) / denom.unsqueeze(-1)], dim=-1))
+                agg = ((msg * att[..., C:]).sum(dim=2) if self.attention
+                       else msg.sum(dim=2) / denom.unsqueeze(-1))
+                h = h + self.node[r](torch.cat([h, agg], dim=-1))
                 h = h * node_mask
 
             if sparse:
@@ -1241,7 +1305,8 @@ class SO3CMessageSetClassifier(nn.Module):
                 wc = wts.permute(0, 3, 1, 2)                     # (B, C, K, K)
                 R = wc @ torch.cat([zc.real, zc.imag], dim=-1)   # (B, C, K, 6)
                 ref = torch.complex(R[..., :3], R[..., 3:])
-            ref = ref / denom[:, None, :, None]
+            if not self.attention:                    # attention weights sum to 1
+                ref = ref / denom[:, None, :, None]
             a = torch.linalg.cross(zc, ref, dim=-1)              # covariant
             a = a / self._invariant_scale(a).unsqueeze(-1)
 

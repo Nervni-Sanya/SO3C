@@ -3260,6 +3260,72 @@ for k, chunk in (("32", "2048"), ("64", "1024")):
         json.dumps(meta, indent=2) + chr(10), encoding="utf-8")
 
 
+
+# 2026-10-25: the compiled per-epoch cost, on the pinned T4 / torch 2.11
+# setup, of what the next windows would run: the K=64 arms and their
+# combination, and so3c_knn_set against dense pair features at K=128.
+# (K, eval chunk, configs); synthetic jets, cost depends only on shapes.
+KNN_PROFILE = [
+    (64, 1024, ["pairlab", "pairlat8lab", "w64s24lab", "pairlat8w64s24lab", "knn16"]),
+    (128, 512, ["pairlab", "knn8", "knn16", "knn32"]),
+]
+
+
+def build_knn_profile(blob: str) -> str:
+    """Time so3c_knn_set and the K=64 candidates on the card before a window
+    commits to them: CPU cost ratios have misled three times (STATUS,
+    infrastructure traps). No dataset; ~30 minutes."""
+    cells = [
+        md("""
+# Compiled cost on the card: K=64 candidates and so3c_knn_set at K=128
+
+Per-epoch estimates (batch 256) with `--compile`, synthetic jets, T4 with
+torch 2.11.0+cu128 pinned: %s.
+""" % "; ".join("K=%d: %s" % (k, ", ".join(c)) for k, _, c in KNN_PROFILE)),
+        code("""
+import subprocess
+print(subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total",
+                      "--format=csv,noheader"], capture_output=True,
+                     text=True).stdout.strip())
+"""),
+        code(UNPACK.format(blob=blob)),
+        code(RUNNER),
+        code(GPU_SETUP_T4_PINNED),
+        code("""
+PROFILE = %r
+for k, chunk, configs in PROFILE:
+    args = ["benchmarks.profile_gpu", "--out", "/kaggle/working/knn_profile_k%%d" %% k,
+            "--k", str(k), "--batch-size", "256", "--eval-chunk-size", str(chunk),
+            "--compile", "--no-profile", "--steps", "15"]
+    for c in configs:
+        args += ["--config", c]
+    ok = run(args)
+    assert ok, "profile at K=%%d failed" %% k
+""" % KNN_PROFILE),
+        code("""
+import json
+for k, _, _ in PROFILE:
+    s = json.load(open("/kaggle/working/knn_profile_k%d/summary.json" % k))
+    print("K=%d on %s, torch %s" % (k, s["device"], s["torch"]))
+    for r in s["rows"]:
+        if "compile_error" in r:
+            print("  %-18s compile error" % r["config"]); continue
+        print("  %-18s %6d params | epoch ~%5.0f s (%.1f h for 60) | peak %.2f GiB%s"
+              % (r["config"], r["n_params"], r["epoch_estimate_s"], r["epoch_estimate_s"] * 60 / 3600,
+                 r["peak_train_gib"], r["compile_note"]))
+"""),
+    ]
+    name = "kaggle_knn_profile.ipynb"
+    _finalise(cells, NB_DIR / name)
+    meta = {"id": "nsanya/so3c-knn-profile", "title": "SO3C knn profile",
+            "code_file": name, "language": "python",
+            "kernel_type": "notebook", "is_private": True, "enable_gpu": True,
+            "enable_internet": True, "dataset_sources": [],
+            "competition_sources": [], "kernel_sources": []}
+    (NB_DIR / "kernel-metadata-knn-profile.json").write_text(
+        json.dumps(meta, indent=2) + chr(10), encoding="utf-8")
+    return name
+
 # Long-schedule screen, window 2026-09-26: the width scaling curve,
 # (tag, flags, seed), one seed per kernel so the order can adapt. Measured
 # compiled cost at K=32 over 60 epochs: base ~3.0 h, w64s24 ~4.3 h,
@@ -4433,6 +4499,7 @@ def _registry() -> dict:
         "gpu_profile": build_gpu_profile,
         "cuda_diag": build_cuda_diag,
         "width_profile": build_width_profile,
+        "knn_profile": build_knn_profile,
         "k64_%s_seed0" % CONT_TAG: build_k64_continuation,
         "k64_%s_finish" % CONT_TAG: build_k64_continuation_finish,
     }

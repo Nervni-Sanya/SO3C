@@ -1,0 +1,13 @@
+{
+  "id": "nsanya/so3c-knn-profile",
+  "title": "SO3C knn profile",
+  "code_file": "kaggle_knn_profile.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "dataset_sources": [],
+  "competition_sources": [],
+  "kernel_sources": []
+}

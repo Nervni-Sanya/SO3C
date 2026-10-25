@@ -27,6 +27,7 @@ Flat models take `(B, F)` feature vectors (HIGGS, Adult).
 | `so3c_covariant_set` | `SO3CCovariantSetClassifier` | 9,078 | one closed-form covariant step | Lorentz-invariant, exactly |
 | `so3c_message_set` | `SO3CMessageSetClassifier` | 13,862 | 3 closed-form covariant rounds + scalar channel | Lorentz-invariant, exactly; with `beams`, covariant together with the beams and invariant under rotations about the beam axis |
 | `so3c_interaction_set` | `SO3CInteractionSetClassifier` | 5,652 | `SO3CInteraction` ODE | Lorentz-invariant to solver tolerance |
+| `so3c_knn_set` | `SO3CMessageSetClassifier` on a sparse graph | 23,485 | 3 covariant rounds over each particle's 16 nearest partners (jet-frame angle) plus the beams, with attention | as `so3c_message_set` with beams |
 | `so3c` | `SO3CBottleneck(mode="dynamic")` | $6F+170$ | exact flow on a learned 6-D embedding | no symmetry (learned lift) |
 | `so3c_static` | `SO3CBottleneck(mode="static")` | $6F+26$ | same, 6 constant coefficients | no symmetry |
 | `so3c_multi` | `MultiChannelSO3C` (4 blocks) | $24F+674$ | 4 parallel bottleneck flows | no symmetry |
@@ -263,10 +264,11 @@ Parameter counts are on the headline configuration.
 | Argument | CLI flag | Parameters | Change |
 |---|---|---:|---|
 | `lab_scalars=True` | `--lab-scalars` | 22,890 | ParT's seven particle features in the scalar initialisation |
-| `pair_lab=True` | `--pair-lab` | 23,026 | ParT's four interaction features on the edges; dense graph only |
+| `pair_lab=True` | `--pair-lab` | 23,026 | ParT's four interaction features on the edges; since 2026-10-25 also on the sparse graph, gathered per edge |
 | both | both flags | 23,082 | |
 | `pair_lab=True, pair_lab_set="frame"` | `--pair-lab --pair-lab-set frame` | 22,978 | only ln Δ, ln k_T, ln z (ablation, 2026-10-18) |
 | `pair_lab=True, pair_lab_set="mass"` | `--pair-lab --pair-lab-set mass` | 22,882 | only ln m² (ablation, 2026-10-18) |
+| `pair_lab=True, pair_lab_fp64=True` | `--pair-lab --pair-lab-fp64` | 23,026 | the four features computed in float64 and cast back (2026-10-25); in float32 ⟨p_a,p_b⟩ cancels for near-collinear pairs and ~0.1% of ln Δ, ln k_T, ln m² values are off by more than 0.1 |
 
 On the CPU (K=32, batch 256, float32) `lab_scalars` costs 0.98×, `pair_lab`
 1.50× and both 1.53× the headline per step. On the T4 (probe protocol)
@@ -278,6 +280,41 @@ long schedule `pair_lab` gave +0.00064 against the pooled base (two seeds,
 Welch t = 6.8) at the control's training time, and at $K=64$ over 60 epochs
 +0.00100 against a same-stack control (two seeds each, Welch t = 3.5 on ≈1.7
 df, p ≈ 0.1) at 0.98–1.08× its training time.
+
+### `so3c_knn_set` (added 2026-10-25)
+
+The sixth set model: `SO3CMessageSetClassifier` with `neighbors=16`,
+`knn_metric="angle"`, `attention=True`, `beams=True`, `channels=8` and
+`pair_lab=True`; any of them can be overridden from the CLI. Meant for
+$K=128$, where dense rounds cost about 4× $K=64$.
+
+- **Graph.** Each particle's 16 nearest partners by the opening angle in the
+  jet rest frame, $1-\cos	heta^*_{ab} = M^2\langle p_a,p_bangle/(\langle
+  p_a,Pangle\langle p_b,Pangle)$ for massless constituents, computed in
+  float64. It is a function of Minkowski products only, so the neighbour sets
+  are the same in every frame. The two beams are appended to every list, as
+  with `--neighbors` before. The existing `--neighbors` ranking
+  (`knn_metric="strength"`, the largest $|\mathrm{Re}\,z_a\cdot z_b|$) stays the
+  default for `so3c_message_set`.
+- **Attention** (`--attention`). Per edge, one logit per flow channel and one
+  for the scalar messages, from the invariant edge state; a softmax over each
+  node's partners replaces the mean. The logit heads start at zero, so at
+  initialisation it is exactly the mean.
+- **Pair features on the sparse graph.** `pair_lab`'s four features are
+  computed for all pairs once and gathered per edge, in the same column layout
+  as the dense path.
+- **Checks** (`tests/test_so3c_models.py`). The neighbour sets match an explicit
+  boost to each jet's rest frame and do not change under a Lorentz
+  transformation of jet and beams. A sparse graph that covers every partner
+  reproduces the dense model to 1e-12 (self-edges off), with and without
+  attention. The model is exactly covariant with the beams moved along and
+  invariant under rotations about the beam axis and under relabelling.
+- **Cost.** It is not cheaper than dense $K=64$. On the CPU (batch 64) a step
+  costs 1.5 s at $K=128$, against 0.63 s for dense `--pair-lab` at $K=64$ and
+  2.0 s at $K=128$. The cost scales with $k$ (1.1 s at $k=8$, 2.2 s at
+  $k=32$) on top of per-node work that doubles from $K=64$ to 128. The old P100
+  measurement agrees: kNN(16) at $K=128$ was 3.15× faster than dense $K=128$
+  but about 1.9× dense $K=64$. GPU numbers: `kaggle_knn_profile`.
 
 ## `so3c_interaction_set`
 

@@ -105,6 +105,15 @@ def main(argv: list[str] | None = None) -> int:
                         "INVARIANT |Re z_a.z_b|. Cuts the per-round cost "
                         "from K^2 to K*k and keeps equivariance, because "
                         "the ranking key does not move under a boost.")
+    p.add_argument("--knn-metric", choices=["strength", "angle"], default=None,
+                   help="with --neighbors: rank partners by strength "
+                        "(|Re z_a.z_b|, the default) or by the smallest "
+                        "jet-frame opening angle, 1 - cos theta*, from "
+                        "Minkowski products. so3c_knn_set defaults to angle.")
+    p.add_argument("--attention", action="store_true",
+                   help="so3c_message_set: softmax attention over each "
+                        "particle's partners instead of the mean (zero-init, "
+                        "so it starts as the mean). so3c_knn_set has it on.")
     p.add_argument("--flow-T", type=float, default=None,
                    help="so3c set models: geodesic flow time.")
     p.add_argument("--lr", type=float, default=3e-3,
@@ -243,6 +252,8 @@ def main(argv: list[str] | None = None) -> int:
         ("scalar_dim", args.scalar_dim),
         ("msg_dim", args.msg_dim),
         ("neighbors", args.neighbors),
+        ("knn_metric", args.knn_metric),
+        ("attention", True if args.attention else None),
         ("T", args.flow_T),
         ("beams", True if args.beams else None),
         ("beam_energy", args.beam_energy),

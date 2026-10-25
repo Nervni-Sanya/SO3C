@@ -49,6 +49,17 @@ CONFIGS = {
     "w128s32": {"act_hidden": 128, "msg_dim": 32, "scalar_dim": 32},
     "c16": {"channels": 16},
     "pair16w32": {"pair_latent": 16, "act_hidden": 32},
+    # 2026-10-25: the pair-feature arms and their combination, and
+    # so3c_knn_set (angle-ranked kNN with attention and pair_lab) at k
+    # partners plus the two beams
+    "pairlab": {"pair_lab": True},
+    "pairlat8lab": {"pair_lab": True, "pair_latent": 8},
+    "w64s24lab": {"pair_lab": True, "act_hidden": 64, "msg_dim": 24, "scalar_dim": 24},
+    "pairlat8w64s24lab": {"pair_lab": True, "pair_latent": 8,
+                          "act_hidden": 64, "msg_dim": 24, "scalar_dim": 24},
+    "knn8": {"neighbors": 8, "knn_metric": "angle", "attention": True, "pair_lab": True},
+    "knn16": {"neighbors": 16, "knn_metric": "angle", "attention": True, "pair_lab": True},
+    "knn32": {"neighbors": 32, "knn_metric": "angle", "attention": True, "pair_lab": True},
 }
 
 
@@ -74,6 +85,8 @@ def build(config: str, channels: int, dtype, device):
         for h in model.w_head:
             h.weight.normal_(0.0, 0.3)
         for h in model.v_head:
+            h.weight.normal_(0.0, 0.3)
+        for h in model.att_head:
             h.weight.normal_(0.0, 0.3)
     return model, kw
 

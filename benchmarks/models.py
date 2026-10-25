@@ -85,6 +85,7 @@ SET_MODELS = (
     "so3c_interaction_set",  # + SO3CInteraction multi-particle ODE flow
     "so3c_covariant_set",    # flow with a COVARIANT connection (the fix)
     "so3c_message_set",      # + multi-round covariant message passing
+    "so3c_knn_set",          # message passing on an angle-ranked kNN graph with attention (K=128)
 )
 # The so3c set family (subset of SET_MODELS, dispatched in _build_deepsets).
 SO3C_SET_MODELS = (
@@ -93,6 +94,7 @@ SO3C_SET_MODELS = (
     "so3c_interaction_set",
     "so3c_covariant_set",
     "so3c_message_set",
+    "so3c_knn_set",
 )
 ALL_MODELS = MATCHED_MODELS + NATURAL_MODELS + SET_MODELS
 
@@ -377,14 +379,22 @@ def _build_deepsets(
         # Capacity knobs (channels / hidden / act_hidden / T) come through
         # so3c_kwargs so a scaling study is a CLI matter, not a code edit.
         extra = dict(so3c_kwargs or {})
-        if name != "so3c_message_set":
+        if name == "so3c_knn_set":
+            # the message-passing class on a sparse graph: each particle's 16
+            # nearest partners by jet-frame angle plus the beams, attention
+            # over them, the pair features gathered per edge; every default
+            # is overridable through so3c_kwargs
+            extra = {"beams": True, "channels": 8, "neighbors": 16, "knn_metric": "angle",
+                     "attention": True, "pair_lab": True, **extra}
+        if name not in ("so3c_message_set", "so3c_knn_set"):
             # Message-passing-only knobs; harmless to drop for the others so
             # a sweep can pass one kwargs dict across the whole family.
             for k in ("rounds", "scalar_dim", "msg_dim", "channel_mixing",
                       "neighbors", "beams", "beam_energy", "dropout",
                       "mass_input", "self_edges", "relnorm_edge", "falpha",
                       "vector_channel", "pair_latent", "edge_norm", "log_knee",
-                      "lab_scalars", "pair_lab", "pair_lab_set", "pair_lab_fp64"):
+                      "lab_scalars", "pair_lab", "pair_lab_set", "pair_lab_fp64",
+                      "knn_metric", "attention"):
                 extra.pop(k, None)
         if name == "so3c_invariant_set":
             extra.pop("channels", None)      # no channel axis in the no-flow model
@@ -398,7 +408,7 @@ def _build_deepsets(
         if name == "so3c_covariant_set":
             return SO3CCovariantSetClassifier(out_features=out_features,
                                               dtype=dtype, **extra)
-        if name == "so3c_message_set":
+        if name in ("so3c_message_set", "so3c_knn_set"):
             return SO3CMessageSetClassifier(out_features=out_features,
                                             dtype=dtype, **extra)
         extra.pop("channels", None)          # interaction model is single-channel
