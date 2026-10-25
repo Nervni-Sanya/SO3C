@@ -2890,7 +2890,35 @@ PROBE_QUEUES = [
         ("pairlab_full", ["--pair-lab"], 3),     # anchors: last, so a budget
         ("control", [], 3),                      # cut drops them first
     ], 2.6),
+    # 2026-10-25: the float64 pair features (--pair-lab-fp64) against float32,
+    # both in this kernel at the same seeds, each pair started together on the
+    # two cards. Last, four one-epoch pair-latent runs on 20k jets read the
+    # first-batch compile check with and without the switch (at K=32 long
+    # seed 1 fell back to eager at d logit 1.3e-3).
+    ("fp64-pairlab", [
+        (arm, flags, s)
+        for s in (0, 1, 2)
+        for arm, flags in (("pairlab_fp64", ["--pair-lab", "--pair-lab-fp64"]),
+                           ("pairlab_f32", ["--pair-lab"]))
+    ] + [
+        (arm, flags + ["--pair-latent", "8", "--epochs", "1", "--max-train-samples", "20000"], s)
+        for s in (0, 1)
+        for arm, flags in (("compile_pairlat_fp64", ["--pair-lab", "--pair-lab-fp64"]),
+                           ("compile_pairlat_f32", ["--pair-lab"]))
+    ], 2.6),
 ]
+
+# Which summary cell a probe queue prints (default "ablation").
+PROBE_QUEUE_SUMMARY = {"fp64-pairlab": "fp64"}
+
+# Reading of the float64 screen, fixed before the push: d = mean(pairlab_fp64)
+# - mean(pairlab_f32), three runs each in the same kernel. "pays" if
+# d >= +0.00015 and Welch p < 0.05 (carry the switch into later runs, with
+# same-stack references); "hurts" if d <= -0.00015 and p < 0.05 (keep
+# float32); otherwise no resolved difference (carry it only where it saves
+# compute, by the compile check). +0.00015 is the probe protocol's promotion
+# line (plan_2026-10-10 section 3); the probe's run-to-run sd is ~0.0001.
+FP64_RULE = (0.00015, 0.05)
 
 
 def _probe_references() -> dict:
@@ -2909,15 +2937,94 @@ def _probe_references() -> dict:
     return refs
 
 
-def build_probe_queue(blob: str, tag: str, jobs: list, budget_h: float) -> str:
+def _probe_references_fp64() -> dict:
+    """The earlier float32 --pair-lab probe runs (10-10 and the ablation's
+    seed-3 anchor) and the probe controls (10-05, base1010, the ablation's
+    control): test AUC of each."""
+    refs = {}
+    for name, d in (("pairlab", ["results_message/repr_screen/pairlab",
+                                 "results_message/repr_screen/ablation/pairlab_full"]),
+                    ("control", ["results_message/probe_screen/base", "results_message/repr_screen/base1010",
+                                 "results_message/repr_screen/ablation/control"])):
+        rows = []
+        for sub in d:
+            for f in sorted((ROOT / sub).glob("seed*/*.json")):
+                r = json.loads(f.read_text())
+                assert r["env"]["torch"] == "2.11.0+cu128" and r["epochs_run"] == 20, f
+                rows.append(r["test_metrics"]["test_auc"])
+        refs[name] = rows
+    assert len(refs["pairlab"]) == 4 and len(refs["control"]) == 7, {k: len(v) for k, v in refs.items()}
+    return refs
+
+
+_FP64_SUMMARY = """
+# The float64 pair features against float32, both from this kernel, three
+# seeds each, read by the rule fixed before the push: d = mean(fp64) -
+# mean(f32); "pays" if d >= +%.5f and Welch p < %.2f, "hurts" if
+# d <= -%.5f and p < %.2f, otherwise no resolved difference. Beside it, the
+# earlier float32 --pair-lab probe runs pooled with this kernel's, the probe
+# controls, and the compile check of every run.
+import json, glob, statistics as st, math
+from scipy import stats
+REFS, RULE = %r, %r
+def load(arm, epochs=20):
+    rs = [json.load(open(f)) for f in sorted(glob.glob(OUT + "/%%s/seed*/*.json" %% arm))]
+    for r in rs:
+        t = r["test_metrics"]; env = r["env"]; cc = r.get("compile_check") or {}
+        assert env["torch"] == "2.11.0+cu128" and "T4" in env.get("gpu", ""), env
+        print("%%-21s seed %%d: AUC %%.5f  rej@0.3 %%.1f  %%d epochs  %%.2f h  compile %%s d_logit %%.1e  kwargs %%s"
+              %% (arm, r["seed"], t["test_auc"], t["bg_rej_30"], r["epochs_run"], r["walltime_sec"] / 3600,
+                 cc.get("used"), cc.get("d_logit", float("nan")), r["so3c_kwargs"]))
+    return {r["seed"]: r["test_metrics"]["test_auc"] for r in rs if r["epochs_run"] == epochs}
+def welch(a, b):
+    va, vb = st.variance(a) / len(a), st.variance(b) / len(b)
+    t = (st.mean(a) - st.mean(b)) / math.sqrt(va + vb)
+    df = (va + vb) ** 2 / (va ** 2 / (len(a) - 1) + vb ** 2 / (len(b) - 1))
+    return st.mean(a) - st.mean(b), t, df, 2 * stats.t.sf(abs(t), df)
+fp, f32 = load("pairlab_fp64"), load("pairlab_f32")
+for arm in ("compile_pairlat_fp64", "compile_pairlat_f32"):
+    load(arm, epochs=1)
+a, b = list(fp.values()), list(f32.values())
+if len(a) >= 2 and len(b) >= 2:
+    d, t, df, p = welch(a, b)
+    if d >= RULE[0] and p < RULE[1]:
+        verdict = "PAYS: carry --pair-lab-fp64 into later runs, with same-stack references"
+    elif d <= -RULE[0] and p < RULE[1]:
+        verdict = "HURTS: keep float32"
+    else:
+        verdict = "no resolved difference"
+    print("fp64 %%d runs %%.5f +- %%.5f | f32 here %%d runs %%.5f +- %%.5f | d %%+.5f (Welch t %%.2f, df %%.1f, p %%.3f) -> %%s"
+          %% (len(a), st.mean(a), st.stdev(a), len(b), st.mean(b), st.stdev(b), d, t, df, p, verdict))
+    same = sorted(set(fp) & set(f32))
+    print("same-seed differences (both runs started together):", " ".join("s%%d %%+.5f" %% (s, fp[s] - f32[s]) for s in same))
+    pooled = REFS["pairlab"] + b
+    d2, t2, df2, p2 = welch(a, pooled)
+    print("against all %%d float32 --pair-lab probe runs (%%.5f +- %%.5f): %%+.5f (t %%.2f, df %%.1f, p %%.3f)"
+          %% (len(pooled), st.mean(pooled), st.stdev(pooled), d2, t2, df2, p2))
+    for name, rows in (("f32 here", b), ("fp64", a)):
+        d3, t3, df3, p3 = welch(rows, REFS["control"])
+        print("%%-8s against the %%d probe controls (%%.5f): %%+.5f (t %%.1f, p %%.3f)"
+              %% (name, len(REFS["control"]), st.mean(REFS["control"]), d3, t3, p3))
+    print("float32 --pair-lab here against the earlier float32 runs: %%+.5f (kernel offset)"
+          %% (st.mean(b) - st.mean(REFS["pairlab"])))
+else:
+    print("fewer than two complete runs per arm: no reading")
+assert not BAD, "jobs failed: %%s" %% BAD
+"""
+
+
+def build_probe_queue(blob: str, tag: str, jobs: list, budget_h: float,
+                      summary: str = "ablation") -> str:
     """Probe-protocol runs (arm, flags, seed) drained by two T4s as a queue.
 
     The command is the 10-05 control's (build_probe_screen's `common`) plus
     each job's flags, on the pinned T4 / torch 2.11 setup. A smoke test runs
     on both cards at once first; the queue then hands the next job to
     whichever card is free, and stops handing out jobs once less than one
-    run's time is left of `budget_h`. The summary reads each arm unpaired
-    against the pooled probe controls and the full --pair-lab runs.
+    run's time is left of `budget_h`. With summary="ablation" the summary
+    reads each subset arm unpaired against the pooled probe controls and the
+    full --pair-lab runs; with "fp64" it reads the float64 pair features
+    against float32 by FP64_RULE.
     """
     import hashlib
     bundle_sha = hashlib.sha256(blob.encode()).hexdigest()[:12]
@@ -2928,6 +3035,7 @@ def build_probe_queue(blob: str, tag: str, jobs: list, budget_h: float) -> str:
               "--n-constituents", "32", "--eval-chunk-size", "2048",
               "--models", "so3c_message_set", "--rounds", "3", "--beams",
               "--channels", "8", "--compile"]
+    assert summary in ("ablation", "fp64"), summary
     refs = _probe_references()
     cells = [
         md("""
@@ -3086,6 +3194,9 @@ for arm in ("pairlab_mass", "pairlab_frame"):
 assert not BAD, "jobs failed: %%s" %% BAD
 """ % refs),
     ]
+    if summary == "fp64":
+        cells[-1] = code(_FP64_SUMMARY % (FP64_RULE[0], FP64_RULE[1], FP64_RULE[0], FP64_RULE[1],
+                                          _probe_references_fp64(), FP64_RULE))
     name = "kaggle_probe_queue_%s.ipynb" % tag.replace("-", "_")
     _finalise(cells, NB_DIR / name)
     meta = {
@@ -4354,7 +4465,8 @@ def _registry() -> dict:
             lambda b, t=tag, f=flags, s=seed, e=epochs: build_k64_run(b, t, f, s, epochs=e))
     for tag, jobs, budget_h in PROBE_QUEUES:
         reg["probe_queue_%s" % tag.replace("-", "_")] = (
-            lambda b, t=tag, j=jobs, h=budget_h: build_probe_queue(b, t, j, h))
+            lambda b, t=tag, j=jobs, h=budget_h: build_probe_queue(
+                b, t, j, h, summary=PROBE_QUEUE_SUMMARY.get(t, "ablation")))
     for src, tag, flags, seeds in K64_DUAL_CONTINUATIONS:
         reg["k64_%s_seeds%s" % (tag, "".join(str(s) for s in seeds))] = (
             lambda b, sr=src, t=tag, f=flags, s=seeds: build_k64_continuation_dual(b, sr, t, f, s))

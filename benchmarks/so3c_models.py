@@ -761,6 +761,7 @@ class SO3CMessageSetClassifier(nn.Module):
         lab_scalars: bool = False,
         pair_lab: bool = False,
         pair_lab_set: str = "all",
+        pair_lab_fp64: bool = False,
         dtype: torch.dtype = torch.float64,
     ) -> None:
         super().__init__()
@@ -796,9 +797,13 @@ class SO3CMessageSetClassifier(nn.Module):
         if pair_lab_set != "all" and not pair_lab:
             raise ValueError("pair_lab_set selects among the pair_lab features; "
                              "it needs pair_lab=True")
+        if pair_lab_fp64 and not pair_lab:
+            raise ValueError("pair_lab_fp64 sets the precision of the pair_lab "
+                             "features; it needs pair_lab=True")
         self.lab_scalars = lab_scalars
         self.pair_lab = pair_lab
         self.pair_lab_set = pair_lab_set
+        self.pair_lab_fp64 = pair_lab_fp64
         self._pair_lab_cols = PAIR_LAB_SETS[pair_lab_set] if pair_lab else ()
         n_lab = len(self._pair_lab_cols)
         if beams:
@@ -1104,7 +1109,16 @@ class SO3CMessageSetClassifier(nn.Module):
         lab_pair = None
         if self.pair_lab:
             real = torch.cat([mask, mask.new_zeros(p4.shape[0], 2)], dim=1)
-            lab_pair = _lab_pair_features(p4_all, self.beam_p4, real)   # (B, N, N, 4)
+            if self.pair_lab_fp64:
+                # <p_a, p_b> = E_a E_b - p_a.p_b cancels for near-collinear
+                # pairs: in float32, ln Delta, ln kT and ln m^2 are off by more
+                # than 0.1 on ~0.1% of pairs, by up to 7-10 (2026-10-24). In
+                # float64 and cast back they are exact to float32 rounding; the
+                # inputs are the same, so covariance is unchanged.
+                lab_pair = _lab_pair_features(p4_all.double(), self.beam_p4.double(),
+                                              real.double()).to(p4_all.dtype)
+            else:
+                lab_pair = _lab_pair_features(p4_all, self.beam_p4, real)   # (B, N, N, 4)
             if len(self._pair_lab_cols) < 4:
                 lab_pair = lab_pair[..., list(self._pair_lab_cols)]
         w = torch.complex(self.channel_weights[:, 0],

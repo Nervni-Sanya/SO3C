@@ -1252,6 +1252,76 @@ def test_pair_lab_permutation_invariant_and_guards() -> None:
         SO3CMessageSetClassifier(channels=4, rounds=2, beams=True, pair_lab=True, neighbors=4)
 
 
+def test_pair_lab_fp64_fixes_collinear_pairs_and_changes_nothing_else() -> None:
+    """pair_lab_fp64 (2026-10-25 probe screen): in a float32 model the pair
+    features become the float64 ones cast back, which fixes the near-collinear
+    pairs float32 garbles; the parameters, the float64 model and the default
+    (off) path are unchanged, and covariance with the beams moved along holds."""
+    import pytest
+    from benchmarks.so3c_models import SO3CMessageSetClassifier, _lab_pair_features
+    p4, mask, _ = _lab_jets()
+    # two nearly parallel constituents in jet 0 (1 mrad): <p_a, p_b> cancels in
+    # float32. The momenta are made float32-representable, as the stored data
+    # are, so the float64 features of the float32 inputs are the exact ones.
+    p4[0, 1] = p4[0, 0] * 0.7
+    p4[0, 1, 1:] += 1e-3 * torch.tensor([0.0, 1.0, -1.0], dtype=torch.float64)
+    p4[0, 1, 0] = p4[0, 1, 1:].norm()
+    p4 = p4.float().double()
+    x = torch.cat([p4, mask[..., None]], -1)
+    beams = torch.tensor([[1.0, 0, 0, 1.0], [1.0, 0, 0, -1.0]], dtype=torch.float64)
+    exact = _lab_pair_features(p4, beams, mask)
+    off32 = _lab_pair_features(p4.float(), beams.float(), mask.float()).double()
+    assert (off32[0, 0, 1] - exact[0, 0, 1]).abs().max() > 0.1      # float32 is garbled here
+
+    def build(dt, **kw):
+        torch.manual_seed(0)
+        return SO3CMessageSetClassifier(channels=4, rounds=2, beams=True, pair_lab=True,
+                                        dtype=dt, **kw)
+    m32, f32 = build(torch.float32), build(torch.float32, pair_lab_fp64=True)
+    assert [(k, v.shape) for k, v in m32.state_dict().items()] == \
+           [(k, v.shape) for k, v in f32.state_dict().items()]
+    # the features the switched model feeds its edges: the float64 ones, cast back
+    seen = {}
+    import benchmarks.so3c_models as SM
+    orig = SM._lab_pair_features
+    def spy(*a):
+        out = orig(*a); seen.setdefault("dtype", a[0].dtype); seen["out"] = out
+        return out
+    SM._lab_pair_features = spy
+    try:
+        f32(x.float())
+    finally:
+        SM._lab_pair_features = orig
+    assert seen["dtype"] == torch.float64
+    # real constituents only (the model appends the two beam nodes)
+    assert (seen["out"][:, :9, :9] - exact).abs().max() < 1e-9
+    # float64 model: the switch is a no-op, bit for bit
+    m64, s64 = build(torch.float64), build(torch.float64, pair_lab_fp64=True)
+    assert torch.equal(m64(x), s64(x))
+    # the switched float32 model is much closer to the float64 one on the garbled jet
+    with torch.no_grad():
+        ref = m64(x)[0]
+        for m in (m32, f32):
+            m.load_state_dict({k: v.float() for k, v in m64.state_dict().items()})
+        err_off = (m32(x.float())[0].double() - ref).abs().max()
+        err_on = (f32(x.float())[0].double() - ref).abs().max()
+    assert err_on < err_off, (err_on, err_off)
+    # covariance with the beams moved along (float64 model with the switch on)
+    L = _lorentz([0.6, -0.4, 0.9], angle_z=0.7)
+    moved = build(torch.float64, pair_lab_fp64=True)
+    moved.load_state_dict(s64.state_dict())
+    with torch.no_grad():
+        moved.beam_p4.copy_(s64.beam_p4 @ L.T)
+        xb = x.clone(); xb[..., :4] = (p4 @ L.T) * mask[..., None]
+        out = s64(x)
+        assert (moved(xb) - out).abs().max() < 1e-9 * max(1.0, out.abs().max().item())
+    with pytest.raises(ValueError):
+        SO3CMessageSetClassifier(channels=4, rounds=2, beams=True, pair_lab_fp64=True)
+    from benchmarks.run_top_tagging import main
+    with pytest.raises(SystemExit):
+        main(["--quick", "--beams", "--pair-lab-fp64"])
+
+
 def test_pair_lab_with_pair_latent_and_width() -> None:
     """Window 2026-10-24: --pair-lab on top of the pair latent and of w64s24.
     The four features reach the edge layer and, with the pair latent, its

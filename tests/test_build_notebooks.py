@@ -203,7 +203,7 @@ def test_probe_queue_is_the_stored_control_command_plus_each_jobs_flags(nb_dir) 
     assert _assigned_list(nb, "BASE") == control
     text = "".join("".join(c["source"]) for c in
                    json.loads(nb.read_text(encoding="utf-8"))["cells"])
-    jobs = [j for _, js, _ in B.PROBE_QUEUES for j in js]
+    jobs = [j for tag, js, _ in B.PROBE_QUEUES if tag == "ablation-pairlab" for j in js]
     assert [(a, f[-1], s) for a, f, s in jobs[:6]] == [
         (arm, sub, s) for s in (0, 1, 2) for arm, sub in (("pairlab_mass", "mass"), ("pairlab_frame", "frame"))]
     assert all(f[:2] == ["--pair-lab", "--pair-lab-set"] for _, f, _ in jobs[:6])
@@ -275,3 +275,27 @@ def test_k64_pair_latent_confirmation_and_its_finish(nb_dir) -> None:
     assert meta["kernel_sources"] == ["nsanya/so3c-data-prep-k-128", "nsanya/so3c-k64-pairlatlab60-seeds01"]
     meta = json.loads((nb_dir / "kernel-metadata-k64-pairlatlab60-seeds01.json").read_text())
     assert meta["id"] == "nsanya/so3c-k64-pairlatlab60-seeds01"
+
+
+def test_fp64_probe_queue_pairs_each_seed_and_reads_by_its_rule(nb_dir) -> None:
+    """2026-10-25: the float64 pair-feature screen is the committed probe
+    control command plus --pair-lab, with and without --pair-lab-fp64, the two
+    started together at each of seeds 0-2, then four one-epoch pair-latent
+    compile probes; its summary reads by FP64_RULE."""
+    import json
+    control = _assigned_list(ROOT / "notebooks" / "kaggle_probe_screen_base.ipynb", "BASE")
+    assert B.main(["--only", "probe_queue_fp64_pairlab"]) == 0
+    nb = nb_dir / "kaggle_probe_queue_fp64_pairlab.ipynb"
+    assert _assigned_list(nb, "BASE") == control
+    text = "".join("".join(c["source"]) for c in json.loads(nb.read_text(encoding="utf-8"))["cells"])
+    (js,) = [j for tag, j, _ in B.PROBE_QUEUES if tag == "fp64-pairlab"]
+    assert [(a, s) for a, _, s in js[:6]] == [(a, s) for s in (0, 1, 2) for a in ("pairlab_fp64", "pairlab_f32")]
+    assert all(f == ["--pair-lab", "--pair-lab-fp64"] for a, f, _ in js[:6] if a == "pairlab_fp64")
+    assert all(f == ["--pair-lab"] for a, f, _ in js[:6] if a == "pairlab_f32")
+    assert all("--pair-latent" in f and f[-4:] == ["--epochs", "1", "--max-train-samples", "20000"]
+               for _, f, _ in js[6:]) and len(js) == 10
+    assert "REFS, RULE = " in text and repr(B.FP64_RULE) in text and "carries the gain" not in text
+    for x in B._probe_references_fp64()["pairlab"]:
+        assert repr(x) in text
+    meta = json.loads((nb_dir / "kernel-metadata-probe-queue-fp64-pairlab.json").read_text())
+    assert meta["id"] == "nsanya/so3c-probe-queue-fp64-pairlab"

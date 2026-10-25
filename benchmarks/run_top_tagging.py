@@ -167,6 +167,11 @@ def main(argv: list[str] | None = None) -> int:
                    help="with --pair-lab: which of its features feed the edges -- "
                         "all four (default), 'frame' (ln Delta, ln kT, ln z, "
                         "which need the beams' frame) or 'mass' (ln m^2 alone).")
+    p.add_argument("--pair-lab-fp64", action="store_true",
+                   help="with --pair-lab: compute its features in float64 and "
+                        "cast back. In float32, <p_a, p_b> cancels for "
+                        "near-collinear pairs and ~0.1%% of ln Delta, ln kT and "
+                        "ln m^2 values are off by more than 0.1.")
     p.add_argument("--ckpt-dir", type=str, default=None,
                    help="Directory for training checkpoints; --resume needs it.")
     p.add_argument("--compile", action="store_true",
@@ -195,6 +200,8 @@ def main(argv: list[str] | None = None) -> int:
         p.error("--beam-energy needs --beams")
     if args.pair_lab_set is not None and not args.pair_lab:
         p.error("--pair-lab-set needs --pair-lab")
+    if args.pair_lab_fp64 and not args.pair_lab:
+        p.error("--pair-lab-fp64 needs --pair-lab")
 
     if args.quick:
         split = synthetic_tabular(n_samples=1_000, n_features=6,
@@ -251,6 +258,7 @@ def main(argv: list[str] | None = None) -> int:
         ("lab_scalars", True if args.lab_scalars else None),
         ("pair_lab", True if args.pair_lab else None),
         ("pair_lab_set", args.pair_lab_set),
+        ("pair_lab_fp64", True if args.pair_lab_fp64 else None),
     ) if v is not None} or None
 
     kwargs = dict(
