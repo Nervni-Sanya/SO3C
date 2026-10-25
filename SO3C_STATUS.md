@@ -236,12 +236,30 @@ Full agent text: `so3c_notes/gap_to_sota_2026-09-13.md`. Three of the workflow's
 - **The float64 probe screen** (plan item 1 below, moved forward). `--pair-lab-fp64` was added (`327e004`; off by default, a no-op in a float64 model, covariance and parameters unchanged). `nsanya/so3c-probe-queue-fp64-pairlab` was pushed at 09:17. It runs `--pair-lab` with and without the switch, started together on the two cards at seeds 0–2, then four one-epoch pair-latent runs that read the compile check. `FP64_RULE`, fixed before the push: with d = mean(fp64) − mean(float32), both from this kernel, it **pays** if d ≥ +0.00015 with Welch p < 0.05, **hurts** if d ≤ −0.00015 with p < 0.05, and otherwise shows no resolved difference.
 - **`so3c_knn_set`, the sixth set model** (`e01d7cb`, docs/so3c/models.md). Each particle exchanges messages with its 16 nearest partners by jet-rest-frame angle, plus the beams, with attention and the pair features on the sparse graph. It is meant for K=128, aimed at the high-multiplicity, wide-prong jets where K=32 → 64 gained most ("Where more constituents help" above). It is not cheaper than dense K=64: on the CPU it costs 2.4× dense `--pair-lab` at K=64 per step, and 0.77× dense K=128. `nsanya/so3c-knn-profile` (pushed 09:27) times it on the T4 at K=128, k = 8, 16 and 32, next to the K=64 candidates and their combination.
 
+**Measured cost on the T4** (`nsanya/so3c-knn-profile`, `results_profile/t4_knn_e01d7cb`; compiled, batch 256, synthetic jets; every compile check under 1.3e-4). The profile's estimate for `--pair-lab` at K=64 is 504 s per epoch, and the two-card runs took 517–541 s (×1.05). For the pair latent it is 732 s against 775–844 s measured (×1.06–1.15). The last column applies that ×1.05–1.15 to 60 epochs. Two seeds in parallel cost the same session time as one, so it is also the GPU-h for a two-seed run.
+
+| config | K | params | s / epoch (profile) | × `--pair-lab` K=64 | 60 epochs, GPU-h |
+|---|---|---|---|---|---|
+| `--pair-lab` | 64 | 23,026 | 504 | 1.00 | 8.8–9.7 |
+| + pair latent 8 | 64 | 26,738 | 732 | 1.45 | 12.8–14.0 |
+| + w64s24 | 64 | 61,602 | 869 | 1.72 | 15.2–16.7 |
+| + pair latent 8 + w64s24 (the dense combined model) | 64 | 67,874 | 1309 | 2.60 | 22.9–25.1 |
+| `so3c_knn_set` (k = 16) | 64 | 23,485 | 631 | 1.25 | 11.0–12.1 |
+| `--pair-lab`, dense | 128 | 23,026 | 1927 | 3.82 | 33.7–36.9 |
+| `so3c_knn_set`, k = 8 | 128 | 23,485 | 1104 | 2.19 | 19.3–21.2 |
+| **`so3c_knn_set`, k = 16** | 128 | 23,485 | 1469 | **2.92** | **25.7–28.2** |
+| `so3c_knn_set`, k = 32 | 128 | 23,485 | 2196 | 4.36 | 38.4–42.1 |
+
+- At K=128 the kNN graph saves 24% (k = 16) to 43% (k = 8) of dense K=128. It still costs 2.2–4.4× today's dense K=64, as the CPU had shown. Two seeds of `so3c_knn_set` at K=128 over 60 epochs take a whole week's quota (~27 GPU-h, three sessions).
+- Next window's two confirmations, at these costs: width at K=64, 15.2–16.7 GPU-h, plus the third pair-latent seed with a same-kernel `--pair-lab` seed, 12.8–14.0 GPU-h. That is 28–30.7 of 30 GPU-h, with no margin.
+- The dense combined model (pair latent + w64s24 + `--pair-lab`) at K=64: 22.9–25.1 GPU-h for two seeds over 60 epochs, three sessions. It fits one week with ~5 h to spare. A K=128 kNN model does not fit beside it in the same week.
+
 ### Plan, set by the user on 2026-10-25
 
 - **This window:** the float64 probe screen and the kNN cost profile (above).
 - **Next window (opens Saturday 2026-10-31): isolate and confirm.** Width at K=64 (item 2 below, ~15 GPU-h through the two-kernel path), and a third pair-latent seed at K=64, which is what would resolve its K=64 reading (unresolved by 0.00002). Proposed form: `pairlatlab60` seed 2 and `pairlab60` seed 2 together in one two-card kernel. That adds a third reference seed run in the same kernel. Cost ~13.5 GPU-h: the pair-latent seed needs the finish kernel too, and the reference fits in the first. Together ≈ 28.5 of 30 GPU-h.
-- **Testing `so3c_knn_set`.** The CPU tests are done (the graph, exact covariance, attention at init equal to the mean, the full graph equal to the dense model). The GPU cost profile is running. A screen comes after it. The cleanest is two comparisons on the same protocol: `so3c_knn_set` at K=64 against dense `--pair-lab` at K=64, which isolates the sparse graph and attention; and `so3c_knn_set` at K=128 against itself at K=64, which isolates the extra constituents. The analysis bins should be read too (multiplicity, prong separation). Its cost and its slot are set once the profile is in; next window's two confirmations leave ~1.5 GPU-h.
-- **The window after (opens 2026-11-07): the combined ("Ultimate") model**, once it is known which components to include. Constraint: the pair latent is dense-only (its seven rank-2 aggregators need the full pair matrix), so it does not combine with the kNN graph as built. The choices are a dense K=64 model (`--pair-lab` + pair latent + width, plus `--pair-lab-fp64` if it pays), or a K=128 kNN model without the pair latent, or a new hybrid.
+- **Testing `so3c_knn_set`.** The CPU tests are done (the graph, exact covariance, attention at init equal to the mean, the full graph equal to the dense model). The GPU cost profile is running. A screen comes after it. The cleanest is two comparisons on the same protocol: `so3c_knn_set` at K=64 against dense `--pair-lab` at K=64, which isolates the sparse graph and attention; and `so3c_knn_set` at K=128 against itself at K=64, which isolates the extra constituents. The analysis bins should be read too (multiplicity, prong separation). On the T4, `so3c_knn_set` costs 1.25× `--pair-lab` at K=64 and 2.92× at K=128 (k = 16). Two seeds over 60 epochs at K=128 take ~27 GPU-h, a whole week. The cheaper K=64 comparison costs ~11–12 GPU-h for two seeds over 60 epochs. Next window's two confirmations leave no margin. On an A100, K=128 is the natural candidate.
+- **The window after (opens 2026-11-07): the combined ("Ultimate") model**, once it is known which components to include. Constraint: the pair latent is dense-only (its seven rank-2 aggregators need the full pair matrix), so it does not combine with the kNN graph as built. The choices are a dense K=64 model (`--pair-lab` + pair latent + width, plus `--pair-lab-fp64` if it pays; 22.9–25.1 GPU-h for two seeds over 60 epochs on the T4), or a K=128 kNN model without the pair latent (~27 GPU-h for k = 16), or a new hybrid.
 
 ### Plan for the next window (opens Saturday 2026-10-31)
 

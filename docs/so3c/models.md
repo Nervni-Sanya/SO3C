@@ -289,8 +289,11 @@ The sixth set model: `SO3CMessageSetClassifier` with `neighbors=16`,
 $K=128$, where dense rounds cost about 4× $K=64$.
 
 - **Graph.** Each particle's 16 nearest partners by the opening angle in the
-  jet rest frame, $1-\cos	heta^*_{ab} = M^2\langle p_a,p_bangle/(\langle
-  p_a,Pangle\langle p_b,Pangle)$ for massless constituents, computed in
+  jet rest frame, $1-\cos	heta^*_{ab} = M^2\langle p_a,p_b
+angle/(\langle
+  p_a,P
+angle\langle p_b,P
+angle)$ for massless constituents, computed in
   float64. It is a function of Minkowski products only, so the neighbour sets
   are the same in every frame. The two beams are appended to every list, as
   with `--neighbors` before. The existing `--neighbors` ranking
@@ -314,7 +317,11 @@ $K=128$, where dense rounds cost about 4× $K=64$.
   2.0 s at $K=128$. The cost scales with $k$ (1.1 s at $k=8$, 2.2 s at
   $k=32$) on top of per-node work that doubles from $K=64$ to 128. The old P100
   measurement agrees: kNN(16) at $K=128$ was 3.15× faster than dense $K=128$
-  but about 1.9× dense $K=64$. GPU numbers: `kaggle_knn_profile`.
+  but about 1.9× dense $K=64$. On the T4, compiled (2026-10-25,
+  `results_profile/t4_knn_e01d7cb`): 1469 s per epoch at $K=128$, 2.92× dense
+  `--pair-lab` at $K=64$ (504 s) and 0.76× dense $K=128$ (1927 s); $k=8$ costs
+  1104 s and $k=32$ 2196 s. At $K=64$ it costs 631 s (1.25×). Sixty epochs of
+  two seeds at $K=128$, $k=16$, take about 27 GPU-h.
 
 ## `so3c_interaction_set`
 

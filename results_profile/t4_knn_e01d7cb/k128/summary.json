@@ -1,0 +1,82 @@
+{
+ "device": "Tesla T4",
+ "k": 128,
+ "batch_size": 256,
+ "dtype": "float32",
+ "torch": "2.11.0+cu128",
+ "rows": [
+  {
+   "config": "pairlab",
+   "kwargs": {
+    "channels": 8,
+    "rounds": 3,
+    "beams": true,
+    "pair_lab": true
+   },
+   "n_params": 23026,
+   "compiled": true,
+   "compile_note": " | compiled (first call 30 s, max |d logit| vs eager 1.4e-05)",
+   "train_step_s": 0.3744363266666672,
+   "eval_chunk_s": 0.19727640399999777,
+   "peak_train_gib": 5.751998424530029,
+   "epoch_estimate_s": 1926.5374492161466
+  },
+  {
+   "config": "knn8",
+   "kwargs": {
+    "channels": 8,
+    "rounds": 3,
+    "beams": true,
+    "neighbors": 8,
+    "knn_metric": "angle",
+    "attention": true,
+    "pair_lab": true
+   },
+   "n_params": 23485,
+   "compiled": true,
+   "compile_note": " | compiled (first call 26 s, max |d logit| vs eager 1.3e-04)",
+   "train_step_s": 0.21505924460000186,
+   "eval_chunk_s": 0.11067729400000796,
+   "peak_train_gib": 2.934537410736084,
+   "epoch_estimate_s": 1104.4461716859525
+  },
+  {
+   "config": "knn16",
+   "kwargs": {
+    "channels": 8,
+    "rounds": 3,
+    "beams": true,
+    "neighbors": 16,
+    "knn_metric": "angle",
+    "attention": true,
+    "pair_lab": true
+   },
+   "n_params": 23485,
+   "compiled": true,
+   "compile_note": " | compiled (first call 22 s, max |d logit| vs eager 4.5e-05)",
+   "train_step_s": 0.28534075206666787,
+   "eval_chunk_s": 0.15193359166664777,
+   "peak_train_gib": 3.688476085662842,
+   "epoch_estimate_s": 1469.3838651311107
+  },
+  {
+   "config": "knn32",
+   "kwargs": {
+    "channels": 8,
+    "rounds": 3,
+    "beams": true,
+    "neighbors": 32,
+    "knn_metric": "angle",
+    "attention": true,
+    "pair_lab": true
+   },
+   "n_params": 23485,
+   "compiled": true,
+   "compile_note": " | compiled (first call 22 s, max |d logit| vs eager 2.5e-05)",
+   "train_step_s": 0.4259626479333444,
+   "eval_chunk_s": 0.22985657899994294,
+   "peak_train_gib": 5.19514799118042,
+   "epoch_estimate_s": 2195.9252629522207
+  }
+ ]
+}

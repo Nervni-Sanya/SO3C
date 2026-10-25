@@ -1,0 +1,100 @@
+{
+ "device": "Tesla T4",
+ "k": 64,
+ "batch_size": 256,
+ "dtype": "float32",
+ "torch": "2.11.0+cu128",
+ "rows": [
+  {
+   "config": "pairlab",
+   "kwargs": {
+    "channels": 8,
+    "rounds": 3,
+    "beams": true,
+    "pair_lab": true
+   },
+   "n_params": 23026,
+   "compiled": true,
+   "compile_note": " | compiled (first call 44 s, max |d logit| vs eager 1.8e-05)",
+   "train_step_s": 0.09665932266666459,
+   "eval_chunk_s": 0.11967495066666818,
+   "peak_train_gib": 1.5661158561706543,
+   "epoch_estimate_s": 504.342543082022
+  },
+  {
+   "config": "pairlat8lab",
+   "kwargs": {
+    "channels": 8,
+    "rounds": 3,
+    "beams": true,
+    "pair_lab": true,
+    "pair_latent": 8
+   },
+   "n_params": 26738,
+   "compiled": true,
+   "compile_note": " | compiled (first call 29 s, max |d logit| vs eager 5.6e-05)",
+   "train_step_s": 0.13941986693333394,
+   "eval_chunk_s": 0.1841384099999838,
+   "peak_train_gib": 1.914717674255371,
+   "epoch_estimate_s": 731.989858061585
+  },
+  {
+   "config": "w64s24lab",
+   "kwargs": {
+    "channels": 8,
+    "rounds": 3,
+    "beams": true,
+    "pair_lab": true,
+    "act_hidden": 64,
+    "msg_dim": 24,
+    "scalar_dim": 24
+   },
+   "n_params": 61602,
+   "compiled": true,
+   "compile_note": " | compiled (first call 22 s, max |d logit| vs eager 3.1e-05)",
+   "train_step_s": 0.16458151506666732,
+   "eval_chunk_s": 0.23003255799998593,
+   "peak_train_gib": 2.5370187759399414,
+   "epoch_estimate_s": 869.078105329034
+  },
+  {
+   "config": "pairlat8w64s24lab",
+   "kwargs": {
+    "channels": 8,
+    "rounds": 3,
+    "beams": true,
+    "pair_lab": true,
+    "pair_latent": 8,
+    "act_hidden": 64,
+    "msg_dim": 24,
+    "scalar_dim": 24
+   },
+   "n_params": 67874,
+   "compiled": true,
+   "compile_note": " | compiled (first call 31 s, max |d logit| vs eager 2.7e-05)",
+   "train_step_s": 0.24821923326666517,
+   "eval_chunk_s": 0.3434164489999982,
+   "peak_train_gib": 3.2082386016845703,
+   "epoch_estimate_s": 1309.346479385474
+  },
+  {
+   "config": "knn16",
+   "kwargs": {
+    "channels": 8,
+    "rounds": 3,
+    "beams": true,
+    "neighbors": 16,
+    "knn_metric": "angle",
+    "attention": true,
+    "pair_lab": true
+   },
+   "n_params": 23485,
+   "compiled": true,
+   "compile_note": " | compiled (first call 28 s, max |d logit| vs eager 4.4e-05)",
+   "train_step_s": 0.12191393279999829,
+   "eval_chunk_s": 0.13885174799997912,
+   "peak_train_gib": 1.438584804534912,
+   "epoch_estimate_s": 631.3558055929525
+  }
+ ]
+}
