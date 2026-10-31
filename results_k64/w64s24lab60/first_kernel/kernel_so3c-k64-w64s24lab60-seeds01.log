@@ -1,0 +1,63 @@
+[{"stream_name":"stderr","time":6.5962066759999995,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":6.596247184,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":6.5962531460000005,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":6.596257547,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stderr","time":7.178570954,"data":"0.00s - Debugger warning: It seems that frozen modules are being used, which may\n"}
+,{"stream_name":"stderr","time":7.17859553,"data":"0.00s - make the debugger miss breakpoints. Please pass -Xfrozen_modules=off\n"}
+,{"stream_name":"stderr","time":7.17860011,"data":"0.00s - to python to disable frozen modules.\n"}
+,{"stream_name":"stderr","time":7.17860529,"data":"0.00s - Note: Debugging will proceed. Set PYDEVD_DISABLE_FILE_VALIDATION=1 to disable this validation.\n"}
+,{"stream_name":"stdout","time":8.28818059,"data":"Tesla T4, 15360 MiB\n"}
+,{"stream_name":"stdout","time":8.288213039,"data":"Tesla T4, 15360 MiB\n"}
+,{"stream_name":"stdout","time":8.424416273,"data":"['benchmarks', 'so3c', 'tests']\n"}
+,{"stream_name":"stderr","time":8.425644368,"data":"/tmp/ipykernel_23/2271559174.py:3: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n"}
+,{"stream_name":"stderr","time":8.425669394,"data":"  tarfile.open(fileobj=io.BytesIO(base64.b64decode(CODE_B64)), mode=\"r:gz\").extractall(\"/kaggle/working/repo\")\n"}
+,{"stream_name":"stderr","time":8.425675094,"data":"\n"}
+,{"stream_name":"stderr","time":8.425679233,"data":"/tmp/ipykernel_23/2271559174.py:3: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.\n"}
+,{"stream_name":"stderr","time":8.425684111,"data":"  tarfile.open(fileobj=io.BytesIO(base64.b64decode(CODE_B64)), mode=\"r:gz\").extractall(\"/kaggle/working/repo\")\n"}
+,{"stream_name":"stdout","time":8.624719046,"data":"device: Tesla T4\n"}
+,{"stream_name":"stdout","time":8.624759226,"data":"Tesla T4\n"}
+,{"stream_name":"stdout","time":17.612009644,"data":"torch 2.11.0+cu128 on Tesla T4\n"}
+,{"stream_name":"stdout","time":17.612044149,"data":"Tesla T4\n"}
+,{"stream_name":"stdout","time":20.303196721,"data":"cards: ['Tesla T4', 'Tesla T4']\n"}
+,{"stream_name":"stdout","time":20.614413093,"data":"data: /kaggle/input/notebooks/nsanya/so3c-data-prep-k-128/data | bundle 4d12a99f8817\n"}
+,{"stream_name":"stdout","time":32.07466056,"data":".                                                                        [100%]\n"}
+,{"stream_name":"stdout","time":32.074706107,"data":"1 passed, 38 deselected in 8.91s\n"}
+,{"stream_name":"stdout","time":32.074710933,"data":" \n"}
+,{"stream_name":"stdout","time":767.628902047,"data":"card 0: exit 0, result True\n"}
+,{"stream_name":"stdout","time":767.628965445,"data":"   seed 0: 209 s, AUC 0.8912, compile {'backend': 'inductor', 'd_logit': 0.0004885067464783788, 'd_grad': 2.782752239588905e-05, 'used': 'compiled'}, {'torch': '2.11.0+cu128', 'cuda': '12.8', 'python': '3.13.15', 'device': 'cuda', 'gpu': 'Tesla T4'}\n"}
+,{"stream_name":"stdout","time":767.628971961,"data":"card 1: exit 0, result True\n"}
+,{"stream_name":"stdout","time":767.628975535,"data":"   seed 1: 204 s, AUC 0.9240, compile {'backend': 'inductor', 'd_logit': 0.00012451657676137984, 'd_grad': 2.8588466012851312e-05, 'used': 'compiled'}, {'torch': '2.11.0+cu128', 'cuda': '12.8', 'python': '3.13.15', 'device': 'cuda', 'gpu': 'Tesla T4'}\n"}
+,{"stream_name":"stdout","time":767.628989012,"data":"parallel: seeds [0, 1]\n"}
+,{"stream_name":"stdout","time":767.646326285,"data":"seed 0 on card 0\n"}
+,{"stream_name":"stdout","time":767.64939108,"data":"seed 1 on card 1\n"}
+,{"stream_name":"stdout","time":40860.948447261,"data":"=== seed 0: exit 0 ===\n"}
+,{"stream_name":"stdout","time":40860.948498934,"data":"[top_tagging_canonical] top_tagging_constituents(k=64,norm=global,split=canonical) | features=4 classes=2 | train=1211000 val=403000 test=404000\n"}
+,{"stream_name":"stdout","time":40860.948506034,"data":"[top_tagging_canonical] so3c_message_set (equivariant_set) | train ...\n"}
+,{"stream_name":"stdout","time":40860.948510864,"data":"[compile] backend=inductor, first batch: max |d logit| 3.5e-04, max |d grad| 1.5e-05 (relative)\n"}
+,{"stream_name":"stdout","time":40860.948516362,"data":"[train] stopping at epoch 45: this session ran 39681s, over max_seconds=39000. Rerun with --resume.\n"}
+,{"stream_name":"stdout","time":40860.948521192,"data":"   val_acc=0.936  test_acc=0.937 auc=0.985 1/eB@0.3=1278  (39681.2s)\n"}
+,{"stream_name":"stdout","time":40860.94852596,"data":"\n"}
+,{"stream_name":"stdout","time":40860.948530099,"data":"=== seed 1: exit 0 ===\n"}
+,{"stream_name":"stdout","time":40860.948534249,"data":"[top_tagging_canonical] top_tagging_constituents(k=64,norm=global,split=canonical) | features=4 classes=2 | train=1211000 val=403000 test=404000\n"}
+,{"stream_name":"stdout","time":40860.948553722,"data":"[top_tagging_canonical] so3c_message_set (equivariant_set) | train ...\n"}
+,{"stream_name":"stdout","time":40860.948558599,"data":"[compile] backend=inductor, first batch: max |d logit| 1.7e-04, max |d grad| 3.4e-05 (relative)\n"}
+,{"stream_name":"stdout","time":40860.948563366,"data":"[train] stopping at epoch 45: this session ran 39427s, over max_seconds=39000. Rerun with --resume.\n"}
+,{"stream_name":"stdout","time":40860.948568592,"data":"   val_acc=0.937  test_acc=0.938 auc=0.985 1/eB@0.3=1422  (39427.4s)\n"}
+,{"stream_name":"stdout","time":40860.948573497,"data":"\n"}
+,{"stream_name":"stdout","time":40860.948577674,"data":"failed seeds: none\n"}
+,{"stream_name":"stdout","time":40860.948581889,"data":"kernel time 11.35 h\n"}
+,{"stream_name":"stdout","time":40860.966837506,"data":"seed 0: 45 epochs, 11.02 h (882 s/epoch) | torch 2.11.0+cu128 on Tesla T4 | batch order epoch 1 4956a97c5cb4356c52e25711c90c47b09d1f3aa680704b0f679fb5adca1bb0fe\n"}
+,{"stream_name":"stdout","time":40860.966858386,"data":"  AUC 0.98455  rej@0.3 1277.9  rej@0.5 325.1  final val loss 0.15881  (lowest 0.15881 at epoch 45)\n"}
+,{"stream_name":"stdout","time":40860.966864361,"data":"  INCOMPLETE (epoch 45 of 60): stopped on the time cap; finish before comparing\n"}
+,{"stream_name":"stdout","time":40860.966870148,"data":"seed 1: 45 epochs, 10.95 h (876 s/epoch) | torch 2.11.0+cu128 on Tesla T4 | batch order epoch 1 99fdd6358841957e8d3d1294d0b55f55527b4b711eccacdafa8445ab04e904ae\n"}
+,{"stream_name":"stdout","time":40860.966875352,"data":"  AUC 0.98479  rej@0.3 1421.9  rej@0.5 337.1  final val loss 0.15675  (lowest 0.15675 at epoch 45)\n"}
+,{"stream_name":"stdout","time":40860.966879809,"data":"  INCOMPLETE (epoch 45 of 60): stopped on the time cap; finish before comparing\n"}
+,{"stream_name":"stderr","time":40863.224231829,"data":"/usr/local/lib/python3.13/dist-packages/mistune.py:435: SyntaxWarning: invalid escape sequence '\\|'\n"}
+,{"stream_name":"stderr","time":40863.224266735,"data":"  cells[i][c] = re.sub('\\\\\\\\\\|', '|', cell)\n"}
+,{"stream_name":"stderr","time":40863.379262937,"data":"/usr/local/lib/python3.13/dist-packages/nbconvert/filters/filter_links.py:36: SyntaxWarning: invalid escape sequence '\\_'\n"}
+,{"stream_name":"stderr","time":40863.379300842,"data":"  text = re.sub(r'_', '\\_', text) # Escape underscores in display text\n"}
+,{"stream_name":"stderr","time":40864.115578069,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to notebook\n"}
+,{"stream_name":"stderr","time":40864.196913798,"data":"[NbConvertApp] Writing 322458 bytes to __notebook__.ipynb\n"}
+,{"stream_name":"stderr","time":40866.606593109,"data":"[NbConvertApp] Converting notebook __notebook__.ipynb to html\n"}
+,{"stream_name":"stderr","time":40867.162431836,"data":"[NbConvertApp] Writing 629017 bytes to __results__.html\n"}
+]
