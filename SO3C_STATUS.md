@@ -1,6 +1,6 @@
 # SO3C status
 
-Last updated 2026-10-25. This is the single place to start from. Commit hashes point at the evidence for every number. Hashes of work from before the snapshot (2026-09-16) are commits in the **so33** repository this one was split from; hashes of later work, some marked **(SO3C)**, are commits in this repository; `git cat-file -t <hash>` tells which (see [Provenance](#provenance)).
+Last updated 2026-10-31. This is the single place to start from. Commit hashes point at the evidence for every number. Hashes of work from before the snapshot (2026-09-16) are commits in the **so33** repository this one was split from; hashes of later work, some marked **(SO3C)**, are commits in this repository; `git cat-file -t <hash>` tells which (see [Provenance](#provenance)).
 
 ## Scope and goal
 
@@ -191,7 +191,21 @@ Open design choices: the ranking metric (angle against strength), attention on o
 8. **Where more constituents help** (CPU, `results_kcheck/k_gain_by_bin`). The K=32 → 64 gain is concentrated in high-multiplicity, wide-prong jets. Any K=128 gain would sit in the 18% of jets with more than 64 constituents.
 9. **Two-kernel training is exact.** A run stopped on the session cap and resumed in a second kernel from the mounted checkpoint reproduced an uninterrupted run bit for bit on the CPU. On Kaggle the histories continue exactly. 60-epoch runs longer than one 12-hour session are now routine.
 
-## GPU window 2026-10-24 → 2026-10-31 (in progress)
+## GPU window 2026-10-31 → 2026-11-07 (in progress): isolate and confirm
+
+Both pushed at 09:37 on 2026-10-31 (`8cb0d6b`) and run at the same time, as the user decided:
+
+| kernel | runs | expected |
+|---|---|---|
+| `k64_w64s24lab60_seeds01`, then its finish | width (`--act-hidden 64 --msg-dim 24 --scalar-dim 24`) on top of the two-card `pairlab60` command, seeds 0 and 1, float32 features | 1.72× pairlab60's epoch (T4 profile), ~16 h of training: stops near epoch 40, then ~5 h in the finish kernel |
+| `k64_seed2fp64`, then its finish (`build_k64_jobs_dual`, one job per card) | the pair latent at seed 2 on one card and its `--pair-lab` reference at seed 2 on the other, both with `--pair-lab-fp64` | the reference finishes 60 epochs in the first kernel (~9 h); the pair latent stops near epoch 48 and resumes (~3 h) |
+
+- **Readings, fixed before the push.** Width is read by `K64_CONFIRM_RULE` against pairlab60's two runs (0.98417, 0.98467): confirmed if the mean gains ≥ +0.0003 and both runs lie above both; not confirmed at ≤ 0; otherwise unresolved. The pair latent is read by the same rule over three seeds. The arm is pairlatlab60 seeds 0 and 1 plus the float64 seed 2; the reference is pairlab60 seeds 0 and 1 plus the float64 seed 2.
+- **Why float64 for seed 2** (the user's choice). Float32 seed 1 fell back to eager twice, which would have pushed seed 2 to ~17 h. The float64 features showed no resolved AUC change on the probe and kept the pair latent compiled. Both seed-2 runs use them, so each pool holds two float32 runs and one float64 run. The seed-2 pair, started together, differs only by the pair latent.
+- **Checked before the push.** Both commands are the committed `pairlab60` command plus exactly their flags (tests). CPU replays: the width kernel with both seeds in parallel; and the seed-2 kernel, where the reference finished in the first kernel and the pair latent stopped at epoch 52 and resumed to 60, reproducing the uninterrupted result.
+- **Budget: on the edge.** Training ≈ 16 h (width) + 13.4 h (pair latent), plus ~0.3 h of setup per kernel over four kernels: ≈ 30.6 of 30 GPU-h. The seed-2 finish goes first. The width finish gets a `--max-seconds` that fits the rest, so a shortfall stops it cleanly with a checkpoint, and its last epochs would finish early in the next window.
+
+## GPU window 2026-10-24 → 2026-10-31 (closed)
 
 **Two structural candidates on top of `--pair-lab`, at the K=32 long schedule.** Both keep all four pair features (`--pair-lab-set all`, as every pair-feature result so far). Each runs seeds 0 and 1 in one two-card kernel (`build_long_dual`, `LONG_DUAL_RUNS`) on the pinned T4 / torch 2.11 setup, and is read unpaired against `pairlab211` (the same command without the arm's own flags) and `base211`. Run order: the pair latent first, then width.
 
@@ -774,7 +788,7 @@ GPU used this window: ~9.2 h (screen) + 5.2 h (headline seed 2) + ~0.7 h (profil
 
 - The K=32 probe protocol (400k train jets, 20 epochs) costs 0.6–1.2 h per row.
 - Kaggle's T4 sessions have **two** T4s and charge quota per session hour. Two seeds run in parallel in one kernel, one per card, at 500–541 s per epoch at K=64 against 475–492 s alone (`build_k64_dual`, 2026-10-17): a 60-epoch K=64 seed costs about 4.6 GPU-h of quota instead of 8–9 h.
-- Quota is 30 GPU-h per week, resetting on Saturday. The current window is [2026-10-24 → 2026-10-31](#gpu-window-2026-10-24--2026-10-31-in-progress).
+- Quota is 30 GPU-h per week, resetting on Saturday. The current window is [2026-10-31 → 2026-11-07](#gpu-window-2026-10-31--2026-11-07-in-progress-isolate-and-confirm).
 - Rows not marked T4 are P100 wall clock on the old forward pass. Since `47ec4ad` the per-epoch cost is about half; the T4 profiles are in the 2026-09-19 GPU-window section and in `docs/so3c/experiments.md` (table O).
 
 ## Provenance
