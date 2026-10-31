@@ -1843,6 +1843,12 @@ K64_DUAL_RUNS = [
     # run stops on --max-seconds near epoch 49 (nearer 37 for a seed whose
     # compile check falls back to eager) and build_k64_finish_dual resumes it.
     ("pairlatlab60", ["--keep-best", "--pair-lab", "--pair-latent", "8"], (0, 1), 60),
+    # Window 2026-10-31: the K=64 confirmation of width on top of --pair-lab,
+    # which passed at the K=32 long schedule (+0.00047 over pairlab211,
+    # 8ace328). float32 pair features, as its K=32 runs and pairlab60. At
+    # ~1.72x pairlab60's epoch (T4 profile ca4f885) it stops near epoch 40 and
+    # build_k64_finish_dual resumes it.
+    ("w64s24lab60", ["--keep-best", "--pair-lab", "--act-hidden", "64", "--msg-dim", "24", "--scalar-dim", "24"], (0, 1), 60),
 ]
 
 DUAL_LAUNCH = """
@@ -2042,6 +2048,7 @@ assert not BAD, "seeds failed (exit code or no result): %%s" %% BAD
 # that kernel has stopped, so its output can be mounted.
 K64_FINISH_DUAL = [
     ("pairlatlab60", ["--keep-best", "--pair-lab", "--pair-latent", "8"], (0, 1), 60),
+    ("w64s24lab60", ["--keep-best", "--pair-lab", "--act-hidden", "64", "--msg-dim", "24", "--scalar-dim", "24"], (0, 1), 60),
 ]
 
 # Reading of a finished K=64 confirmation, fixed before the push, on the final
@@ -2244,8 +2251,8 @@ print("kernel time %.2f h" % ((time.time() - T0) / 3600))
 """),
         code("""
 # The finished runs against the same-stack K=64 references (T4, torch 2.11,
-# two-card kernels): pairlab60 (60 epochs; the command without
-# --pair-latent), base60, and pairlab120 (continued to 120 epochs, the best
+# two-card kernels): pairlab60 (60 epochs; the command without the arm's
+# own flags), base60, and pairlab120 (continued to 120 epochs, the best
 # models so far). Unpaired, by the reading fixed before the push (final
 # weights): confirmed if the mean gains >= %+.4f AUC on pairlab60 and every
 # run lies above both pairlab60 runs; not confirmed if it gains <= %+.4f;
@@ -2332,6 +2339,325 @@ assert not BAD, "seeds failed (exit code or no result): %%s" %% BAD
     (NB_DIR / ("kernel-metadata-%s.json" % slug)).write_text(
         json.dumps(meta, indent=2) + chr(10), encoding="utf-8")
     return name
+
+
+# Window 2026-10-31: the third seed of the K=64 pair-latent confirmation,
+# which read unresolved by 0.00002 on two seeds (fa8ecec). One two-card
+# kernel runs the pair latent at seed 2 on one card and its reference
+# (--pair-lab) at seed 2 on the other, both with float64 pair features (the
+# user, 2026-10-31): float32 seed 1 fell back to eager twice, and float64 kept
+# the pair latent compiled on the probe (8269496) with no resolved AUC change.
+# Both seed-2 runs use it, so the arm and the reference pools each hold two
+# float32 runs and one float64 run, and the seed-2 pair differs only by the
+# pair latent. (tag, flags, seed); flags are added to the K=64 headline
+# command.
+K64_SEED2_NAME = "seed2fp64"
+K64_SEED2_JOBS = [
+    ("pairlatlab60fp64", ["--keep-best", "--pair-lab", "--pair-latent", "8", "--pair-lab-fp64"], 2),
+    ("pairlab60fp64", ["--keep-best", "--pair-lab", "--pair-lab-fp64"], 2),
+]
+
+
+def _k64_base_common() -> list:
+    """The K=64 headline command (build_k64_dual's), without any arm flags."""
+    return ["--cache-dir", "DATA", "--representation", "constituents",
+            "--canonical-splits", "--normalize", "global",
+            "--device", "cuda", "--dtype", "float32",
+            "--batch-size", "256", "--n-constituents", "64",
+            "--eval-chunk-size", "1024", "--models", "so3c_message_set",
+            "--rounds", "3", "--beams", "--channels", "8", "--compile"]
+
+
+_JOBS_CONFIG = """
+import glob, pathlib
+cands = glob.glob("/kaggle/input/**/top_tagging_train.npz", recursive=True)
+assert cands, "attach the K=128 data-prep kernel output"
+DATA = str(pathlib.Path(cands[0]).parent)
+NAME, JOBS, EPOCHS, MAX_SECONDS = %r, %r, %d, 39000
+OUT = "/kaggle/working/results_k64"
+CKPT = "/kaggle/working/checkpoints"
+LOGS = "/kaggle/working/logs/" + NAME
+BASE = %r
+BASE[BASE.index("DATA")] = DATA
+pathlib.Path(LOGS).mkdir(parents=True, exist_ok=True)
+for tag, _, _ in JOBS:
+    pathlib.Path(OUT, tag).mkdir(parents=True, exist_ok=True)
+    pathlib.Path(OUT, tag, "bundle_sha256.txt").write_text(%r + chr(10))
+print("data:", DATA, "| bundle", %r)
+"""
+
+_JOBS_SMOKE = """
+# Smoke on both cards at once, each card with its own job's flags and seed:
+# one epoch on 20k jets. Each must write a result.
+import glob, json
+smoke = []
+for i, (tag, flags, s) in enumerate(TODO[:NGPU]):
+    d = "/kaggle/working/smoke/%s/card%d" % (NAME, i)
+    smoke.append((d, launch(["benchmarks.run_top_tagging"] + BASE + flags +
+                            ["--epochs", "1", "--max-train-samples", "20000",
+                             "--seed", str(s), "--results-dir", d],
+                            i, LOGS + "/smoke_card%d.log" % i)))
+codes = [p.wait() for _, p in smoke]
+works = []
+for i, ((d, _), rc) in enumerate(zip(smoke, codes)):
+    found = glob.glob(d + "/*.json")
+    print("card %d: exit %d, result %s" % (i, rc, bool(found)))
+    if found:
+        r = json.load(open(found[0]))
+        print("   %s seed %d: %.0f s, compile %s" % (TODO[i][0], r["seed"], r["walltime_sec"], r.get("compile_check")))
+        works.append(i)
+    else:
+        print(tail(LOGS + "/smoke_card%d.log" % i))
+assert works or not TODO, "the smoke run failed on every card"
+PARALLEL = len(works) >= len(TODO)
+print("parallel:" if PARALLEL else "only card(s) %s work: %s alone" % (works, TODO[:1]),
+      [j[0] for j in (TODO if PARALLEL else TODO[:1])])
+"""
+
+_JOBS_RUN = """
+import glob, time
+todo = TODO if PARALLEL else TODO[:1]
+procs = []
+for i, (tag, flags, s) in enumerate(todo):
+    gpu = i if PARALLEL else works[0]
+    procs.append((tag, s, launch(["benchmarks.run_top_tagging"] + BASE + flags +
+                                 ["--epochs", str(EPOCHS), "--seed", str(s),
+                                  "--results-dir", OUT + "/%s/seed%d" % (tag, s),
+                                  "--ckpt-dir", CKPT + "/%s/seed%d" % (tag, s),
+                                  "--resume", "--max-seconds", str(MAX_SECONDS)],
+                                 gpu, LOGS + "/%s_seed%d.log" % (tag, s))))
+    print("%s seed %d on card %d" % (tag, s, gpu), flush=True)
+BAD = []
+for tag, s, p in procs:
+    rc = p.wait()
+    print("=== %s seed %d: exit %d ===" % (tag, s, rc))
+    print(tail(LOGS + "/%s_seed%d.log" % (tag, s), 2000))
+    if rc != 0 or not glob.glob(OUT + "/%s/seed%d/*.json" % (tag, s)):
+        BAD.append((tag, s))
+print("failed:", BAD or "none")
+print("kernel time %.2f h" % ((time.time() - T0) / 3600))
+"""
+
+_JOBS_SUMMARY = """
+# The K=64 pair-latent reading over three seeds: the committed float32 seeds 0
+# and 1 of pairlatlab60 and pairlab60 (separate kernels) and this kernel's
+# float64 seed-2 pair. Fixed before the push (K64_CONFIRM_RULE): confirmed if
+# the arm's mean gains >= %+.4f AUC on the reference and every arm run lies
+# above every reference run; not confirmed if it gains <= %+.4f; otherwise
+# unresolved. The seed-2 pair, started together, differs only by the pair
+# latent.
+import json, glob, math, statistics
+REFS, RULE = %r, %r
+POOLED_SD, POOLED_DF = %r   # within-configuration sd of base60 and pairlab60
+mean = statistics.mean
+recs = {k: v for k, v in DONE.items()}
+for tag, _, s in JOBS:
+    for f in glob.glob(OUT + "/%%s/seed%%d/*.json" %% (tag, s)):
+        recs[(tag, s)] = json.load(open(f))
+done = {}
+for (tag, s), r in sorted(recs.items()):
+    t = r["test_metrics"]; env = r["env"]; h = r["history"]; vl = [e["val_loss"] for e in h]
+    assert env["torch"] == "2.11.0+cu128" and "T4" in env.get("gpu", ""), env
+    print("%%s seed %%d: %%d epochs (history %%d), %%.2f h cumulative, %%d params | kwargs %%s | compile %%s | batch order %%s"
+          %% (tag, s, r["epochs_run"], len(h), r["walltime_sec"] / 3600, r["n_params"], r["so3c_kwargs"],
+             r.get("compile_check"), r["batch_order"]["epoch1"][:12]))
+    print("  AUC %%.5f  rej@0.3 %%.1f  rej@0.5 %%.1f  final val loss %%.5f (lowest %%.5f at epoch %%d)  val - train %%+.5f"
+          %% (t["test_auc"], t["bg_rej_30"], t.get("bg_rej_50", float("nan")), vl[-1], min(vl),
+             h[vl.index(min(vl))]["epoch"], vl[-1] - h[-1]["train_loss"]))
+    if r["epochs_run"] < EPOCHS:
+        print("  INCOMPLETE (epoch %%d of %%d): stopped on the session cap" %% (r["epochs_run"], EPOCHS))
+        continue
+    done[tag] = t["test_auc"]
+
+def p_two_sided(t, df):
+    try:
+        from scipy import stats
+        return 2 * stats.t.sf(abs(t), df)
+    except Exception:
+        return float("nan")
+
+arm_tag, ref_tag = JOBS[0][0], JOBS[1][0]
+if arm_tag in done and ref_tag in done:
+    a = REFS["pairlatlab60"] + [done[arm_tag]]
+    b = REFS["pairlab60"] + [done[ref_tag]]
+    d = mean(a) - mean(b)
+    tp = d / (POOLED_SD * math.sqrt(1 / len(a) + 1 / len(b)))
+    print("seed-2 pair (float64 features, this kernel): pair latent %%+.5f" %% (done[arm_tag] - done[ref_tag]))
+    print("pair latent %%s mean %%.5f | reference %%s mean %%.5f | d %%+.5f | against the pooled sd %%.5f: t %%.2f, df %%d, p %%.3f"
+          %% (" ".join("%%.5f" %% x for x in a), mean(a), " ".join("%%.5f" %% x for x in b), mean(b), d,
+             POOLED_SD, tp, POOLED_DF, p_two_sided(tp, POOLED_DF)))
+    if d >= RULE[0] and min(a) > max(b):
+        verdict = "CONFIRMED at K=64"
+    elif d <= RULE[1]:
+        verdict = "NOT CONFIRMED"
+    else:
+        verdict = "unresolved"
+    print("verdict (three seeds, arm runs above every reference run: %%d of %%d): %%s"
+          %% (sum(x > max(b) for x in a), len(a), verdict))
+else:
+    print("no verdict yet: complete runs", sorted(done))
+assert not BAD, "jobs failed: %%s" %% BAD
+"""
+
+
+def _seed2_summary() -> str:
+    refs = _k64_references()
+    pooled = _pooled_sd([[x["auc"] for x in refs["pairlab60"]], [x["auc"] for x in refs["base60"]]])
+    arm = [json.loads(f.read_text())["test_metrics"]["test_auc"]
+           for f in sorted((ROOT / "results_k64" / "pairlatlab60").glob("seed*/*.json"))]
+    assert len(arm) == 2, arm
+    r = {"pairlatlab60": arm, "pairlab60": [x["auc"] for x in refs["pairlab60"]]}
+    return _JOBS_SUMMARY % (K64_CONFIRM_RULE[0], K64_CONFIRM_RULE[1], r, K64_CONFIRM_RULE, pooled)
+
+
+def build_k64_jobs_dual(blob: str, name: str, jobs: list, epochs: int = 60) -> str:
+    """Two different K=64 runs in one kernel, one per T4: (tag, flags, seed)
+    each, flags added to the headline command. The smoke runs each card with
+    its own job; if only one card passes, the first job runs alone. Results
+    land in results_k64/<tag>/seed<s>. A run that would overrun stops on
+    --max-seconds with a checkpoint for build_k64_jobs_finish."""
+    import hashlib
+    bundle_sha = hashlib.sha256(blob.encode()).hexdigest()[:12]
+    cells = [
+        md("""
+# K=64, two cards, one job each: %s
+
+%s, %d epochs, the K=64 headline command plus each job's flags. T4 with
+torch 2.11.0+cu128 pinned and asserted. A run that does not fit the session
+stops with a checkpoint for the finish kernel.
+""" % (name, "; ".join("%s seed %d (%s)" % (tg, s, " ".join(f)) for tg, f, s in jobs), epochs)),
+        code("""
+import subprocess, time
+T0 = time.time()
+print(subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total",
+                      "--format=csv,noheader"], capture_output=True,
+                     text=True).stdout.strip())
+"""),
+        code(UNPACK.format(blob=blob)),
+        code(RUNNER),
+        code(GPU_SETUP_T4_PINNED),
+        code(DUAL_LAUNCH),
+        code(_JOBS_CONFIG % (name, [list(j) for j in jobs], epochs, _k64_base_common(), bundle_sha, bundle_sha)),
+        code("""
+# On-card guard: the forward pass must be the published function on this
+# GPU too, in float64. "1 passed" is required; a skip means no CUDA.
+import subprocess, sys
+g = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
+                    "tests/test_so3c_models.py", "-k", "golden_cuda"],
+                   cwd="/kaggle/working/repo", capture_output=True, text=True)
+print(g.stdout[-1500:], g.stderr[-1500:])
+assert "1 passed" in g.stdout, "golden guard did not pass on the card"
+TODO, DONE = [tuple(j) for j in JOBS], {}
+"""),
+        code(_JOBS_SMOKE),
+        code(_JOBS_RUN),
+        code(_seed2_summary()),
+    ]
+    stem = "k64_%s" % name
+    nb_name = "kaggle_%s.ipynb" % stem
+    _finalise(cells, NB_DIR / nb_name)
+    slug = "k64-%s" % name.replace("_", "-")
+    meta = {
+        "id": "nsanya/so3c-" + slug, "title": "SO3C K64 %s" % name,
+        "code_file": nb_name, "language": "python", "kernel_type": "notebook",
+        "is_private": True, "enable_gpu": True, "enable_internet": True,
+        "dataset_sources": [], "competition_sources": [],
+        "kernel_sources": ["nsanya/so3c-data-prep-k-128"],
+    }
+    (NB_DIR / ("kernel-metadata-%s.json" % slug)).write_text(
+        json.dumps(meta, indent=2) + chr(10), encoding="utf-8")
+    return nb_name
+
+
+def build_k64_jobs_finish(blob: str, name: str, jobs: list, epochs: int = 60) -> str:
+    """Finish build_k64_jobs_dual's kernel: mount its output, check each
+    job's last checkpoint against the result JSON it wrote, read a job that
+    finished from its mounted result, and resume the others with the same
+    command and horizon. Push only after the first kernel has stopped."""
+    import hashlib
+    bundle_sha = hashlib.sha256(blob.encode()).hexdigest()[:12]
+    src_kernel = "nsanya/so3c-k64-%s" % name.replace("_", "-")
+    cells = [
+        md("""
+# Finish, two cards: K=64 %s
+
+Resumes %s from the last checkpoints in its mounted output, with the same
+command and horizon; jobs that already finished are read from the mount. T4
+with torch 2.11.0+cu128 pinned and asserted.
+""" % (name, src_kernel)),
+        code("""
+import subprocess, time
+T0 = time.time()
+print(subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total",
+                      "--format=csv,noheader"], capture_output=True,
+                     text=True).stdout.strip())
+"""),
+        code(UNPACK.format(blob=blob)),
+        code(RUNNER),
+        code(GPU_SETUP_T4_PINNED),
+        code(DUAL_LAUNCH),
+        code(_JOBS_CONFIG % (name, [list(j) for j in jobs], epochs, _k64_base_common(), bundle_sha, bundle_sha)),
+        code("""
+# On-card guard: the forward pass must be the published function on this
+# GPU too, in float64. "1 passed" is required; a skip means no CUDA.
+import subprocess, sys
+g = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
+                    "tests/test_so3c_models.py", "-k", "golden_cuda"],
+                   cwd="/kaggle/working/repo", capture_output=True, text=True)
+print(g.stdout[-1500:], g.stderr[-1500:])
+assert "1 passed" in g.stdout, "golden guard did not pass on the card"
+"""),
+        code("""
+# The first kernel's last checkpoints, from its mounted output. Each must
+# agree with the result JSON that kernel wrote (epoch, batch order) and goes
+# where --resume looks; the result JSON does not, so the run is not skipped.
+import glob, json, pathlib, shutil, torch
+TODO, DONE = [], {}
+for tag, flags, s in JOBS:
+    pat = "/kaggle/input/**/%s/" + tag + "/seed%d/*seed%d.%s"
+    cks = glob.glob(pat % ("checkpoints", s, s, "pt"), recursive=True)
+    js = glob.glob(pat % ("results_k64", s, s, "json"), recursive=True)
+    rec = json.load(open(js[0])) if len(js) == 1 else None
+    if len(cks) != 1:
+        print("%s seed %d: %d mounted checkpoints, not finished here" % (tag, s, len(cks)))
+        continue
+    st = torch.load(cks[0], map_location="cpu", weights_only=False)
+    print("%s seed %d: checkpoint at epoch %d (history %d), first kernel's result at epoch %s"
+          % (tag, s, st["epoch"], len(st["history"]), rec["epochs_run"] if rec else None))
+    assert len(st["history"]) == st["epoch"], (len(st["history"]), st["epoch"])
+    if rec is not None:
+        assert rec["epochs_run"] == st["epoch"], (rec["epochs_run"], st["epoch"])
+        assert rec["batch_order"]["epoch1"] == st["batch_order_epoch1"], (tag, s)
+    if st["epoch"] >= EPOCHS:
+        assert rec is not None, "%s seed %d finished but its result is not mounted" % (tag, s)
+        DONE[(tag, s)] = rec
+        continue
+    ck = pathlib.Path(CKPT, tag, "seed%d" % s, pathlib.Path(cks[0]).name)
+    ck.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy(cks[0], ck)
+    TODO.append((tag, flags, s))
+    del st
+assert TODO or DONE, "nothing mounted: attach the output of " + @SRC@
+print("to finish:", [(t, s) for t, _, s in TODO], "| finished in the first kernel:", sorted(DONE))
+""".replace("@SRC@", repr(src_kernel))),
+        code(_JOBS_SMOKE),
+        code(_JOBS_RUN),
+        code(_seed2_summary()),
+    ]
+    stem = "k64_%s_finish" % name
+    nb_name = "kaggle_%s.ipynb" % stem
+    _finalise(cells, NB_DIR / nb_name)
+    slug = "k64-%s-finish" % name.replace("_", "-")
+    meta = {
+        "id": "nsanya/so3c-" + slug, "title": "SO3C K64 %s finish" % name,
+        "code_file": nb_name, "language": "python", "kernel_type": "notebook",
+        "is_private": True, "enable_gpu": True, "enable_internet": True,
+        "dataset_sources": [], "competition_sources": [],
+        "kernel_sources": ["nsanya/so3c-data-prep-k-128", src_kernel],
+    }
+    (NB_DIR / ("kernel-metadata-%s.json" % slug)).write_text(
+        json.dumps(meta, indent=2) + chr(10), encoding="utf-8")
+    return nb_name
 
 
 def build_cuda_diag(blob: str) -> None:
@@ -4540,6 +4866,10 @@ def _registry() -> dict:
     for tag, flags, seeds, epochs in K64_DUAL_RUNS:
         reg["k64_%s_seeds%s" % (tag, "".join(str(s) for s in seeds))] = (
             lambda b, t=tag, f=flags, s=seeds, e=epochs: build_k64_dual(b, t, f, s, epochs=e))
+    reg["k64_%s" % K64_SEED2_NAME] = (
+        lambda b: build_k64_jobs_dual(b, K64_SEED2_NAME, K64_SEED2_JOBS))
+    reg["k64_%s_finish" % K64_SEED2_NAME] = (
+        lambda b: build_k64_jobs_finish(b, K64_SEED2_NAME, K64_SEED2_JOBS))
     for tag, flags, seeds, epochs in K64_FINISH_DUAL:
         reg["k64_%s_finish_seeds%s" % (tag, "".join(str(s) for s in seeds))] = (
             lambda b, t=tag, f=flags, s=seeds, e=epochs: build_k64_finish_dual(b, t, f, s, epochs=e))

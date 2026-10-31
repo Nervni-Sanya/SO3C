@@ -299,3 +299,48 @@ def test_fp64_probe_queue_pairs_each_seed_and_reads_by_its_rule(nb_dir) -> None:
         assert repr(x) in text
     meta = json.loads((nb_dir / "kernel-metadata-probe-queue-fp64-pairlab.json").read_text())
     assert meta["id"] == "nsanya/so3c-probe-queue-fp64-pairlab"
+
+
+def test_k64_width_confirmation_and_its_finish(nb_dir) -> None:
+    """Window 2026-10-31: the K=64 confirmation of width is the committed
+    two-card pairlab60 command plus exactly the committed w64s24 width flags,
+    and its finish kernel resumes it with the same command, mounting the first
+    kernel's output."""
+    import json
+    pairlab60 = _assigned_list(ROOT / "notebooks" / "kaggle_k64_pairlab60_seeds01.ipynb", "BASE")
+    long_base = _assigned_list(ROOT / "notebooks" / "kaggle_long_seeds_base_s0.ipynb", "BASE")
+    width = _assigned_list(ROOT / "notebooks" / "kaggle_long_seeds_w64s24_s0.ipynb", "BASE")[len(long_base):]
+    assert B.main(["--only", "k64_w64s24lab60_seeds01", "k64_w64s24lab60_finish_seeds01"]) == 0
+    run = nb_dir / "kaggle_k64_w64s24lab60_seeds01.ipynb"
+    fin = nb_dir / "kaggle_k64_w64s24lab60_finish_seeds01.ipynb"
+    assert _assigned_list(run, "BASE") == pairlab60 + width
+    assert _assigned_list(fin, "BASE") == _assigned_list(run, "BASE")
+    for nb in (run, fin):
+        text = "".join("".join(c["source"]) for c in json.loads(nb.read_text(encoding="utf-8"))["cells"])
+        assert "TAG, SEEDS, EPOCHS, MAX_SECONDS = 'w64s24lab60', [0, 1], 60, 39000" in text
+        assert "--pair-lab-fp64" not in text
+    meta = json.loads((nb_dir / "kernel-metadata-k64-w64s24lab60-finish-seeds01.json").read_text())
+    assert meta["kernel_sources"] == ["nsanya/so3c-data-prep-k-128", "nsanya/so3c-k64-w64s24lab60-seeds01"]
+
+
+def test_k64_seed2_kernel_pairs_the_pair_latent_with_its_reference(nb_dir) -> None:
+    """Window 2026-10-31: the third K=64 pair-latent seed and its reference
+    seed run in one two-card kernel, each the committed pairlab60 command plus
+    exactly its flags and --pair-lab-fp64; the finish kernel mounts the first
+    and reads the three-seed result by K64_CONFIRM_RULE."""
+    import json
+    pairlab60 = _assigned_list(ROOT / "notebooks" / "kaggle_k64_pairlab60_seeds01.ipynb", "BASE")
+    assert B.main(["--only", "k64_seed2fp64", "k64_seed2fp64_finish"]) == 0
+    for stem in ("k64_seed2fp64", "k64_seed2fp64_finish"):
+        nb = nb_dir / ("kaggle_%s.ipynb" % stem)
+        base = _assigned_list(nb, "BASE")
+        jobs = {tag: (flags, s) for tag, flags, s in B.K64_SEED2_JOBS}
+        assert base + jobs["pairlab60fp64"][0] == pairlab60 + ["--pair-lab-fp64"]
+        assert base + jobs["pairlatlab60fp64"][0] == pairlab60 + ["--pair-latent", "8", "--pair-lab-fp64"]
+        assert {s for _, s in jobs.values()} == {2}
+        text = "".join("".join(c["source"]) for c in json.loads(nb.read_text(encoding="utf-8"))["cells"])
+        assert "REFS, RULE = " in text and repr(B.K64_CONFIRM_RULE) in text
+        assert 'WANT = "2.11.0+cu128"' in text and "CUDA_VISIBLE_DEVICES" in text
+    meta = json.loads((nb_dir / "kernel-metadata-k64-seed2fp64-finish.json").read_text())
+    assert meta["kernel_sources"] == ["nsanya/so3c-data-prep-k-128", "nsanya/so3c-k64-seed2fp64"]
+    assert json.loads((nb_dir / "kernel-metadata-k64-seed2fp64.json").read_text())["id"] == "nsanya/so3c-k64-seed2fp64"
