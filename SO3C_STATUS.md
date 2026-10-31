@@ -205,6 +205,18 @@ Both pushed at 09:37 on 2026-10-31 (`8cb0d6b`) and run at the same time, as the 
 - **Checked before the push.** Both commands are the committed `pairlab60` command plus exactly their flags (tests). CPU replays: the width kernel with both seeds in parallel; and the seed-2 kernel, where the reference finished in the first kernel and the pair latent stopped at epoch 52 and resumed to 60, reproducing the uninterrupted result.
 - **Budget: on the edge.** Training ≈ 16 h (width) + 13.4 h (pair latent), plus ~0.3 h of setup per kernel over four kernels: ≈ 30.6 of 30 GPU-h. The seed-2 finish goes first. The width finish gets a `--max-seconds` that fits the rest, so a shortfall stops it cleanly with a checkpoint, and its last epochs would finish early in the next window.
 
+**First kernels** (`d628937`; stopped on the 39000 s cap as planned; everything trained compiled):
+
+| run | first kernel | reached | s / epoch | first-batch compile check |
+|---|---|---|---|---|
+| width (`w64s24lab60`), seeds 0 / 1 | 11.35 h | epoch 45 / 45 | 882 / 876 | 3.5e-4 / 1.7e-4 |
+| pair latent, float64 (`pairlatlab60fp64`), seed 2 | 11.26 h | epoch 47 | 838 | 4.1e-5 |
+| reference, float64 (`pairlab60fp64`), seed 2 | same kernel | **done: 0.98446 / 1421.9** | 608 | 6.8e-5 |
+
+- The float64 reference cost 608 s per epoch, against 517–541 s for the float32 pairlab60 runs. About 15% of that is the float64 features at K=64, or a slower card.
+- **One finish kernel instead of two** (`8cc3020`, `build_k64_finish_queue`, `nsanya/so3c-k64-finish1031`, pushed 21:40). The two prepared finish kernels would have needed ~3.3 h (one card idle) plus ~4.0 h, against ~7.35 h left of the week. A two-card queue instead resumes the pair latent's seed 2 first (the priority), then width seed 1 on the same card, with width seed 0 on the other. It needs ~6.9 h. Every job gets `--max-seconds` from a 7.05 h budget less a margin, so a shortfall stops it cleanly. A CPU replay with four jobs on two cards handed off as intended and reproduced the uninterrupted runs' batch-order chains. The two prepared finish kernels (`k64_seed2fp64_finish`, `k64_w64s24lab60_finish_seeds01`) were not used.
+- GPU used so far: 11.35 + 11.26 = 22.61 h; with the queue, ~29.6 of 30.
+
 ## GPU window 2026-10-24 → 2026-10-31 (closed)
 
 **Two structural candidates on top of `--pair-lab`, at the K=32 long schedule.** Both keep all four pair features (`--pair-lab-set all`, as every pair-feature result so far). Each runs seeds 0 and 1 in one two-card kernel (`build_long_dual`, `LONG_DUAL_RUNS`) on the pinned T4 / torch 2.11 setup, and is read unpaired against `pairlab211` (the same command without the arm's own flags) and `base211`. Run order: the pair latent first, then width.
