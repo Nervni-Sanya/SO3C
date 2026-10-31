@@ -317,7 +317,8 @@ def test_k64_width_confirmation_and_its_finish(nb_dir) -> None:
     assert _assigned_list(fin, "BASE") == _assigned_list(run, "BASE")
     for nb in (run, fin):
         text = "".join("".join(c["source"]) for c in json.loads(nb.read_text(encoding="utf-8"))["cells"])
-        assert "TAG, SEEDS, EPOCHS, MAX_SECONDS = 'w64s24lab60', [0, 1], 60, 39000" in text
+        cap = 39000 if nb is run else B.K64_FINISH_MAX_SECONDS.get("w64s24lab60", 39000)
+        assert "TAG, SEEDS, EPOCHS, MAX_SECONDS = 'w64s24lab60', [0, 1], 60, %d" % cap in text
         assert "--pair-lab-fp64" not in text
     meta = json.loads((nb_dir / "kernel-metadata-k64-w64s24lab60-finish-seeds01.json").read_text())
     assert meta["kernel_sources"] == ["nsanya/so3c-data-prep-k-128", "nsanya/so3c-k64-w64s24lab60-seeds01"]

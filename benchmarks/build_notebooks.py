@@ -2046,6 +2046,11 @@ assert not BAD, "seeds failed (exit code or no result): %%s" %% BAD
 # finished in a second kernel: (tag, flags, seeds, epochs) as in
 # K64_DUAL_RUNS. Prepared before the first kernel runs; push it only after
 # that kernel has stopped, so its output can be mounted.
+# A finish kernel's --max-seconds when the week's quota cannot cover the rest
+# of the run: it then stops cleanly with a checkpoint, and a later kernel of
+# the same kind resumes it. Default 39000 s.
+K64_FINISH_MAX_SECONDS = {}
+
 K64_FINISH_DUAL = [
     ("pairlatlab60", ["--keep-best", "--pair-lab", "--pair-latent", "8"], (0, 1), 60),
     ("w64s24lab60", ["--keep-best", "--pair-lab", "--act-hidden", "64", "--msg-dim", "24", "--scalar-dim", "24"], (0, 1), 60),
@@ -2089,7 +2094,8 @@ def _pooled_sd(groups) -> tuple[float, int]:
 
 
 def build_k64_finish_dual(blob: str, tag: str, flags: list[str],
-                          seeds: tuple[int, ...] = (0, 1), epochs: int = 60) -> str:
+                          seeds: tuple[int, ...] = (0, 1), epochs: int = 60,
+                          max_seconds: int = 39000) -> str:
     """Finish a two-card K=64 run (build_k64_dual) that stopped on the session cap.
 
     Mounts the first kernel's output (nsanya/so3c-k64-<tag>-seeds01) through
@@ -2141,7 +2147,7 @@ import glob, pathlib
 cands = glob.glob("/kaggle/input/**/top_tagging_train.npz", recursive=True)
 assert cands, "attach the K=128 data-prep kernel output"
 DATA = str(pathlib.Path(cands[0]).parent)
-TAG, SEEDS, EPOCHS, MAX_SECONDS = %r, %r, %d, 39000
+TAG, SEEDS, EPOCHS, MAX_SECONDS = %r, %r, %d, %d
 SRC = %r
 OUT = "/kaggle/working/results_k64/" + TAG
 CKPT = "/kaggle/working/checkpoints/" + TAG
@@ -2152,7 +2158,7 @@ for d in (OUT, LOGS):
     pathlib.Path(d).mkdir(parents=True, exist_ok=True)
 pathlib.Path(OUT, "bundle_sha256.txt").write_text(%r + chr(10))
 print("data:", DATA, "| bundle", %r)
-""" % (tag, list(seeds), epochs, src_kernel, base, bundle_sha, bundle_sha)),
+""" % (tag, list(seeds), epochs, max_seconds, src_kernel, base, bundle_sha, bundle_sha)),
         code("""
 # On-card guard: the forward pass must be the published function on this
 # GPU too, in float64. "1 passed" is required; a skip means no CUDA.
@@ -4872,7 +4878,8 @@ def _registry() -> dict:
         lambda b: build_k64_jobs_finish(b, K64_SEED2_NAME, K64_SEED2_JOBS))
     for tag, flags, seeds, epochs in K64_FINISH_DUAL:
         reg["k64_%s_finish_seeds%s" % (tag, "".join(str(s) for s in seeds))] = (
-            lambda b, t=tag, f=flags, s=seeds, e=epochs: build_k64_finish_dual(b, t, f, s, epochs=e))
+            lambda b, t=tag, f=flags, s=seeds, e=epochs: build_k64_finish_dual(
+                b, t, f, s, epochs=e, max_seconds=K64_FINISH_MAX_SECONDS.get(t, 39000)))
     for tag, flags, seed, epochs in K64_RUNS_PINNED:
         reg["k64_%s_seed%d" % (tag, seed)] = (
             lambda b, t=tag, f=flags, s=seed, e=epochs: build_k64_run(
