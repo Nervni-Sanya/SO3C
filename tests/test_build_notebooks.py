@@ -345,3 +345,32 @@ def test_k64_seed2_kernel_pairs_the_pair_latent_with_its_reference(nb_dir) -> No
     meta = json.loads((nb_dir / "kernel-metadata-k64-seed2fp64-finish.json").read_text())
     assert meta["kernel_sources"] == ["nsanya/so3c-data-prep-k-128", "nsanya/so3c-k64-seed2fp64"]
     assert json.loads((nb_dir / "kernel-metadata-k64-seed2fp64.json").read_text())["id"] == "nsanya/so3c-k64-seed2fp64"
+
+
+def test_k64_finish_queue_resumes_both_first_kernels(nb_dir) -> None:
+    """Window 2026-10-31: one finish kernel resumes the width runs and the
+    pair latent's seed 2 from both first kernels' mounted outputs, in priority
+    order, each with exactly its first kernel's command; it reads the seed-2
+    reference from the mount and prints both readings by K64_CONFIRM_RULE."""
+    import json
+    width_run = _assigned_list(ROOT / "notebooks" / "kaggle_k64_w64s24lab60_seeds01.ipynb", "BASE")
+    seed2 = _assigned_list(ROOT / "notebooks" / "kaggle_k64_seed2fp64.ipynb", "BASE")
+    seed2_jobs = {tag: flags for tag, flags, _ in B.K64_SEED2_JOBS}
+    assert B.main(["--only", "k64_finish1031"]) == 0
+    nb = nb_dir / "kaggle_k64_finish1031.ipynb"
+    base = _assigned_list(nb, "BASE")
+    assert base == seed2
+    jobs = B.K64_FINISH_QUEUE_JOBS
+    assert [(t, s) for t, _, s in jobs] == [("pairlatlab60fp64", 2), ("w64s24lab60", 0),
+                                            ("w64s24lab60", 1), ("pairlab60fp64", 2)]
+    for tag, flags, s in jobs:
+        if tag == "w64s24lab60":
+            assert base + flags == width_run
+        else:
+            assert flags == seed2_jobs[tag]
+    text = "".join("".join(c["source"]) for c in json.loads(nb.read_text(encoding="utf-8"))["cells"])
+    assert "READINGS, RULE = " in text and repr(B.K64_CONFIRM_RULE) in text
+    assert '"--resume", "--max-seconds", str(left)' in text
+    meta = json.loads((nb_dir / "kernel-metadata-k64-finish1031.json").read_text())
+    assert meta["kernel_sources"] == ["nsanya/so3c-data-prep-k-128", "nsanya/so3c-k64-seed2fp64",
+                                      "nsanya/so3c-k64-w64s24lab60-seeds01"]

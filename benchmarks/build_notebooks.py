@@ -2666,6 +2666,242 @@ print("to finish:", [(t, s) for t, _, s in TODO], "| finished in the first kerne
     return nb_name
 
 
+# Window 2026-10-31: both first kernels stopped on the session cap (width at
+# epoch 45 on both seeds, the pair latent's seed 2 at epoch 47; its reference
+# finished). Separate finish kernels would leave a card idle for ~3 h and need
+# ~7.3 GPU-h against ~7.35 h left of the week, so one kernel resumes all three
+# as a queue: card 0 takes the pair latent first (the priority), then width
+# seed 1; card 1 takes width seed 0. ~6.9 h. (tag, flags, seed) in priority
+# order; a job whose checkpoint already reached 60 epochs is read from its
+# mounted result. A job started late gets --max-seconds from what is left of
+# BUDGET, so a shortfall stops it cleanly with a checkpoint.
+K64_FINISH_QUEUE_NAME = "finish1031"
+K64_FINISH_QUEUE_SOURCES = ["nsanya/so3c-k64-seed2fp64", "nsanya/so3c-k64-w64s24lab60-seeds01"]
+_W64 = ["--keep-best", "--pair-lab", "--act-hidden", "64", "--msg-dim", "24", "--scalar-dim", "24"]
+K64_FINISH_QUEUE_JOBS = [
+    ("pairlatlab60fp64", ["--keep-best", "--pair-lab", "--pair-latent", "8", "--pair-lab-fp64"], 2),
+    ("w64s24lab60", _W64, 0),
+    ("w64s24lab60", _W64, 1),
+    ("pairlab60fp64", ["--keep-best", "--pair-lab", "--pair-lab-fp64"], 2),
+]
+K64_FINISH_QUEUE_BUDGET_H = 7.05
+
+
+_FINISH_QUEUE_SUMMARY = """
+# Both K=64 readings of the window, by the rule fixed before the push
+# (K64_CONFIRM_RULE): confirmed if the arm's mean gains >= %+.4f AUC on its
+# reference and every arm run lies above every reference run; not confirmed
+# if it gains <= %+.4f; otherwise unresolved. A float is a committed run's
+# test AUC; [tag, seed] a run of this window.
+import json, glob, math, statistics
+READINGS, RULE = %r, %r
+POOLED_SD, POOLED_DF = %r   # within-configuration sd of base60 and pairlab60
+mean = statistics.mean
+recs = dict(DONE)
+for tag, _, s in JOBS:
+    for f in glob.glob(OUT + "/%%s/seed%%d/*.json" %% (tag, s)):
+        recs[(tag, s)] = json.load(open(f))
+for (tag, s), r in sorted(recs.items()):
+    t = r["test_metrics"]; env = r["env"]; h = r["history"]; vl = [e["val_loss"] for e in h]
+    assert env["torch"] == "2.11.0+cu128" and "T4" in env.get("gpu", ""), env
+    print("%%s seed %%d: %%d epochs (history %%d), %%.2f h cumulative, %%d params | kwargs %%s | compile %%s | batch order %%s"
+          %% (tag, s, r["epochs_run"], len(h), r["walltime_sec"] / 3600, r["n_params"], r["so3c_kwargs"],
+             (r.get("compile_check") or {}).get("used"), r["batch_order"]["epoch1"][:12]))
+    print("  AUC %%.5f  rej@0.3 %%.1f  rej@0.5 %%.1f  final val loss %%.5f (lowest %%.5f at epoch %%d)  val - train %%+.5f"
+          %% (t["test_auc"], t["bg_rej_30"], t.get("bg_rej_50", float("nan")), vl[-1], min(vl),
+             h[vl.index(min(vl))]["epoch"], vl[-1] - h[-1]["train_loss"]))
+    if r["epochs_run"] < EPOCHS:
+        print("  INCOMPLETE (epoch %%d of %%d): stopped on the budget; resume it next window" %% (r["epochs_run"], EPOCHS))
+
+def value(item):
+    if isinstance(item, float):
+        return item
+    r = recs.get(tuple(item))
+    return r["test_metrics"]["test_auc"] if r and r["epochs_run"] >= EPOCHS else None
+
+def p_two_sided(t, df):
+    try:
+        from scipy import stats
+        return 2 * stats.t.sf(abs(t), df)
+    except Exception:
+        return float("nan")
+
+for name, arm, ref in READINGS:
+    a, b = [value(x) for x in arm], [value(x) for x in ref]
+    if None in a or None in b:
+        print("%%s: no verdict, runs incomplete" %% name)
+        continue
+    d = mean(a) - mean(b)
+    tp = d / (POOLED_SD * math.sqrt(1 / len(a) + 1 / len(b)))
+    if d >= RULE[0] and min(a) > max(b):
+        verdict = "CONFIRMED at K=64"
+    elif d <= RULE[1]:
+        verdict = "NOT CONFIRMED"
+    else:
+        verdict = "unresolved"
+    print("%%s: arm %%s mean %%.5f | reference %%s mean %%.5f | d %%+.5f | against the pooled sd %%.5f: t %%.2f, df %%d, p %%.3f | arm runs above every reference run: %%d of %%d -> %%s"
+          %% (name, " ".join("%%.5f" %% x for x in a), mean(a), " ".join("%%.5f" %% x for x in b), mean(b), d,
+             POOLED_SD, tp, POOLED_DF, p_two_sided(tp, POOLED_DF), sum(x > max(b) for x in a), len(a), verdict))
+pl, rf = value(["pairlatlab60fp64", 2]), value(["pairlab60fp64", 2])
+if pl is not None and rf is not None:
+    print("seed-2 pair (float64 features, started together): pair latent %%+.5f" %% (pl - rf))
+assert not BAD, "jobs failed: %%s" %% BAD
+"""
+
+
+def _finish_queue_readings() -> tuple:
+    refs = _k64_references()
+    pooled = _pooled_sd([[x["auc"] for x in refs["pairlab60"]], [x["auc"] for x in refs["base60"]]])
+    arm = [json.loads(f.read_text())["test_metrics"]["test_auc"]
+           for f in sorted((ROOT / "results_k64" / "pairlatlab60").glob("seed*/*.json"))]
+    ref = [x["auc"] for x in refs["pairlab60"]]
+    assert len(arm) == 2 and len(ref) == 2, (arm, ref)
+    readings = [
+        ("pair latent at K=64, three seeds", arm + [["pairlatlab60fp64", 2]], ref + [["pairlab60fp64", 2]]),
+        ("width at K=64", [["w64s24lab60", 0], ["w64s24lab60", 1]], ref),
+    ]
+    return readings, pooled
+
+
+def build_k64_finish_queue(blob: str, name: str, jobs: list, sources: list,
+                           budget_h: float, epochs: int = 60) -> str:
+    """Resume several K=64 runs that stopped on the session cap, from the
+    mounted outputs of their first kernels, drained by the two cards as a
+    queue in the order given. Each resume is checked against the result JSON
+    its first kernel wrote (epoch, batch order); a job that already finished
+    is read from the mount. A job gets --max-seconds from what is left of
+    budget_h, less a margin for one epoch and the final evaluation. No smoke:
+    the same code ran in the first kernels. The summary prints the window's
+    readings by K64_CONFIRM_RULE."""
+    import hashlib
+    bundle_sha = hashlib.sha256(blob.encode()).hexdigest()[:12]
+    readings, pooled = _finish_queue_readings()
+    cells = [
+        md("""
+# Finish queue, two cards: %s
+
+Resumes, in this order on whichever card is free: %s. Mounts %s. T4 with
+torch 2.11.0+cu128 pinned and asserted. Kernel budget %.2f h.
+""" % (name, "; ".join("%s seed %d" % (tg, s) for tg, _, s in jobs), ", ".join(sources), budget_h)),
+        code("""
+import subprocess, time
+T0 = time.time()
+print(subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total",
+                      "--format=csv,noheader"], capture_output=True,
+                     text=True).stdout.strip())
+"""),
+        code(UNPACK.format(blob=blob)),
+        code(RUNNER),
+        code(GPU_SETUP_T4_PINNED),
+        code(DUAL_LAUNCH),
+        code("""
+import glob, pathlib
+cands = glob.glob("/kaggle/input/**/top_tagging_train.npz", recursive=True)
+assert cands, "attach the K=128 data-prep kernel output"
+DATA = str(pathlib.Path(cands[0]).parent)
+NAME, JOBS, EPOCHS, BUDGET = %r, %r, %d, %r * 3600
+MARGIN = 0.40 * 3600          # one epoch's overrun and the final evaluation
+OUT = "/kaggle/working/results_k64"
+CKPT = "/kaggle/working/checkpoints"
+LOGS = "/kaggle/working/logs/" + NAME
+BASE = %r
+BASE[BASE.index("DATA")] = DATA
+pathlib.Path(LOGS).mkdir(parents=True, exist_ok=True)
+for tag, _, _ in JOBS:
+    pathlib.Path(OUT, tag).mkdir(parents=True, exist_ok=True)
+    pathlib.Path(OUT, tag, "bundle_sha256.txt").write_text(%r + chr(10))
+print("data:", DATA, "| bundle", %r, "| budget %%.2f h" %% (BUDGET / 3600))
+""" % (name, [list(j) for j in jobs], epochs, budget_h, _k64_base_common(), bundle_sha, bundle_sha)),
+        code("""
+# On-card guard: the forward pass must be the published function on this
+# GPU too, in float64. "1 passed" is required; a skip means no CUDA.
+import subprocess, sys
+g = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
+                    "tests/test_so3c_models.py", "-k", "golden_cuda"],
+                   cwd="/kaggle/working/repo", capture_output=True, text=True)
+print(g.stdout[-1500:], g.stderr[-1500:])
+assert "1 passed" in g.stdout, "golden guard did not pass on the card"
+"""),
+        code("""
+# The first kernels' last checkpoints, from their mounted outputs. Each must
+# agree with the result JSON its kernel wrote (epoch, batch order) and goes
+# where --resume looks; the result JSON does not, so the run is not skipped.
+import glob, json, pathlib, shutil, torch
+TODO, DONE = [], {}
+for tag, flags, s in JOBS:
+    pat = "/kaggle/input/**/%s/" + tag + "/seed%d/*seed%d.%s"
+    cks = glob.glob(pat % ("checkpoints", s, s, "pt"), recursive=True)
+    js = glob.glob(pat % ("results_k64", s, s, "json"), recursive=True)
+    assert len(cks) == 1 and len(js) == 1, (tag, s, cks, js)
+    st = torch.load(cks[0], map_location="cpu", weights_only=False)
+    rec = json.load(open(js[0]))
+    print("%s seed %d: checkpoint at epoch %d (history %d), first kernel's result at epoch %d"
+          % (tag, s, st["epoch"], len(st["history"]), rec["epochs_run"]))
+    assert len(st["history"]) == st["epoch"] == rec["epochs_run"], (tag, s)
+    assert rec["batch_order"]["epoch1"] == st["batch_order_epoch1"], (tag, s)
+    if st["epoch"] >= EPOCHS:
+        DONE[(tag, s)] = rec
+        continue
+    ck = pathlib.Path(CKPT, tag, "seed%d" % s, pathlib.Path(cks[0]).name)
+    ck.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy(cks[0], ck)
+    TODO.append((tag, flags, s))
+    del st
+print("queue:", [(t, s) for t, _, s in TODO], "| finished in the first kernels:", sorted(DONE))
+"""),
+        code("""
+# The queue: each free card takes the next job, with --max-seconds from what
+# is left of the budget; no job starts with less than half an hour left.
+import glob, time
+todo = list(TODO)
+running = {}                      # card -> (tag, seed, process)
+BAD, SKIPPED = [], []
+while todo or running:
+    for c in range(NGPU):
+        if c in running:
+            tag, s, p = running[c]
+            if p.poll() is None:
+                continue
+            ok = p.returncode == 0 and glob.glob(OUT + "/%s/seed%d/*.json" % (tag, s))
+            print("%7.2f h  card %d: %s seed %d %s" % ((time.time() - T0) / 3600, c, tag, s,
+                                                       "done" if ok else "FAILED, exit %d" % p.returncode), flush=True)
+            if not ok:
+                BAD.append((tag, s)); print(tail(LOGS + "/%s_seed%d.log" % (tag, s), 1500))
+            del running[c]
+        if todo and c not in running:
+            left = int(BUDGET - (time.time() - T0) - MARGIN)
+            if left < 1800:
+                SKIPPED += [(t, s) for t, _, s in todo]; todo = []
+                print("budget: the remaining jobs are skipped:", SKIPPED); continue
+            tag, flags, s = todo.pop(0)
+            running[c] = (tag, s, launch(["benchmarks.run_top_tagging"] + BASE + flags +
+                                         ["--epochs", str(EPOCHS), "--seed", str(s),
+                                          "--results-dir", OUT + "/%s/seed%d" % (tag, s),
+                                          "--ckpt-dir", CKPT + "/%s/seed%d" % (tag, s),
+                                          "--resume", "--max-seconds", str(left)],
+                                         c, LOGS + "/%s_seed%d.log" % (tag, s)))
+            print("%7.2f h  card %d: start %s seed %d (max %.2f h)" % ((time.time() - T0) / 3600, c, tag, s, left / 3600), flush=True)
+    time.sleep(20)
+print("failed:", BAD or "none", "| skipped:", SKIPPED or "none")
+print("kernel time %.2f h" % ((time.time() - T0) / 3600))
+"""),
+        code(_FINISH_QUEUE_SUMMARY % (K64_CONFIRM_RULE[0], K64_CONFIRM_RULE[1], readings, K64_CONFIRM_RULE, pooled)),
+    ]
+    nb_name = "kaggle_k64_%s.ipynb" % name
+    _finalise(cells, NB_DIR / nb_name)
+    slug = "k64-%s" % name.replace("_", "-")
+    meta = {
+        "id": "nsanya/so3c-" + slug, "title": "SO3C K64 %s" % name,
+        "code_file": nb_name, "language": "python", "kernel_type": "notebook",
+        "is_private": True, "enable_gpu": True, "enable_internet": True,
+        "dataset_sources": [], "competition_sources": [],
+        "kernel_sources": ["nsanya/so3c-data-prep-k-128"] + list(sources),
+    }
+    (NB_DIR / ("kernel-metadata-%s.json" % slug)).write_text(
+        json.dumps(meta, indent=2) + chr(10), encoding="utf-8")
+    return nb_name
+
+
 def build_cuda_diag(blob: str) -> None:
     """Why the on-card golden guard failed: float64 on CUDA differed from
     the CPU fixture by ~4e-8 (case 'base'), where the CPU matches it to
@@ -4872,6 +5108,9 @@ def _registry() -> dict:
     for tag, flags, seeds, epochs in K64_DUAL_RUNS:
         reg["k64_%s_seeds%s" % (tag, "".join(str(s) for s in seeds))] = (
             lambda b, t=tag, f=flags, s=seeds, e=epochs: build_k64_dual(b, t, f, s, epochs=e))
+    reg["k64_%s" % K64_FINISH_QUEUE_NAME] = (
+        lambda b: build_k64_finish_queue(b, K64_FINISH_QUEUE_NAME, K64_FINISH_QUEUE_JOBS,
+                                         K64_FINISH_QUEUE_SOURCES, K64_FINISH_QUEUE_BUDGET_H))
     reg["k64_%s" % K64_SEED2_NAME] = (
         lambda b: build_k64_jobs_dual(b, K64_SEED2_NAME, K64_SEED2_JOBS))
     reg["k64_%s_finish" % K64_SEED2_NAME] = (
