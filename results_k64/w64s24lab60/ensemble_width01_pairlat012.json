@@ -1,0 +1,54 @@
+{
+  "results_dir": [
+    "results_k64/w64s24lab60/seed0",
+    "results_k64/w64s24lab60/seed1",
+    "results_k64/pairlatlab60/seed0",
+    "results_k64/pairlatlab60/seed1",
+    "results_k64/pairlatlab60fp64/seed2"
+  ],
+  "model": "so3c_message_set",
+  "experiment": "top_tagging_canonical",
+  "members": [
+    {
+      "seed": 0,
+      "auc": 0.9846450602988644,
+      "bg_rej_30": 1277.9367088607596,
+      "bg_rej_50": 350.5451388888889,
+      "source": "results_k64/pairlatlab60/seed0"
+    },
+    {
+      "seed": 0,
+      "auc": 0.9849212473649043,
+      "bg_rej_30": 1541.328244274809,
+      "bg_rej_50": 348.7288428324698,
+      "source": "results_k64/w64s24lab60/seed0"
+    },
+    {
+      "seed": 1,
+      "auc": 0.9849288396121384,
+      "bg_rej_30": 1452.6187050359713,
+      "bg_rej_50": 352.9965034965035,
+      "source": "results_k64/pairlatlab60/seed1"
+    },
+    {
+      "seed": 1,
+      "auc": 0.9848434101167008,
+      "bg_rej_30": 1382.972602739726,
+      "bg_rej_50": 339.35126050420166,
+      "source": "results_k64/w64s24lab60/seed1"
+    },
+    {
+      "seed": 2,
+      "auc": 0.9848923782537014,
+      "bg_rej_30": 1346.0933333333332,
+      "bg_rej_50": 337.085141903172,
+      "source": "results_k64/pairlatlab60fp64/seed2"
+    }
+  ],
+  "ensemble": {
+    "auc": 0.9856402009556642,
+    "bg_rej_30": 1589.8740157480313,
+    "bg_rej_50": 386.0688336520077
+  },
+  "mean_score_correlation": 0.9930465316980108
+}

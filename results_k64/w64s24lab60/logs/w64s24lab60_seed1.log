@@ -1,0 +1,6 @@
+[top_tagging_canonical] top_tagging_constituents(k=64,norm=global,split=canonical) | features=4 classes=2 | train=1211000 val=403000 test=404000
+[top_tagging_canonical] so3c_message_set (equivariant_set) | train ...
+[compile] backend=inductor, first batch: max |d logit| 1.7e-04, max |d grad| 3.4e-05 (relative)
+[train] resumed from top_tagging_canonical__so3c_message_set__seed1.pt at epoch 46
+[train] stopping at epoch 60: this session ran 12845s, over max_seconds=12554. Rerun with --resume.
+   val_acc=0.937  test_acc=0.938 auc=0.985 1/eB@0.3=1383  (52272.7s)

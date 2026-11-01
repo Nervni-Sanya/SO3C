@@ -1,0 +1,28 @@
+{
+  "results_dir": [
+    "results_k64/w64s24lab60/seed0",
+    "results_k64/w64s24lab60/seed1"
+  ],
+  "model": "so3c_message_set",
+  "experiment": "top_tagging_canonical",
+  "members": [
+    {
+      "seed": 0,
+      "auc": 0.9849212473649043,
+      "bg_rej_30": 1541.328244274809,
+      "bg_rej_50": 348.7288428324698
+    },
+    {
+      "seed": 1,
+      "auc": 0.9848434101167008,
+      "bg_rej_30": 1382.972602739726,
+      "bg_rej_50": 339.35126050420166
+    }
+  ],
+  "ensemble": {
+    "auc": 0.9853918516311668,
+    "bg_rej_30": 1682.6166666666668,
+    "bg_rej_50": 370.48440366972477
+  },
+  "mean_score_correlation": 0.992837434815574
+}

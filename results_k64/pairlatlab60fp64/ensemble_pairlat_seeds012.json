@@ -1,0 +1,35 @@
+{
+  "results_dir": [
+    "results_k64/pairlatlab60/seed0",
+    "results_k64/pairlatlab60/seed1",
+    "results_k64/pairlatlab60fp64/seed2"
+  ],
+  "model": "so3c_message_set",
+  "experiment": "top_tagging_canonical",
+  "members": [
+    {
+      "seed": 0,
+      "auc": 0.9846450602988644,
+      "bg_rej_30": 1277.9367088607596,
+      "bg_rej_50": 350.5451388888889
+    },
+    {
+      "seed": 1,
+      "auc": 0.9849288396121384,
+      "bg_rej_30": 1452.6187050359713,
+      "bg_rej_50": 352.9965034965035
+    },
+    {
+      "seed": 2,
+      "auc": 0.9848923782537014,
+      "bg_rej_30": 1346.0933333333332,
+      "bg_rej_50": 337.085141903172
+    }
+  ],
+  "ensemble": {
+    "auc": 0.9854291641072956,
+    "bg_rej_30": 1541.328244274809,
+    "bg_rej_50": 381.6899810964083
+  },
+  "mean_score_correlation": 0.9936604491649846
+}
