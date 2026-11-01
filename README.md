@@ -26,10 +26,12 @@ training, 403,000 validation and 404,000 test jets. It has not been reached.
 
 | Model | Parameters | AUC | 1/ε_B at ε_S = 0.3 |
 |---|---:|---|---|
-| **SO3C** with lab-frame pair features and a pair latent, `so3c_message_set --beams --channels 8 --pair-lab --pair-latent 8`, K = 64, 60 epochs, mean of 2 seeds | 26,738 | **0.98479 ± 0.00020** | 1365 ± 124 |
-| the same, the better seed by test AUC (the other: 0.98465 / 1277.9) | 26,738 | 0.98493 | 1452.6 |
-| the same, ensemble of the 2 seeds | 2 × 26,738 | **0.98524** | **1541.3** |
-| those 2 and the two 120-epoch pair-feature seeds of the next row (four models) | 2 × 26,738 + 2 × 23,026 | 0.98543 | 1553.2 |
+| **SO3C** with lab-frame pair features and width, `so3c_message_set --beams --channels 8 --pair-lab --act-hidden 64 --msg-dim 24 --scalar-dim 24`, K = 64, 60 epochs, mean of 2 seeds | 61,602 | **0.98488 ± 0.00006** | 1462 ± 112 |
+| the same, ensemble of the 2 seeds | 2 × 61,602 | 0.98539 | **1682.6** |
+| SO3C with lab-frame pair features and a pair latent, `--pair-lab --pair-latent 8`, K = 64, 60 epochs, mean of 3 seeds (seed 2 with `--pair-lab-fp64`) | 26,738 | 0.98482 ± 0.00015 | 1359 ± 88 |
+| the same, the best seed by test AUC (the others: 0.98465 / 1277.9, 0.98489 / 1346.1) | 26,738 | 0.98493 | 1452.6 |
+| the same, ensemble of the 3 seeds | 3 × 26,738 | 0.98543 | 1541.3 |
+| ensemble of the 2 width and the 3 pair-latent runs | 2 × 61,602 + 3 × 26,738 | **0.98564** | 1589.9 |
 | SO3C with the lab-frame pair features only, `--pair-lab`, K = 64, 60 epochs continued to 120, mean of 2 seeds | 23,026 | 0.98460 ± 0.00029 | 1302 ± 89 |
 | the same, the better seed by test AUC (the other: 0.98439 / 1238.7) | 23,026 | 0.98480 | 1364.3 |
 | the same, ensemble of the 2 seeds | 2 × 23,026 | 0.98515 | 1421.9 |
@@ -47,23 +49,27 @@ training, 403,000 validation and 404,000 test jets. It has not been reached.
 | PELICAN, its own size sweep | 3,000 | 0.9850 | 1494 ± 43 |
 | PELICAN, its own size sweep | 1,000 | 0.9835 | 1145 ± 74 |
 
-**The best models so far (2026-10-25) add a pair latent to the pair features.**
-`--pair-latent 8` carries a PELICAN-style rank-2 pair state through the
-message-passing rounds instead of reducing pairs to particles every round
-(26,738 parameters). At K = 64 over 60 epochs its two seeds average 0.98479:
-+0.00037 over the same-schedule pair-feature runs (0.98442), and +0.00019 over
-those runs continued to 120 epochs. Whether the pair latent itself pays is not
-settled at K = 64. One of its two runs lies 0.00002 below the better
-pair-feature run, so the reading fixed before the run is "unresolved"
-(t = 1.3 against this protocol's run-to-run spread). At K = 32 over 60 epochs it
-gained +0.00033 and passed the same reading. The gap to PELICAN is now 0.0018 AUC
-and a factor 1.46 in rejection for the two-seed ensemble (0.0022 and 1.65 for
-the mean). The ensemble lies above PELICAN's 3,000-parameter model on both
-metrics (0.98524 / 1541 against 0.9850 / 1494 ± 43, the rejection by about one
-of its standard deviations); the better single run lies just below it on both
-(0.98493 / 1453). Width (`--act-hidden 64 --msg-dim 24 --scalar-dim 24`, 61,602
-parameters) on top of the pair features also passed at K = 32 (+0.00047) and
-has not yet been run at K = 64.
+**The best models so far (2026-11-01) add width or a pair latent to the pair
+features, and the two are tied.** Width (`--act-hidden 64 --msg-dim 24
+--scalar-dim 24`, 61,602 parameters) is confirmed at K = 64 over 60 epochs: its
+two seeds average 0.98488, +0.00046 over the same-schedule pair-feature runs
+(0.98442), with both runs above both, as the reading fixed before the run
+required. It repeats its K = 32 gain (+0.00047). The pair latent (`--pair-latent
+8`, 26,738 parameters) carries a PELICAN-style rank-2 pair state through the
+message-passing rounds instead of reducing pairs to particles every round. Over
+three seeds it gains about as much, +0.00039, and each seed beats the
+pair-feature run of the same seed. But one of its runs lies 0.00002 below the
+better pair-feature run, so its reading stays "unresolved". Width against the
+pair latent: +0.00006, not separated. The gap to PELICAN is now 0.0016 AUC and a
+factor 1.34 in rejection for the two-seed width ensemble, and 0.0014 and 1.42
+for the ensemble of all five runs. The width ensemble lies above PELICAN's
+3,000-parameter model on both metrics (0.98539 / 1683 against 0.9850 / 1494 ±
+43) and below its 11,000-parameter model on both (0.9858 / 1879 ± 103). The best
+single runs (0.98492–0.98493) are just below the 3,000-parameter model in AUC.
+
+Earlier (2026-10-25), the pair latent's first two seeds averaged 0.98479, +0.00019
+over the pair-feature runs continued to 120 epochs, with a two-seed ensemble of
+0.98524 / 1541.
 
 The lab-frame pair features (2026-10-17) give the largest gain since the beams:
 +0.00100 AUC at K = 64 over a same-stack control without them (two runs each,
@@ -165,7 +171,7 @@ check holds in the unit tests to below 10⁻⁹ relative.
 
 | `--models` name | Parameters at the defaults | Output symmetry |
 |---|---|---|
-| `so3c_message_set` | 13,862; 15,038 with `--beams`; 22,834 with `--beams --channels 8`; 23,026 adding `--pair-lab`; 26,738 adding `--pair-latent 8` as well | Lorentz-invariant; with beams, covariant together with the beams and invariant under rotations about the beam axis |
+| `so3c_message_set` | 13,862; 15,038 with `--beams`; 22,834 with `--beams --channels 8`; 23,026 adding `--pair-lab`; 26,738 adding `--pair-latent 8` as well, or 61,602 adding width (`--act-hidden 64 --msg-dim 24 --scalar-dim 24`) instead | Lorentz-invariant; with beams, covariant together with the beams and invariant under rotations about the beam axis |
 | `so3c_covariant_set` | 9,078 | Lorentz-invariant, exactly |
 | `so3c_invariant_set` | 5,122 | Lorentz-invariant by construction; no flow |
 | `so3c_interaction_set` | 5,652 | Lorentz-invariant to ODE tolerance |
@@ -180,8 +186,8 @@ protocol and none showed a resolved gain on its own
 ([models](docs/so3c/models.md#switches-screened-on-the-probe-protocol)). Later switches are in
 [models](docs/so3c/models.md#lab-frame-features-added-and-screened-2026-10-10). Of them,
 `--pair-lab` (ParT's four pair features, 23,026 parameters) passed the probe
-screen; with `--pair-latent 8` on top of it, it gives the current best models on
-the full data. `--pair-lab-fp64` computes the pair features in float64 (no
+screen; with width or `--pair-latent 8` on top of it, it gives the current best
+models on the full data. `--pair-lab-fp64` computes the pair features in float64 (no
 resolved AUC change on the probe; it keeps the compiled and eager forward passes
 in agreement), and `--knn-metric angle` with `--attention` is the sparse graph of
 `so3c_knn_set`.
@@ -207,13 +213,15 @@ parameters and `--act-hidden 128 --msg-dim 32 --scalar-dim 32` (`w128s32`) has
 | `so3c_message_set --beams --channels 8`, 60 epochs, same-stack control | 22,834 | 64 | 2 | 0.98342 ± 0.00021 | 1144 ± 14 |
 | `so3c_message_set --beams --channels 8 --pair-lab`, 60 epochs | 23,026 | 64 | 2 | 0.98442 ± 0.00035 | 1296 ± 71 |
 | `so3c_message_set --beams --channels 8 --pair-lab`, continued to 120 epochs | 23,026 | 64 | 2 | 0.98460 ± 0.00029 | 1302 ± 89 |
-| `so3c_message_set --beams --channels 8 --pair-lab --pair-latent 8`, 60 epochs | 26,738 | 64 | 2 | **0.98479 ± 0.00020** | 1365 ± 124 |
+| `so3c_message_set --beams --channels 8 --pair-lab --pair-latent 8`, 60 epochs | 26,738 | 64 | 3 | 0.98482 ± 0.00015 | 1359 ± 88 |
+| `so3c_message_set --beams --channels 8 --pair-lab --act-hidden 64 --msg-dim 24 --scalar-dim 24`, 60 epochs | 61,602 | 64 | 2 | **0.98488 ± 0.00006** | 1462 ± 112 |
 
 K is the number of leading constituents per jet; ± is the standard deviation
-over seeds; every row trains for 30 epochs except the last five. Four of those
+over seeds; every row trains for 30 epochs except the last six. Five of those
 train for 60 epochs, and one continues the pair-feature runs to 120. The
-pair-latent runs did not fit one 12-hour Kaggle session; each was stopped on the
-time cap and resumed from its checkpoint in a second session. The `eta_invariants` runs are in the untracked `results/` directory; every
+pair-latent and width runs did not fit one 12-hour Kaggle session; each was
+stopped on the time cap and resumed from its checkpoint in a second session.
+The pair latent's seed 2 used float64 pair features (`--pair-lab-fp64`). The `eta_invariants` runs are in the untracked `results/` directory; every
 other row has its result files committed.
 
 Symmetry under boosts was tested on smaller models, trained for 8 epochs on

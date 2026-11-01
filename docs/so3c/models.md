@@ -147,10 +147,11 @@ The covariant step applied for several rounds, with a scalar state per
 particle and complex channel mixing
 ([theory.md §10](theory.md#10-covariant-message-passing-so3c_message_set)).
 The readout adds the masked mean and max of the scalar state, so its input is
-$11C+C(C+1)+2D+7=87$ features at the defaults. The best configuration measured
-so far is `beams=True, channels=8, pair_lab=True, pair_latent=8` at $K=64$, 60
-epochs (0.98479 over two seeds, 0.98493 for the better one, 0.98524 for their
-ensemble; 2026-10-25). Before it, `pair_lab=True` without the pair latent, 60
+$11C+C(C+1)+2D+7=87$ features at the defaults. The best configurations measured
+so far, tied, are `beams=True, channels=8, pair_lab=True` with width
+(`act_hidden=64, msg_dim=24, scalar_dim=24`; 0.98488 over two seeds, 0.98539 for
+their ensemble) or with `pair_latent=8` (0.98482 over three seeds, 0.98493 for
+the best one) at $K=64$, 60 epochs (2026-11-01). Before it, `pair_lab=True` without the pair latent, 60
 epochs continued to 120, gave 0.98460 over two seeds and 0.98480 for the better
 one. Without `pair_lab`, `beams=True, channels=8`
 trained for 60 epochs and continued to 120 (0.98392; [experiments.md, table A](experiments.md#a-canonical-top-tagging)).

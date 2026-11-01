@@ -1,7 +1,7 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 title: "SO3C: Lorentz-covariant jet tagging with complexified-SO(3) geodesic flows"
-abstract: "Jet tagger built on the complexified rotation algebra so(3,C) ≅ so(3,1). Constituents are lifted to complex 3-vectors and moved along a closed-form geodesic flow with a learned covariant connection; the flow conserves z·z and uses a complex Rodrigues formula, so no ODE solver is involved. On the Kasieczka top-tagging reference dataset a 26,738-parameter model reaches AUC 0.9848 ± 0.0002 over two seeds (best single 0.98493 / 1453; two-seed ensemble 0.98524 / 1541), below PELICAN (0.9870 / 2250). Includes benchmark harness, notebooks, result files and headline checkpoints."
+abstract: "Jet tagger built on the complexified rotation algebra so(3,C) ≅ so(3,1). Constituents are lifted to complex 3-vectors and moved along a closed-form geodesic flow with a learned covariant connection; the flow conserves z·z and uses a complex Rodrigues formula, so no ODE solver is involved. On the Kasieczka top-tagging reference dataset a 61,602-parameter model reaches AUC 0.9849 ± 0.0001 over two seeds (two-seed ensemble 0.98539 / 1683; with a 26,738-parameter variant, a five-model ensemble reaches 0.98564 / 1590), below PELICAN (0.9870 / 2250). Includes benchmark harness, notebooks, result files and headline checkpoints."
 authors:
   - family-names: "Panchenko"
     given-names: "Aleksandr A."
