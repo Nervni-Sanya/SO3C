@@ -267,7 +267,7 @@ def test_k64_pair_latent_confirmation_and_its_finish(nb_dir) -> None:
     for text in texts.values():
         assert '"--seed", str(' in text and 'WANT = "2.11.0+cu128"' in text
     assert "--resume" in texts[fin] and "st[\"epoch\"] >= EPOCHS" in texts[fin]
-    assert "REFS, RULE = " in texts[fin] and repr(B.K64_CONFIRM_RULE) in texts[fin]
+    assert "REFS, RULE, RULE_REF = " in texts[fin] and repr(B.K64_CONFIRM_RULE) in texts[fin]
     for row in B._k64_references()["pairlab60"]:
         assert repr(row["auc"]) in texts[fin]
     meta = json.loads((nb_dir / "kernel-metadata-k64-pairlatlab60-finish-seeds01.json").read_text())
@@ -374,3 +374,31 @@ def test_k64_finish_queue_resumes_both_first_kernels(nb_dir) -> None:
     meta = json.loads((nb_dir / "kernel-metadata-k64-finish1031.json").read_text())
     assert meta["kernel_sources"] == ["nsanya/so3c-data-prep-k-128", "nsanya/so3c-k64-seed2fp64",
                                       "nsanya/so3c-k64-w64s24lab60-seeds01"]
+
+
+def test_k64_combined_model_and_its_three_sessions(nb_dir) -> None:
+    """Window 2026-11-07: the combined model (pair latent + width + float64
+    pair features on top of --pair-lab) is the committed two-card pairlab60
+    command plus exactly those flags; 60 epochs take three sessions, and each
+    finish kernel mounts only the previous kernel and reads against width."""
+    import json
+    pairlab60 = _assigned_list(ROOT / "notebooks" / "kaggle_k64_pairlab60_seeds01.ipynb", "BASE")
+    extra = ["--pair-latent", "8", "--act-hidden", "64", "--msg-dim", "24", "--scalar-dim", "24", "--pair-lab-fp64"]
+    stems = ["k64_pairlatw64lab60fp64_seeds01", "k64_pairlatw64lab60fp64_finish_seeds01",
+             "k64_pairlatw64lab60fp64_finish3_seeds01"]
+    assert B.main(["--only"] + stems) == 0
+    for stem in stems:
+        nb = nb_dir / ("kaggle_%s.ipynb" % stem)
+        assert _assigned_list(nb, "BASE") == pairlab60 + extra, stem
+        text = "".join("".join(c["source"]) for c in json.loads(nb.read_text(encoding="utf-8"))["cells"])
+        assert "TAG, SEEDS, EPOCHS, MAX_SECONDS = 'pairlatw64lab60fp64', [0, 1], 60, 39000" in text
+        if "finish" in stem:
+            assert "'w64s24lab60'" in text and "RULE_REF" in text
+            for row in B._k64_references(extra=("w64s24lab60",))["w64s24lab60"]:
+                assert repr(row["auc"]) in text
+    first = "nsanya/so3c-k64-pairlatw64lab60fp64-seeds01"
+    m2 = json.loads((nb_dir / "kernel-metadata-k64-pairlatw64lab60fp64-finish-seeds01.json").read_text())
+    m3 = json.loads((nb_dir / "kernel-metadata-k64-pairlatw64lab60fp64-finish3-seeds01.json").read_text())
+    assert m2["kernel_sources"] == ["nsanya/so3c-data-prep-k-128", first]
+    assert m3["id"] == "nsanya/so3c-k64-pairlatw64lab60fp64-finish3-seeds01"
+    assert m3["kernel_sources"] == ["nsanya/so3c-data-prep-k-128", m2["id"]]

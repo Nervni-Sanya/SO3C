@@ -1,0 +1,16 @@
+{
+  "id": "nsanya/so3c-k64-pairlatw64lab60fp64-finish3-seeds01",
+  "title": "SO3C K64 pairlatw64lab60fp64 finish3 seeds01",
+  "code_file": "kaggle_k64_pairlatw64lab60fp64_finish3_seeds01.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "dataset_sources": [],
+  "competition_sources": [],
+  "kernel_sources": [
+    "nsanya/so3c-data-prep-k-128",
+    "nsanya/so3c-k64-pairlatw64lab60fp64-finish-seeds01"
+  ]
+}

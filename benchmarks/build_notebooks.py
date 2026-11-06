@@ -1849,6 +1849,14 @@ K64_DUAL_RUNS = [
     # ~1.72x pairlab60's epoch (T4 profile ca4f885) it stops near epoch 40 and
     # build_k64_finish_dual resumes it.
     ("w64s24lab60", ["--keep-best", "--pair-lab", "--act-hidden", "64", "--msg-dim", "24", "--scalar-dim", "24"], (0, 1), 60),
+    # Window 2026-11-07: the combined model, every component measured on top
+    # of --pair-lab at K=64 (the user's plan of 2026-10-25): width (confirmed,
+    # +0.00046) and the pair latent (+0.00039 over three seeds, unresolved by
+    # 0.00002), with float64 pair features, which keep the pair latent's
+    # compiled pass in agreement (float32 seed 1 fell back to eager twice).
+    # 67,874 parameters; ~2.6x pairlab60's epoch (T4 profile ca4f885), so 60
+    # epochs take three sessions: this kernel and two finish kernels.
+    ("pairlatw64lab60fp64", ["--keep-best", "--pair-lab", "--pair-latent", "8", "--act-hidden", "64", "--msg-dim", "24", "--scalar-dim", "24", "--pair-lab-fp64"], (0, 1), 60),
 ]
 
 DUAL_LAUNCH = """
@@ -2054,7 +2062,18 @@ K64_FINISH_MAX_SECONDS = {}
 K64_FINISH_DUAL = [
     ("pairlatlab60", ["--keep-best", "--pair-lab", "--pair-latent", "8"], (0, 1), 60),
     ("w64s24lab60", ["--keep-best", "--pair-lab", "--act-hidden", "64", "--msg-dim", "24", "--scalar-dim", "24"], (0, 1), 60),
+    ("pairlatw64lab60fp64", ["--keep-best", "--pair-lab", "--pair-latent", "8", "--act-hidden", "64", "--msg-dim", "24", "--scalar-dim", "24", "--pair-lab-fp64"], (0, 1), 60),
 ]
+
+# How many sessions a run takes (default 2: the first kernel and one finish).
+# Finish kernel p mounts the output of kernel p - 1 only, so exactly one
+# checkpoint per seed is found.
+K64_FINISH_PARTS = {"pairlatw64lab60fp64": 3}
+
+# The reference a finish kernel's reading is fixed against (default
+# pairlab60). The combined model is read against width, the best confirmed
+# configuration: it pays only if its components' gains add.
+K64_FINISH_RULE_REF = {"pairlatw64lab60fp64": "w64s24lab60"}
 
 # Reading of a finished K=64 confirmation, fixed before the push, on the final
 # weights against pairlab60's two runs (the same stack, two-card kernel, 60
@@ -2066,12 +2085,12 @@ K64_FINISH_DUAL = [
 K64_CONFIRM_RULE = (0.0003, 0.0)
 
 
-def _k64_references() -> dict:
+def _k64_references(extra: tuple = ()) -> dict:
     """The same-stack K=64 runs (T4, torch 2.11, two-card kernels) a
     confirmation is read against, final weights: pairlab60 and base60 at 60
-    epochs, pairlab120 at 120."""
+    epochs, pairlab120 at 120, and any `extra` 60-epoch runs."""
     refs = {}
-    for tag, epochs in (("pairlab60", 60), ("base60", 60), ("pairlab120", 120)):
+    for tag, epochs in (("pairlab60", 60), ("base60", 60), ("pairlab120", 120)) + tuple((x, 60) for x in extra):
         rows = []
         for f in sorted((ROOT / "results_k64" / tag).glob("seed*/*.json")):
             r = json.loads(f.read_text())
@@ -2081,7 +2100,7 @@ def _k64_references() -> dict:
                          "val_loss": h["val_loss"], "gap": h["val_loss"] - h["train_loss"],
                          "order": r["batch_order"]["epoch1"]})
         refs[tag] = rows
-    assert [[x["seed"] for x in v] for v in refs.values()] == [[0, 1]] * 3, refs
+    assert [[x["seed"] for x in v] for v in refs.values()] == [[0, 1]] * len(refs), refs
     return refs
 
 
@@ -2093,10 +2112,20 @@ def _pooled_sd(groups) -> tuple[float, int]:
     return math.sqrt(ss / df), df
 
 
+def _k64_finish_slug(tag: str, seeds_s: str, part: int) -> str:
+    """Kernel slug of finish kernel `part` (2 for the first finish)."""
+    return "k64-%s-finish%s-seeds%s" % (tag.replace("_", "-"), "" if part == 2 else str(part), seeds_s)
+
+
 def build_k64_finish_dual(blob: str, tag: str, flags: list[str],
                           seeds: tuple[int, ...] = (0, 1), epochs: int = 60,
-                          max_seconds: int = 39000) -> str:
+                          max_seconds: int = 39000, part: int = 2,
+                          rule_ref: str = "pairlab60") -> str:
     """Finish a two-card K=64 run (build_k64_dual) that stopped on the session cap.
+
+    `part` 2 mounts the first kernel; part p > 2 mounts finish kernel p - 1,
+    for runs that take more than two sessions. The reading is fixed against
+    `rule_ref`.
 
     Mounts the first kernel's output (nsanya/so3c-k64-<tag>-seeds01) through
     kernel_sources. For each seed its last checkpoint must agree with the
@@ -2118,19 +2147,20 @@ def build_k64_finish_dual(blob: str, tag: str, flags: list[str],
             "--rounds", "3", "--beams", "--channels", "8",
             "--compile"] + list(flags)
     seeds_s = "".join(str(s) for s in seeds)
-    src_kernel = "nsanya/so3c-k64-%s-seeds%s" % (tag.replace("_", "-"), seeds_s)
-    refs = _k64_references()
+    src_kernel = ("nsanya/so3c-k64-%s-seeds%s" % (tag.replace("_", "-"), seeds_s) if part == 2
+                  else "nsanya/so3c-" + _k64_finish_slug(tag, seeds_s, part - 1))
+    refs = _k64_references(extra=() if rule_ref in ("pairlab60", "base60") else (rule_ref,))
     pooled = _pooled_sd([[x["auc"] for x in refs["pairlab60"]],
                          [x["auc"] for x in refs["base60"]]])
     cells = [
         md("""
-# Finish, two cards: K=64 %s, seeds %s
+# Finish %d, two cards: K=64 %s, seeds %s
 
-Resumes the two-card K=64 run %s (beams + channels 8 + %s, %d epochs) from
-the last checkpoints in its mounted output, with the same command and
+Resumes the two-card K=64 run (beams + channels 8 + %s, %d epochs) from the
+last checkpoints in the mounted output of %s, with the same command and
 horizon, one seed per T4. Push only after that kernel has stopped. T4 with
-torch 2.11.0+cu128 pinned and asserted. Read against pairlab60.
-""" % (tag, ", ".join(str(s) for s in seeds), src_kernel, " ".join(flags), epochs)),
+torch 2.11.0+cu128 pinned and asserted. Read against %s.
+""" % (part, tag, ", ".join(str(s) for s in seeds), " ".join(flags), epochs, src_kernel, rule_ref)),
         code("""
 import subprocess, time
 T0 = time.time()
@@ -2170,7 +2200,7 @@ print(g.stdout[-1500:], g.stderr[-1500:])
 assert "1 passed" in g.stdout, "golden guard did not pass on the card"
 """),
         code("""
-# The first kernel's last checkpoints, from its mounted output. Each must
+# The previous kernel's last checkpoints, from its mounted output. Each must
 # agree with the result JSON that kernel wrote when it stopped (epoch, batch
 # order) and goes where --resume looks; the result JSON does not, so the
 # resumed run is not skipped.
@@ -2185,7 +2215,7 @@ for s in SEEDS:
         continue
     st = torch.load(cks[0], map_location="cpu", weights_only=False)
     rec = json.load(open(js[0])) if len(js) == 1 else None
-    print("seed %d: checkpoint at epoch %d (history %d), first kernel's result at epoch %s"
+    print("seed %d: checkpoint at epoch %d (history %d), previous kernel's result at epoch %s"
           % (s, st["epoch"], len(st["history"]), rec["epochs_run"] if rec else None))
     assert len(st["history"]) == st["epoch"], (len(st["history"]), st["epoch"])
     if rec is not None:
@@ -2201,7 +2231,7 @@ for s in SEEDS:
     TODO.append(s)
     del st
 assert TODO or DONE, "nothing mounted: attach the output of " + SRC
-print("to finish:", TODO, "| finished in the first kernel:", sorted(DONE))
+print("to finish:", TODO, "| finished in the previous kernel:", sorted(DONE))
 """),
         code("""
 # Smoke on both cards at once, each card with its own seed: one epoch on 20k
@@ -2258,13 +2288,13 @@ print("kernel time %.2f h" % ((time.time() - T0) / 3600))
         code("""
 # The finished runs against the same-stack K=64 references (T4, torch 2.11,
 # two-card kernels): pairlab60 (60 epochs; the command without the arm's
-# own flags), base60, and pairlab120 (continued to 120 epochs, the best
-# models so far). Unpaired, by the reading fixed before the push (final
-# weights): confirmed if the mean gains >= %+.4f AUC on pairlab60 and every
-# run lies above both pairlab60 runs; not confirmed if it gains <= %+.4f;
-# otherwise unresolved.
+# own flags), base60, pairlab120 (continued to 120 epochs) and any extra
+# reference. Unpaired, by the reading fixed before the push (final weights):
+# confirmed if the mean gains >= %+.4f AUC on RULE_REF and every run lies
+# above both RULE_REF runs; not confirmed if it gains <= %+.4f; otherwise
+# unresolved.
 import json, glob, math, statistics
-REFS, RULE = %r, %r
+REFS, RULE, RULE_REF = %r, %r, %r
 POOLED_SD, POOLED_DF = %r   # within-configuration sd of base60 and pairlab60
 mean = statistics.mean
 recs = {s: r for s, r in DONE.items()}
@@ -2286,7 +2316,7 @@ for s in sorted(recs):
         print("  best-val weights (epoch %%d): AUC %%.5f, rej@0.3 %%.1f"
               %% (r["best_val_epoch"], tb["test_auc"], tb["bg_rej_30"]))
     if r["epochs_run"] < EPOCHS:
-        print("  INCOMPLETE (epoch %%d of %%d): stopped on the session cap again" %% (r["epochs_run"], EPOCHS))
+        print("  INCOMPLETE (epoch %%d of %%d): stopped on the session cap again; the next finish kernel resumes it" %% (r["epochs_run"], EPOCHS))
         continue
     done.append({"auc": t["test_auc"], "rej30": t["bg_rej_30"], "val_loss": vl[-1],
                  "gap": vl[-1] - h[-1]["train_loss"]})
@@ -2315,7 +2345,7 @@ if done:
         t_p = (mean(a) - mean(b)) / (POOLED_SD * math.sqrt(1 / len(a) + 1 / len(b)))
         line += " | against the pooled sd %%.5f: t %%.2f, df %%d, p %%.3f" %% (POOLED_SD, t_p, POOLED_DF, p_two_sided(t_p, POOLED_DF))
         print(line)
-    ref = [x["auc"] for x in REFS["pairlab60"]]
+    ref = [x["auc"] for x in REFS[RULE_REF]]
     d = mean(a) - mean(ref)
     if len(done) < len(SEEDS):
         verdict = "no verdict: %%d of %%d runs complete" %% (len(done), len(SEEDS))
@@ -2325,18 +2355,18 @@ if done:
         verdict = "NOT CONFIRMED"
     else:
         verdict = "unresolved"
-    print("verdict (%%s against pairlab60, dAUC %%+.5f, runs above both pairlab60 runs: %%d of %%d): %%s"
-          %% (TAG, d, sum(x > max(ref) for x in a), len(a), verdict))
+    print("verdict (%%s against %%s, dAUC %%+.5f, runs above both %%s runs: %%d of %%d): %%s"
+          %% (TAG, RULE_REF, d, RULE_REF, sum(x > max(ref) for x in a), len(a), verdict))
 assert not BAD, "seeds failed (exit code or no result): %%s" %% BAD
-""" % (K64_CONFIRM_RULE[0], K64_CONFIRM_RULE[1], refs, K64_CONFIRM_RULE, pooled)),
+""" % (K64_CONFIRM_RULE[0], K64_CONFIRM_RULE[1], refs, K64_CONFIRM_RULE, rule_ref, pooled)),
     ]
-    stem = "k64_%s_finish_seeds%s" % (tag, seeds_s)
+    stem = "k64_%s_finish%s_seeds%s" % (tag, "" if part == 2 else str(part), seeds_s)
     name = "kaggle_%s.ipynb" % stem
     _finalise(cells, NB_DIR / name)
-    slug = "k64-%s-finish-seeds%s" % (tag.replace("_", "-"), seeds_s)
+    slug = _k64_finish_slug(tag, seeds_s, part)
     meta = {
         "id": "nsanya/so3c-" + slug,
-        "title": "SO3C K64 %s finish seeds%s" % (tag, seeds_s),
+        "title": "SO3C K64 %s finish%s seeds%s" % (tag, "" if part == 2 else str(part), seeds_s),
         "code_file": name, "language": "python", "kernel_type": "notebook",
         "is_private": True, "enable_gpu": True, "enable_internet": True,
         "dataset_sources": [], "competition_sources": [],
@@ -5116,9 +5146,11 @@ def _registry() -> dict:
     reg["k64_%s_finish" % K64_SEED2_NAME] = (
         lambda b: build_k64_jobs_finish(b, K64_SEED2_NAME, K64_SEED2_JOBS))
     for tag, flags, seeds, epochs in K64_FINISH_DUAL:
-        reg["k64_%s_finish_seeds%s" % (tag, "".join(str(s) for s in seeds))] = (
-            lambda b, t=tag, f=flags, s=seeds, e=epochs: build_k64_finish_dual(
-                b, t, f, s, epochs=e, max_seconds=K64_FINISH_MAX_SECONDS.get(t, 39000)))
+        for part in range(2, K64_FINISH_PARTS.get(tag, 2) + 1):
+            reg["k64_%s_finish%s_seeds%s" % (tag, "" if part == 2 else str(part), "".join(str(s) for s in seeds))] = (
+                lambda b, t=tag, f=flags, s=seeds, e=epochs, pt=part: build_k64_finish_dual(
+                    b, t, f, s, epochs=e, max_seconds=K64_FINISH_MAX_SECONDS.get(t, 39000), part=pt,
+                    rule_ref=K64_FINISH_RULE_REF.get(t, "pairlab60")))
     for tag, flags, seed, epochs in K64_RUNS_PINNED:
         reg["k64_%s_seed%d" % (tag, seed)] = (
             lambda b, t=tag, f=flags, s=seed, e=epochs: build_k64_run(
