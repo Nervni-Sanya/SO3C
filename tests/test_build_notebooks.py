@@ -391,7 +391,8 @@ def test_k64_combined_model_and_its_three_sessions(nb_dir) -> None:
         nb = nb_dir / ("kaggle_%s.ipynb" % stem)
         assert _assigned_list(nb, "BASE") == pairlab60 + extra, stem
         text = "".join("".join(c["source"]) for c in json.loads(nb.read_text(encoding="utf-8"))["cells"])
-        assert "TAG, SEEDS, EPOCHS, MAX_SECONDS = 'pairlatw64lab60fp64', [0, 1], 60, 39000" in text
+        cap = 39000 if stem.endswith("fp64_seeds01") else B.K64_FINISH_MAX_SECONDS["pairlatw64lab60fp64"]
+        assert "TAG, SEEDS, EPOCHS, MAX_SECONDS = 'pairlatw64lab60fp64', [0, 1], 60, %d" % cap in text
         if "finish" in stem:
             assert "'w64s24lab60'" in text and "RULE_REF" in text
             for row in B._k64_references(extra=("w64s24lab60",))["w64s24lab60"]:

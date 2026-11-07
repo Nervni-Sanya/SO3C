@@ -2057,7 +2057,10 @@ assert not BAD, "seeds failed (exit code or no result): %%s" %% BAD
 # A finish kernel's --max-seconds when the week's quota cannot cover the rest
 # of the run: it then stops cleanly with a checkpoint, and a later kernel of
 # the same kind resumes it. Default 39000 s.
-K64_FINISH_MAX_SECONDS = {}
+# The combined model ran 1297-1307 s per epoch in its first session (epochs
+# 30 / 31); 40500 s lets both seeds reach 60 in the second, ~11.4 h of the
+# 12 h session, instead of seed 0 stopping at 59 and needing a third.
+K64_FINISH_MAX_SECONDS = {"pairlatw64lab60fp64": 40500}
 
 K64_FINISH_DUAL = [
     ("pairlatlab60", ["--keep-best", "--pair-lab", "--pair-latent", "8"], (0, 1), 60),
