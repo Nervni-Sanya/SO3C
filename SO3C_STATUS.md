@@ -1,6 +1,6 @@
 # SO3C status
 
-Last updated 2026-11-01. This is the single place to start from. Commit hashes point at the evidence for every number. Hashes of work from before the snapshot (2026-09-16) are commits in the **so33** repository this one was split from; hashes of later work, some marked **(SO3C)**, are commits in this repository; `git cat-file -t <hash>` tells which (see [Provenance](#provenance)).
+Last updated 2026-11-07. This is the single place to start from. Commit hashes point at the evidence for every number. Hashes of work from before the snapshot (2026-09-16) are commits in the **so33** repository this one was split from; hashes of later work, some marked **(SO3C)**, are commits in this repository; `git cat-file -t <hash>` tells which (see [Provenance](#provenance)).
 
 ## Scope and goal
 
@@ -206,7 +206,19 @@ Open design choices: the ranking metric (angle against strength), attention on o
 8. **Where more constituents help** (CPU, `results_kcheck/k_gain_by_bin`). The K=32 → 64 gain is concentrated in high-multiplicity, wide-prong jets. Any K=128 gain would sit in the 18% of jets with more than 64 constituents.
 9. **Two-kernel training is exact.** A run stopped on the session cap and resumed in a second kernel from the mounted checkpoint reproduced an uninterrupted run bit for bit on the CPU. On Kaggle the histories continue exactly. 60-epoch runs longer than one 12-hour session are now routine.
 
-## GPU window 2026-10-31 → 2026-11-07 (in progress): isolate and confirm
+## GPU window 2026-11-07 → 2026-11-14 (in progress): the combined model
+
+**The combined model** (`377e7d5`; the user, 2026-11-07: include the pair latent, which won every same-seed comparison and is parameter-efficient). `so3c_message_set --beams --channels 8 --pair-lab --pair-latent 8 --act-hidden 64 --msg-dim 24 --scalar-dim 24 --pair-lab-fp64`, 67,874 parameters, K=64, 60 epochs, seeds 0 and 1 on two T4s. It is every component measured on top of `--pair-lab` at K=64 (plan section of the previous window). `nsanya/so3c-k64-pairlatw64lab60fp64-seeds01` was pushed at %s.
+
+- **Three sessions.** The T4 profile puts it at 1309 s per epoch (2.60× pairlab60). Real two-card runs ran 5–15% above their profile, so expect ~1375–1505 s per epoch. The first kernel stops on the 39000 s cap near epoch 26–28. `k64_pairlatw64lab60fp64_finish_seeds01` resumes it to about epoch 52–56, and `..._finish3_seeds01` finishes it. `build_k64_finish_dual` now takes `part`: finish kernel p mounts only kernel p − 1, so each seed finds exactly one checkpoint. Expected cost: ~11.5 + 11.5 + 2–3.5 ≈ 25–26.5 GPU-h (the user's budget: ~23–25).
+- **Reading, fixed before the push** (`K64_CONFIRM_RULE`, against width, the best confirmed configuration, `rule_ref` w64s24lab60): confirmed if the two-seed mean gains ≥ +0.0003 over width's 0.98492 / 0.98484 and both runs lie above both. Not confirmed at ≤ 0; otherwise unresolved. The combined model pays only if its components' gains add. The finish kernels also print it against pairlab60, base60 and pairlab120.
+- **Checked before the push.** All three notebooks run the committed pairlab60 command plus exactly the combined flags (test). The CPU replay of the chain:
+  - the first kernel stopped at epoch 6;
+  - finish 2 found one checkpoint per seed, resumed at epoch 7 and stopped again at 9;
+  - finish 3 resumed and finished 60 epochs.
+  The finished runs match an uninterrupted replay: the same loss history, test AUC and batch-order chain.
+
+## GPU window 2026-10-31 → 2026-11-07 (closed): isolate and confirm
 
 Both pushed at 09:37 on 2026-10-31 (`8cb0d6b`) and run at the same time, as the user decided:
 
@@ -844,7 +856,7 @@ GPU used this window: ~9.2 h (screen) + 5.2 h (headline seed 2) + ~0.7 h (profil
 
 - The K=32 probe protocol (400k train jets, 20 epochs) costs 0.6–1.2 h per row.
 - Kaggle's T4 sessions have **two** T4s and charge quota per session hour. Two seeds run in parallel in one kernel, one per card, at 500–541 s per epoch at K=64 against 475–492 s alone (`build_k64_dual`, 2026-10-17): a 60-epoch K=64 seed costs about 4.6 GPU-h of quota instead of 8–9 h.
-- Quota is 30 GPU-h per week, resetting on Saturday. The current window is [2026-10-31 → 2026-11-07](#gpu-window-2026-10-31--2026-11-07-in-progress-isolate-and-confirm).
+- Quota is 30 GPU-h per week, resetting on Saturday. The current window is [2026-11-07 → 2026-11-14](#gpu-window-2026-11-07--2026-11-14-in-progress-the-combined-model).
 - Rows not marked T4 are P100 wall clock on the old forward pass. Since `47ec4ad` the per-epoch cost is about half; the T4 profiles are in the 2026-09-19 GPU-window section and in `docs/so3c/experiments.md` (table O).
 
 ## Provenance
