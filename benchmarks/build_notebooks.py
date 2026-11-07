@@ -3113,7 +3113,9 @@ v = torch_version()
 if v != WANT:
     print("torch", v, "- installing", WANT)
     t0 = time.perf_counter()
-    r = subprocess.run([sys.executable, "-m", "pip", "install", "-q", "torch==2.11.0",
+    # the local label matters: "torch==2.11.0" is satisfied by any 2.11.0
+    # build, so on Kaggle's 2.11.0+cu130 image (2026-11-07) pip did nothing
+    r = subprocess.run([sys.executable, "-m", "pip", "install", "-q", "torch==" + WANT,
                         "--index-url", "https://download.pytorch.org/whl/cu128"],
                        capture_output=True, text=True)
     print("pip rc", r.returncode, "in %.0f s" % (time.perf_counter() - t0))

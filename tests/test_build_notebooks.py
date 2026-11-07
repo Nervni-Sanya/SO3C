@@ -402,3 +402,11 @@ def test_k64_combined_model_and_its_three_sessions(nb_dir) -> None:
     assert m2["kernel_sources"] == ["nsanya/so3c-data-prep-k-128", first]
     assert m3["id"] == "nsanya/so3c-k64-pairlatw64lab60fp64-finish3-seeds01"
     assert m3["kernel_sources"] == ["nsanya/so3c-data-prep-k-128", m2["id"]]
+
+def test_pinned_setup_pins_the_local_torch_build() -> None:
+    """2026-11-07: Kaggle's image moved to torch 2.11.0+cu130, and pip's
+    "torch==2.11.0" is satisfied by it, so the pinned setup must ask for the
+    exact local build, the one every reference run used."""
+    assert 'WANT = "2.11.0+cu128"' in B.GPU_SETUP_T4_PINNED
+    assert '"torch==" + WANT' in B.GPU_SETUP_T4_PINNED
+    assert '"torch==2.11.0",' not in B.GPU_SETUP_T4_PINNED
