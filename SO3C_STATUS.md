@@ -160,7 +160,7 @@ The 30-epoch seeds, for the record:
 
 ## Open — candidates
 
-**Since 2026-11-08 the highest-AUC model adds both the pair latent and width on top of the pair features** (Current best; its gain over width alone is unresolved, +0.00016). **Lead (2026-10-11, confirmed 2026-10-17): lab-frame pair features (`--pair-lab`).** Promoted on the probe protocol (+0.00051 against the pooled control, t = 5.9), confirmed at the K=32 long schedule (+0.00064, t = 6.8, free) and replicated at K=64 over 60 epochs (+0.00100 against a same-stack control, two runs each, Welch t = 3.5 on ≈1.7 degrees of freedom, p ≈ 0.1 on its own), where they give the current best models. On the probe protocol (2026-10-18 ablation, three seeds per arm; window section) ln Δ, ln k_T and ln z alone recover all of the gain within errors (f = 1.05 ± 0.27, "carries the gain"), and ln m² alone about a third (f = 0.30 ± 0.16, unresolved). ln m² is nearly a linear combination of the three (≈ 2 ln k_T − ln z for massless pairs), so the ablation does not show that it carries none.
+**Since 2026-11-08 the highest-AUC model adds both the pair latent and width on top of the pair features** (Current best; its gain over width alone is unresolved, +0.00016). **Lead (2026-10-11, confirmed 2026-10-17): lab-frame pair features (`--pair-lab`).** Promoted on the probe protocol (+0.00051 against the pooled control, t = 5.9), confirmed at the K=32 long schedule (+0.00064, t = 6.8, free) and replicated at K=64 over 60 epochs (+0.00100 against a same-stack control, two runs each, Welch t = 3.5 on ≈1.7 degrees of freedom, p ≈ 0.1 on its own), where they give the current best models. On the probe protocol (2026-10-18 ablation, three seeds per arm; window section) ln Δ, ln k_T and ln z alone recover all of the gain within errors (f = 1.05 ± 0.27, "carries the gain"), and ln m² alone about a third (f = 0.30 ± 0.16, unresolved). ln m² is nearly a linear combination of the three (≈ 2 ln k_T − ln z for massless pairs), so the ablation does not show that it carries none. On 2026-11-08 ln Δ and ln z alone, with no momentum scale, recovered the gain as well (f = 1.20 ± 0.21; on the same pools frame 1.09 ± 0.16 and mass 0.34 ± 0.14; window 2026-11-07).
 
 Ranked literature and generic-ML candidates, every literature number checked against its paper's table: [`so3c_notes/gap_thesis.md`](so3c_notes/gap_thesis.md) and [`so3c_notes/gap_generic_ml.md`](so3c_notes/gap_generic_ml.md), with the 2026-10-06 audit's corrections applied. Their two measured leads were conditioning problems — round-0 inputs in asinh's linear range (about 95% of pair invariants below 0.1) and edge-tanh saturation in rounds 1–2 (61–84% of pre-activations beyond |x| > 2), with no normalisation layer in the network. Both were screened on 2026-10-05 and **neither moves AUC** (Closed table). The plan for the window opening 2026-10-10 is [`so3c_notes/plan_2026-10-10.md`](so3c_notes/plan_2026-10-10.md).
 
@@ -219,6 +219,7 @@ Open design choices: the ranking metric (angle against strength), attention on o
 3. **Float64 pair features keep the larger model compiled.** The pair latent fell back to eager twice in float32. With float64 features the combined model's first-batch compile check was 5.2e-5 and 4.6e-5, and both seeds trained compiled through both sessions (key finding 2 of window 2026-10-24 → 10-31).
 4. **The combined model overfits most on average.** Validation − train reaches 0.0085 and 0.0086 (mean 0.0085, against 0.0073 for width), just below width's seed 1 (0.0089, still the widest single gap) and above width's seed 0 (0.0056), the pair latent (0.0057–0.0062) and `--pair-lab` (0.0048–0.0053). Its final validation loss is still the lowest at K=64 (0.15583, 0.15634).
 5. **The T4 profile held.** Real two-card epochs took 1240–1307 s, 0.95–1.00× the profile's 1309 s, as width's had (882 / 876 s against 869 s); the pair latent had run 6–15% above its profile and `--pair-lab` 2–7%, which set the plan's 5–15% allowance. Both seeds finished in two sessions instead of the planned three because the first session reached epochs 30 / 31, not 26–28. The second trained 37,194 and 36,671 s, inside even the default 39000 s cap, so raising it to 40500 s was a margin that went unused: 22.48 GPU-h for two 60-epoch seeds.
+6. **The angle and the momentum share carry the pair-feature gain** (probe protocol, 2026-11-08). ln Δ and ln z alone recover it (f = 1.20 ± 0.21 over four seeds), level with the frame trio and the full four. The explicit pair-level momentum scale (ln k_T, ln m²) adds nothing measurable on top. The network still reaches each particle's p_T through the beams, so this shows that the scale need not enter as a pair feature, not that it is irrelevant.
 
 ## Key findings, window 2026-10-24 → 10-31
 
@@ -263,7 +264,7 @@ Open design choices: the ranking metric (angle against strength), attention on o
 - **Left this window:** about 7.5 of 30 GPU-h until the reset on Saturday 2026-11-14.
 - **The architecture is frozen** (the user, 2026-11-08). Next: the thesis text and finding an A100 (Future work). The rest of this week's quota goes to the ln Δ + ln z ablation below; the kNN screen is skipped.
 
-### The ln Δ + ln z ablation (probe protocol, pushed 15:53 on 2026-11-08)
+### The ln Δ + ln z ablation (probe protocol, 2026-11-08): the angle and the momentum share carry the gain
 
 The follow-up the 2026-10-18 ablation left open. `--pair-lab-set delta_z` keeps only ln Δ and ln z. With no momentum scale it can form neither ln k_T nor ln m² (for massless pairs ln m² ≈ 2 ln k_T − ln z + ln(1 − z), and k_T = min(p_T) Δ). `nsanya/so3c-probe-queue-deltaz-pairlab` (`fefa426`) runs the committed 10-05 probe control command plus the flags, with float32 features as in the 10-18 arms, at seeds 0–3. Then a full `--pair-lab` run and a control at seed 4, started together, serve as in-kernel anchors. Budget cap 2.4 h; ~1.7–2.0 GPU-h expected (earlier probe runs took 0.42–0.50 h each).
 
@@ -284,6 +285,22 @@ The follow-up the 2026-10-18 ablation left open. `--pair-lab-set delta_z` keeps 
   - Tests: the subset selects exactly ln Δ and ln z, reaches the weights and keeps exact covariance. The notebook is the control command plus the flags, with the pooled references embedded.
   - A CPU replay of the notebook's own cells ran all six jobs on two fake cards, and the summary read the arm.
   - The planned two-agent review died on the usage limit. Its checks were done directly: column selection in the forward pass, the pools' protocol, and run times against the per-job caps.
+
+**Result** (`0661d13`; 1.55 GPU-h; every run 20 epochs, compiled, torch 2.11.0+cu128 on T4, on the protocol of the 10-18 runs; the bundled code is `fefa426`'s). **ln Δ and ln z carry the gain.**
+
+| probe protocol, K=32, 20 epochs | runs | AUC | f, same pools | verdict (rule fixed before the push) |
+|---|---|---|---|---|
+| controls (7 earlier + this kernel's) | 8 | 0.98104 ± 0.00010 | 0 | |
+| full `--pair-lab` (7 earlier + this kernel's) | 8 | 0.98149 ± 0.00017 | 1 | |
+| **delta_z: ln Δ, ln z** (seeds 0–3: 0.98142 / 0.98156 / 0.98163 / 0.98170) | 4 | **0.98158 ± 0.00012** | **1.20 ± 0.21** | **carries the gain** |
+| frame: ln Δ, ln k_T, ln z (2026-10-18) | 3 | 0.98153 ± 0.00004 | 1.09 ± 0.16 | carries the gain |
+| mass: ln m² (2026-10-18) | 3 | 0.98119 ± 0.00010 | 0.34 ± 0.14 | unresolved |
+
+- **The comparisons.** delta_z beats the controls by +0.00054 (Welch t = 7.8, df 5.0, p = 0.001). It is level with the full set (+0.00009, p = 0.32) and with the frame trio (+0.00005, p = 0.46). The kernel printed the same verdict, and it was recomputed offline.
+- **The 10-18 arms keep their verdicts** on these pools: frame 1.05 → 1.09, mass 0.30 → 0.34. The pools now hold 8 runs each, instead of 7 controls and 4 full runs.
+- **What it says**, within the bound set before the run. On the probe protocol, the explicit pair-level momentum scale (ln k_T, ln m²) adds nothing measurable beyond the angle and the momentum share: two features carry what four did. The network still sees each particle's p_T through the beams, so this shows that the scale need not enter as a pair feature, not that it is unimportant.
+- **The anchors came out low again.** This kernel's full and control runs at seed 4 (0.98127, 0.98091) lie 0.00025 and 0.00015 below the earlier means. The 10-18 kernel's seed-3 anchors did the same (0.98123, 0.98090). In both queue kernels the anchors ran in the last wave and at a seed no other run used; which of the two matters, if either, is not resolved. Read against this kernel's anchors alone, delta_z's fraction is 1.89; the pooled reading is the pre-registered one.
+- **GPU used this window:** 22.48 + 1.55 = 24.03 h. The remaining ~6 h stay unused.
 
 ## GPU window 2026-10-31 → 2026-11-07 (closed): isolate and confirm
 
@@ -509,7 +526,7 @@ The arm is read unpaired against the two same-stack controls, with the 2.10 head
 - Ensembles: the two 120-epoch seeds 0.98515 / 1421.9 (the best AUC); all four snapshots 0.98513 / 1473.8 (the best rejection).
 - Budget after the continuation: 26.9 GPU-h used this window (9.01 + 9.22 + 8.68).
 
-**Which pair features carry the gain (2026-10-18): the three lab-frame ones suffice; ln m² alone gives about a third.** The probe protocol, one two-card kernel draining a queue of eight runs (`probe_queue_ablation_pairlab`, (SO3C) `3f9d923`, 1.99 h; results `results_message/repr_screen/ablation/`): `--pair-lab-set frame` (ln Δ, ln k_T, ln z) and `--pair-lab-set mass` (ln m² alone), three seeds each, then one full `--pair-lab` run and one control at seed 3 as in-kernel anchors. Read unpaired against all seven probe controls and all four full `--pair-lab` runs, by a rule fixed before the push: f = (arm − control) / (full − control) is the fraction of the gain recovered; "carries the gain" if f ≥ 0.7 and the arm beats the control at p < 0.05; "carries none" if f ≤ 0.3 and it is below the full set at p < 0.05.
+**Which pair features carry the gain (2026-10-18): the three lab-frame ones suffice; ln m² alone gives about a third.** Follow-up, 2026-11-08: ln Δ and ln z alone suffice too (window 2026-11-07). The probe protocol, one two-card kernel draining a queue of eight runs (`probe_queue_ablation_pairlab`, (SO3C) `3f9d923`, 1.99 h; results `results_message/repr_screen/ablation/`): `--pair-lab-set frame` (ln Δ, ln k_T, ln z) and `--pair-lab-set mass` (ln m² alone), three seeds each, then one full `--pair-lab` run and one control at seed 3 as in-kernel anchors. Read unpaired against all seven probe controls and all four full `--pair-lab` runs, by a rule fixed before the push: f = (arm − control) / (full − control) is the fraction of the gain recovered; "carries the gain" if f ≥ 0.7 and the arm beats the control at p < 0.05; "carries none" if f ≤ 0.3 and it is below the full set at p < 0.05.
 
 | probe protocol, K=32, 20 epochs | runs | params | AUC | 1/ε_B@0.3 |
 |---|---|---|---|---|

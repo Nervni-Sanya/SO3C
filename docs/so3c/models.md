@@ -283,6 +283,7 @@ Parameter counts are on the headline configuration.
 | both | both flags | 23,082 | |
 | `pair_lab=True, pair_lab_set="frame"` | `--pair-lab --pair-lab-set frame` | 22,978 | only ln Δ, ln k_T, ln z (ablation, 2026-10-18) |
 | `pair_lab=True, pair_lab_set="mass"` | `--pair-lab --pair-lab-set mass` | 22,882 | only ln m² (ablation, 2026-10-18) |
+| `pair_lab=True, pair_lab_set="delta_z"` | `--pair-lab --pair-lab-set delta_z` | 22,930 | only ln Δ, ln z, with no momentum scale (follow-up ablation, 2026-11-08; recovers the gain) |
 | `pair_lab=True, pair_lab_fp64=True` | `--pair-lab --pair-lab-fp64` | 23,026 | the four features computed in float64 and cast back (2026-10-25); in float32 ⟨p_a,p_b⟩ cancels for near-collinear pairs and ~0.1% of ln Δ, ln k_T, ln m² values are off by more than 0.1 |
 
 On the CPU (K=32, batch 256, float32) `lab_scalars` costs 0.98×, `pair_lab`

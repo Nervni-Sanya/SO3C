@@ -464,6 +464,12 @@ features stay finite at $p_T\to0$, on padding and for collinear pairs.
   (+0.00013, unresolved). For massless constituents
   $m^2_{ab}\approx p_{Ta}p_{Tb}\Delta^2_{ab}$, so
   $\ln m^2\approx 2\ln k_T-\ln z+\ln(1-z)$ and the three nearly contain it.
+  A follow-up arm with $\ln\Delta$ and $\ln z$ alone (2026-11-08, four seeds),
+  which carries no momentum scale and can form neither $\ln k_T$ nor $\ln m^2$,
+  recovers the gain as well (+0.00054 against eight pooled controls, level
+  with the four). On this protocol the explicit pair-level scale adds nothing
+  measurable beyond the angle and the momentum share; the network still sees
+  each particle's $p_T$ through the beams.
 
 `beam_energy` ($E_b$, default 1 in the normalised input units, about 47 GeV at
 $K=32$) has been a CLI flag since the same day (`--beam-energy`, R1). It sets

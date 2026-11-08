@@ -106,7 +106,9 @@ of the constituents with each other and with the beams, so the model stays
 exactly covariant when the beams move with the jet. An ablation on the short probe
 (three seeds per arm) finds that ln Δ, ln k_T and ln z alone recover the gain
 within errors and ln m² alone about a third (unresolved); since ln m² is nearly
-2 ln k_T − ln z for massless pairs, the two subsets are not fully separated. Continuing both runs to 120 epochs added
+2 ln k_T − ln z for massless pairs, the two subsets are not fully separated. A follow-up arm with ln Δ and ln z alone, which carry no
+momentum scale, recovers the gain as well (four seeds, 2026-11-08): the explicit pair-level scale adds
+nothing measurable beyond the angle and the momentum share. Continuing both runs to 120 epochs added
 +0.00018 AUC on the mean. With the pair features alone the gap to PELICAN was
 0.0018 AUC and a factor 1.58 in rejection for the two-seed 120-epoch ensemble
 (0.0024 and 1.73 for its mean); those ensembles matched PELICAN's 3,000-parameter
