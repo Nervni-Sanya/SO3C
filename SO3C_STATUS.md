@@ -260,7 +260,30 @@ Open design choices: the ranking metric (angle against strength), attention on o
 - **Rejection.** At ε_S = 0.3 both runs pass 157 of the 201,914 background jets (1/ε_B 1286.1 each), width's 131 and 146, pairlab60's 150 and 162. At this working point the combined model is level with pairlab60 (−10) and below width (−176); with counts this small and width's own seeds 158 apart, that is not resolved. At ε_S = 0.5 it is 351.0 against the pair latent's 351.8 on the same seeds, width's 344.0 and pairlab60's 334.9.
 - **Overfitting.** Validation − train 0.0085 / 0.0086, close to width's seed 1 (0.0089, still the widest single gap), yet the lowest final validation loss of any K=64 run (0.15583, 0.15634). The validation loss is lowest at epochs 49 and 56, and the best-validation weights score within 0.00002 AUC of the final ones (0.98509, 0.98498).
 - **Ensembles** (`benchmarks.ensemble_scores`; the four combinations listed before the results were fetched; files in `results_k64/pairlatw64lab60fp64/`): the two seeds 0.98548 / 1402.2; with width 0.98568 / 1615.3; with the pair latent's three seeds 0.98569 / 1615.3; all seven 0.98575 / 1553.2, **the best AUC so far** (PELICAN gap 0.0012, factor 1.45). The width ensemble keeps the best rejection (1682.6).
-- **Left this window:** about 7.5 of 30 GPU-h until the reset on Saturday 2026-11-14. Nothing is queued; the user decides how to use them.
+- **Left this window:** about 7.5 of 30 GPU-h until the reset on Saturday 2026-11-14.
+- **The architecture is frozen** (the user, 2026-11-08). Next: the thesis text and finding an A100 (Future work). The rest of this week's quota goes to the ln Δ + ln z ablation below; the kNN screen is skipped.
+
+### The ln Δ + ln z ablation (probe protocol, pushed 15:53 on 2026-11-08)
+
+The follow-up the 2026-10-18 ablation left open. `--pair-lab-set delta_z` keeps only ln Δ and ln z. With no momentum scale it can form neither ln k_T nor ln m² (for massless pairs ln m² ≈ 2 ln k_T − ln z + ln(1 − z), and k_T = min(p_T) Δ). `nsanya/so3c-probe-queue-deltaz-pairlab` (`fefa426`) runs the committed 10-05 probe control command plus the flags, with float32 features as in the 10-18 arms, at seeds 0–3. Then a full `--pair-lab` run and a control at seed 4, started together, serve as in-kernel anchors. Budget cap 2.4 h; ~1.7–2.0 GPU-h expected (earlier probe runs took 0.42–0.50 h each).
+
+- **Reading, fixed before the push** (the 10-18 rule). f = (arm − control)/(full − control), against every earlier float32 probe control and full `--pair-lab` run plus this kernel's anchors:
+  - controls (7): 10-05, base1010 and the 10-18 anchor;
+  - full runs (7): 10-10, the 10-18 anchor and the float32 arm of the 10-25 screen.
+
+  All 20 reference runs share one protocol signature. The verdicts:
+  - "carries the gain" if f ≥ 0.7 and the arm beats the control at Welch p < 0.05;
+  - "carries none" if f ≤ 0.3 and the arm is below the full set at p < 0.05;
+  - otherwise unresolved.
+
+  The expected se of f is ≈ 0.13–0.17 (control sd 0.00009, full sd 0.00016, gain 0.00046, four arm runs), so f = 0 and f = 1 are separable. Kernel offsets of ~0.0001 (≈ 0.2 in f) are the main systematic, and the anchors measure them. Printed beside the verdict, without a verdict of their own: f against this kernel's anchors alone, and the arm against the 10-18 frame and mass arms.
+- **What each outcome can say.** The network can reach each particle's p_T through its invariants with the beams (⟨p, b₊⟩⟨p, b₋⟩ = p_T² for a massless constituent), so in principle it can rebuild k_T from Δ and the nodes' momenta.
+  - "Carries the gain" would mean the explicit pair-level scale (ln k_T, ln m²) adds nothing beyond angle and momentum share.
+  - "Carries none" would mean the explicit scale is what matters.
+- **Checked before the push.**
+  - Tests: the subset selects exactly ln Δ and ln z, reaches the weights and keeps exact covariance. The notebook is the control command plus the flags, with the pooled references embedded.
+  - A CPU replay of the notebook's own cells ran all six jobs on two fake cards, and the summary read the arm.
+  - The planned two-agent review died on the usage limit. Its checks were done directly: column selection in the forward pass, the pools' protocol, and run times against the per-job caps.
 
 ## GPU window 2026-10-31 → 2026-11-07 (closed): isolate and confirm
 
