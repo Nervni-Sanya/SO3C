@@ -15,7 +15,9 @@ P100's sm_60 and was replaced, by torch 2.5.1 as pinned in the notebooks' setup
 cell (`benchmarks/build_notebooks.py`). The switch screen and every later run
 used a Tesla T4 with Kaggle's preinstalled torch, which the log prints: 2.10
 through the 60-epoch run and the long-schedule screen, 2.11 for the
-weight-decay runs and the $K=64$ width pair (tables M and N). `results_fixed/`,
+weight-decay runs and the $K=64$ width pair (tables M and N). From 2026-11-07,
+when Kaggle's image moved to torch 2.11.0+cu130, the pinned setup installs
+2.11.0+cu128 over it (the combined model's two sessions). `results_fixed/`,
 `results_kappa/` and `results_scaling/` have no committed logs, so their card
 is not recorded.
 
@@ -179,8 +181,9 @@ python -m benchmarks.run_top_tagging --cache-dir data --representation constitue
 #   python -m benchmarks.ensemble_scores --results-dir results_k64/pairlab120/seed0 results_k64/pairlab120/seed1
 #   python -m benchmarks.ensemble_scores --allow-shared-seed --results-dir results_k64/pairlab60/seed0 \
 #       results_k64/pairlab60/seed1 results_k64/pairlab120/seed0 results_k64/pairlab120/seed1
-# The combined model (the best AUC since 2026-11-08): the same 60-epoch command plus
-# --pair-latent 8 --act-hidden 64 --msg-dim 24 --scalar-dim 24 --pair-lab-fp64, in two kernels
+# The combined model (the best AUC since 2026-11-08): the pair-feature command (the 60-epoch
+# command plus --pair-lab --keep-best) plus --pair-latent 8 --act-hidden 64 --msg-dim 24
+# --scalar-dim 24 --pair-lab-fp64, in two kernels
 # (notebooks/kaggle_k64_pairlatw64lab60fp64_seeds01.ipynb, then ..._finish_seeds01.ipynb).
 # Its seven-model ensemble with the width and pair-latent runs:
 #   python -m benchmarks.ensemble_scores --allow-shared-seed --results-dir results_k64/pairlatw64lab60fp64/seed0 \
@@ -350,14 +353,14 @@ Repeat with `--feature-set all` and `--feature-set high` and further seeds.
 ```bash
 python -m benchmarks.measure_throughput
 python -m benchmarks.aggregate --results-dir results
-python -m benchmarks.build_notebooks
+python -m benchmarks.build_notebooks --list
 python -m benchmarks.kaggle_client status
 python -m benchmarks.profile_gpu --config base --k 64 --compile --out profile_out
 ```
 
-`build_notebooks` takes no arguments: any invocation, `--help` included,
-regenerates every notebook it builds (all but the legacy `kaggle_dataprep.ipynb`)
-and the kernel metadata of the $K=64$, probe-seed, long-schedule and
+`build_notebooks` builds nothing unless asked: `--list` names the notebooks,
+`--only NAME ...` builds those, and `--all` regenerates every notebook it builds
+(all but the legacy `kaggle_dataprep.ipynb`) and the kernel metadata of the $K=64$, probe-seed, long-schedule and
 width-profile kernels from the working tree, uncommitted code included. `profile_gpu` times training steps and evaluation
 of `so3c_message_set` on a GPU and estimates the time per epoch (table O).
 
@@ -510,7 +513,7 @@ Its four ensembles were the combinations listed before the results were fetched.
   epochs reached 1147): +0.00037 AUC over the three-seed 30-epoch mean, 2.2 standard
   errors with three seeds to compare against, and a final validation loss of
   0.16276, below all three 30-epoch runs (0.16318 to 0.16455). One seed.
-- The lab-frame pair features give the largest single gain. At 60 epochs: 0.98442 ±
+- The lab-frame pair features give the largest gain since the beams. At 60 epochs: 0.98442 ±
   0.00035 over two seeds against 0.98342 ± 0.00021 for a same-stack control
   without them (+0.00100; two runs each, Welch t = 3.5 on ≈1.7 df, p ≈ 0.1,
   both pair-feature runs above both controls; it repeats +0.00051 on the probe
@@ -529,8 +532,8 @@ Its four ensembles were the combinations listed before the results were fetched.
   the pair-feature runs, three quarters of the two gains' sum (two runs per arm
   cannot tell that from full additivity), and +0.00016 over width alone,
   unresolved. Their rejection at $\varepsilon_S=0.3$ (1286 for both seeds) is
-  below width's (1462 ± 112), and both runs overfit as much as width's seed 1
-  (validation − train 0.0085).
+  below width's (1462 ± 112), and both runs overfit nearly as much as width's
+  seed 1 (validation − train 0.0085 and 0.0086, against 0.0089).
 - Without them, continuing the 60-epoch run to 120 epochs (the cosine schedule re-anchored, a warm
   restart at learning rate 1.5e-3) gives 0.98392 / 1202:
   +0.00029 AUC and +61 rejection against its own epoch 60, final validation
@@ -800,9 +803,9 @@ ahead of all of them in AUC. The two-seed width ensemble (0.98539 / 1683, 2026-1
 PELICAN's 3,000-parameter model on both metrics (0.9850 / 1494 ± 43) and below
 its 11,000-parameter model on both (0.9858 / 1879 ± 103); the ensemble of all
 seven combined, width and pair-latent runs reaches 0.98575 / 1553 (2026-11-08),
-0.00005 below that model in AUC.
-Before it, the pair-feature ensembles without the pair latent matched that model
-in AUC (0.98515 and 0.98513) and came within 72 and 20 of its rejection (1422
+level with the 11,000-parameter model in AUC at its published precision.
+Before it, the pair-feature ensembles without the pair latent matched PELICAN's
+3,000-parameter model in AUC (0.98515 and 0.98513) and came within 72 and 20 of its rejection (1422
 and 1474).
 L-GATr trained from scratch matches PELICAN; its fine-tuned variant, the
 highest entry in the reference table, was pretrained on JetClass and is a
@@ -839,8 +842,9 @@ pass and `--compile`, committed in `results_message/probe_seeds/`.
   screen difference, −0.00044 for the relative-norm edge, is 1.8 times that,
   and the reference itself sits 0.00022 above the three-seed mean. The screen
   rules out only a large gain that would already show on this short protocol;
-  candidates that add capacity may need the long schedule (table M), where none
-  has been run.
+  candidates that add capacity may need the long schedule (table M); of them only
+  the pair latent has been run there since (`SO3C_STATUS.md`, window 2026-10-24),
+  and at $K=64$ (table A).
 - Paired seed by seed against the base, the pair latent gains +0.00012 AUC
   (t = 1.42, two degrees of freedom) and the vector channel −0.00002 (t = −0.59,
   paired differences spreading by 0.00006). Read unpaired: +0.00012 (t = 1.2)
@@ -909,7 +913,9 @@ Canonical split, $K=64$, 30 epochs, beams and 8 channels, seed 0, float32 with
   difference (whether same-seed runs pair at $K=64$ is unmeasured; at the probe
   protocol on this stack they did not, `SO3C_STATUS.md`): no gain resolved at 30
   epochs, where neither model overfits. The scatter of paired differences at
-  $K=64$ is unmeasured, and width at $K=64$ over 60 epochs has not been run.
+  $K=64$ is unmeasured. Width at $K=64$ over 60 epochs has since been run on top of
+  the pair features (table A: +0.00046, 2026-11-01; with the pair latent as well,
+  2026-11-08).
 - The control reruns the original seed-0 headline on a different stack: torch
   2.11 instead of 2.5.1, a T4 instead of a P100, `--compile`, and the rewritten
   forward pass. It scored 0.00014 AUC and 106 rejection below the original
@@ -972,8 +978,9 @@ predates the L-GATr row of the reference table.
    0.0016 and 1.34 (width), and the seven-model ensemble 0.0012 and 1.45.
    PELICAN's 3,000-parameter model (0.9850 / 1494 ± 43) is level with the best
    single run in AUC and ahead of it in rejection, and behind the width ensemble
-   on both metrics; its 11,000-parameter model is ahead of everything here
-   (table K), of the seven-model ensemble by 0.00005 AUC.
+   on both metrics; its 11,000-parameter model is ahead of everything here in
+   rejection (1879 ± 103 against 1683 at best) and level with the seven-model
+   ensemble in AUC at its published precision (0.9858 against 0.98575; table K).
 2. **With beams, the output is not Lorentz-invariant**, by design: it is
    covariant together with the beams and invariant only under rotations about
    the beam axis ([theory.md §11](theory.md#11-beams-what-symmetry-survives)).
@@ -994,8 +1001,9 @@ predates the L-GATr row of the reference table.
    `w64s24` arm of table M are single-seed, and so is the best beams-only single
    model (120 epochs). The pair-feature and control rows at $K=64$ over 60
    epochs have two seeds each, and so does the pair-feature continuation to 120
-   epochs (the same two runs, not new seeds); the best single model is the
-   better pair-feature seed at 120 epochs, picked on test AUC. Measured spreads:
+   epochs (the same two runs, not new seeds); the best single model is
+   seed 0 of the combined model (0.98510, 60 epochs), picked on test AUC; the
+   width and combined rows have two seeds and the pair-latent row three. Measured spreads:
    ±0.00014 AUC and ±75 rejection for the 30-epoch headline (three seeds),
    ±0.00021 and ±0.00035 AUC for the two-seed 60-epoch control and pair-feature
    runs (±0.00029 for the pair-feature runs at 120), ±0.00017 and ±58 on the probe protocol, ±0.00020 and ±32 on
@@ -1016,8 +1024,9 @@ predates the L-GATr row of the reference table.
    `results_kappa/` and `results_scaling/` have no logs.
 10. **The switches of [theory.md §12](theory.md#12-switches-screened-on-the-probe-protocol)
     other than `pair_lab` were screened only on the probe protocol** (table L):
-    none of them showed a resolved gain there, and none has been trained on the
-    full training set or at $K=64$. `pair_lab` passed the screen and gives the
+    none of them showed a resolved gain there; of them only `pair_latent` has since
+    been trained on the full training set, on top of `pair_lab` (the $K=32$ long
+    schedule, and $K=64$ alone and with width, table A). `pair_lab` passed the screen and gives the
     best rows of table A.
 11. **`SO3CInteraction` is not integrated into LorentzNet.** It was written as
     a candidate replacement for the nonlinearity in LorentzNet's LGEB blocks;

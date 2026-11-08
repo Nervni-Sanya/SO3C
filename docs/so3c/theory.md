@@ -356,9 +356,10 @@ were measured with. All six were trained on the short probe protocol ($K=32$,
 and `self_edges=False` only together), and the vector channel and the pair
 latent three more times, against three runs of the base seed by seed. None showed a
 resolved gain: the best, the pair latent, came out +0.00012 AUC above the base
-over the three seeds ($t=1.42$ paired, $1.2$ unpaired). None has been trained on the full
-training set or at $K=64$
-([experiments.md, table L](experiments.md#l-switch-screen-and-probe-protocol-noise)).
+over the three seeds ($t=1.42$ paired, $1.2$ unpaired). Only the pair latent has since been trained on the full
+training set, on top of `pair_lab` (the $K=32$ long schedule and $K=64$, alone and
+with width; experiments.md table A); the screen itself is in
+[experiments.md, table L](experiments.md#l-switch-screen-and-probe-protocol-noise).
 Each keeps exact covariance: it adds or recompresses invariants, or updates covariant
 vectors by invariant-weighted linear combinations.
 

@@ -67,7 +67,8 @@ beyond width. Its rejection at ε_S = 0.3 (1286 for both seeds) is below width's
 (1462 ± 112), a difference that the 130–160 background jets passing that cut in
 each run cannot resolve. The ensemble of all seven runs (combined, width and
 pair latent) reaches 0.98575 / 1553: 0.0012 AUC and a factor 1.45 in rejection
-behind PELICAN, and 0.00005 below PELICAN's 11,000-parameter model in AUC. The
+behind PELICAN; it is level in AUC with PELICAN's 11,000-parameter model at its
+published precision (0.9858) but below it in rejection (1879 ± 103). The
 two-seed width ensemble keeps the best rejection (1683).
 
 **Before it (2026-11-01), width and a pair latent added to the pair features on
@@ -85,8 +86,9 @@ pair latent: +0.00006, not separated. The gap to PELICAN was then 0.0016 AUC and
 factor 1.34 in rejection for the two-seed width ensemble, and 0.0014 and 1.42
 for the ensemble of all five runs. The width ensemble lies above PELICAN's
 3,000-parameter model on both metrics (0.98539 / 1683 against 0.9850 / 1494 ±
-43) and below its 11,000-parameter model on both (0.9858 / 1879 ± 103). The best
-single runs (0.98492–0.98493) are just below the 3,000-parameter model in AUC.
+43) and below its 11,000-parameter model on both (0.9858 / 1879 ± 103). Their best
+single runs (0.98492–0.98493) were just below the 3,000-parameter model in AUC;
+the combined runs (0.98510 and 0.98498) are level with it.
 
 Earlier (2026-10-25), the pair latent's first two seeds averaged 0.98479, +0.00019
 over the pair-feature runs continued to 120 epochs, with a two-seed ensemble of
@@ -146,10 +148,11 @@ lab-frame pair features, an input change, are the first of the structural
 candidates shown to help at the long schedules: +0.00064 at K = 32 (two runs
 against five) and +0.00100 at K = 64 (two runs against two).
 The other structural candidates, screened on the 20-epoch probe, moved AUC by
-+0.00012 or less and have not been run at the long schedule. Training beyond 60 epochs
++0.00012 or less; of them only the pair latent has since been run at the long
+schedules (+0.00033 at K = 32, +0.00039 at K = 64, and inside the combined model). Training beyond 60 epochs
 was tried on three runs (continued to 120: +0.00029 AUC on the beams-only run,
 +0.00022 and +0.00013 on the two pair-feature runs; unresolved on each run alone); width at K = 64 over
-60 epochs and other weight-decay strengths are untested
+60 epochs has since been confirmed on top of the pair features (+0.00046), and other weight-decay strengths are untested
 ([measurements below](#width-and-weight-decay)).
 
 ## How it works
@@ -192,7 +195,7 @@ check holds in the unit tests to below 10⁻⁹ relative.
 
 | `--models` name | Parameters at the defaults | Output symmetry |
 |---|---|---|
-| `so3c_message_set` | 13,862; 15,038 with `--beams`; 22,834 with `--beams --channels 8`; 23,026 adding `--pair-lab`; 26,738 adding `--pair-latent 8` as well, or 61,602 adding width (`--act-hidden 64 --msg-dim 24 --scalar-dim 24`) instead | Lorentz-invariant; with beams, covariant together with the beams and invariant under rotations about the beam axis |
+| `so3c_message_set` | 13,862; 15,038 with `--beams`; 22,834 with `--beams --channels 8`; 23,026 adding `--pair-lab`; 26,738 adding `--pair-latent 8` as well, 61,602 adding width (`--act-hidden 64 --msg-dim 24 --scalar-dim 24`) instead, or 67,874 with both (`--pair-lab-fp64` adds none) | Lorentz-invariant; with beams, covariant together with the beams and invariant under rotations about the beam axis |
 | `so3c_covariant_set` | 9,078 | Lorentz-invariant, exactly |
 | `so3c_invariant_set` | 5,122 | Lorentz-invariant by construction; no flow |
 | `so3c_interaction_set` | 5,652 | Lorentz-invariant to ODE tolerance |
@@ -341,7 +344,7 @@ python -m benchmarks.run_top_tagging --cache-dir data --representation constitue
 # both were continued to 120 epochs
 # (notebooks/kaggle_k64_pairlab120_seeds01.ipynb, --epochs 120 --resume on their checkpoints).
 # The combined model adds --pair-latent 8 --act-hidden 64 --msg-dim 24 --scalar-dim 24
-# --pair-lab-fp64 and takes two sessions (notebooks/kaggle_k64_pairlatw64lab60fp64_seeds01.ipynb,
+# --pair-lab-fp64 to the pair-feature command and takes two sessions (notebooks/kaggle_k64_pairlatw64lab60fp64_seeds01.ipynb,
 # then notebooks/kaggle_k64_pairlatw64lab60fp64_finish_seeds01.ipynb).
 # The best beams-only model continues the 60-epoch run to 120 epochs
 # (notebooks/kaggle_k64_headline120_seed0.ipynb: --epochs 120 --resume on its checkpoint). A P100 falls back to eager; its time with the
@@ -442,8 +445,8 @@ built models, so for the flow models they check only the readout.
 
 ## License and citation
 
-MIT, see [LICENSE](LICENSE). There is no SO3C paper, release or DOI yet;
-[`CITATION.cff`](CITATION.cff) describes this software without one. The Zenodo
+MIT, see [LICENSE](LICENSE). There is no SO3C paper yet; the software's Zenodo
+DOI is 10.5281/zenodo.23448864 (see [`CITATION.cff`](CITATION.cff)). The Zenodo
 DOI 10.5281/zenodo.19763339 belongs to the SO(3,3) software in the
 [so33 repository](https://github.com/Nervni-Sanya/so33), not to SO3C.
 

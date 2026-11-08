@@ -194,6 +194,10 @@ not change the count):
 | `beams=True, channels=8, rounds=6` | 28,378 |
 | `beams=True, channels=8, act_hidden=64, msg_dim=24, scalar_dim=24` (`w64s24`) | 60,834 |
 | `beams=True, channels=8, act_hidden=128, msg_dim=32, scalar_dim=32` (`w128s32`) | 120,202 |
+| `beams=True, channels=8, pair_lab=True` | 23,026 |
+| `beams=True, channels=8, pair_lab=True, pair_latent=8` | 26,738 |
+| `beams=True, channels=8, pair_lab=True` + `w64s24` | 61,602 |
+| `beams=True, channels=8, pair_lab=True, pair_latent=8` + `w64s24` (the combined model; `pair_lab_fp64` adds none) | 67,874 |
 
 Note that `rounds=1` is not `so3c_covariant_set` plus a scalar channel: this
 model also bounds the input lift and the connection, and mixes channels.
@@ -207,9 +211,10 @@ same function and is tested against the earlier implementation
 
 All are off by default, so the defaults reproduce the measured results. Each
 was trained on the short probe protocol (`mass_input=False` and
-`self_edges=False` only together) and none showed a resolved gain; none has been
-trained on the full training set
+`self_edges=False` only together) and none showed a resolved gain there
 ([experiments.md, table L](experiments.md#l-switch-screen-and-probe-protocol-noise)).
+Only `pair_latent` has since been trained on the full training set, on top of
+`pair_lab` ($K=32$ and 64, alone and with width; experiments.md table A).
 [theory.md §12](theory.md#12-switches-screened-on-the-probe-protocol) describes
 what each computes. Parameter counts are on the headline configuration
 (`beams=True, channels=8`, 22,834 parameters).
@@ -260,7 +265,10 @@ and which model trained. Above 1e-2 in either, the run stops. A logit
 difference between 1e-3 and 1e-2 is taken as float32 rounding through badly
 conditioned inputs, such as `pair_lab`'s logs of near-collinear pairs, and the
 run trains eager (`"eager-fallback"`, about 1.3× slower) instead of stopping.
-The largest difference in the committed Kaggle logs is 2.8e-4.
+The largest in the committed results is 3.0e-3, in a one-epoch float32
+pair-latent check of the 2026-10-25 float64 screen, which trained eager (1.3e-3
+in a 60-epoch run, also eager); with `pair_lab_fp64` the pair-latent runs stay
+at or below 1.1e-4.
 
 ### Lab-frame features (added and screened 2026-10-10)
 
