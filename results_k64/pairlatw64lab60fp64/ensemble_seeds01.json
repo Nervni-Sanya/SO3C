@@ -1,0 +1,28 @@
+{
+  "results_dir": [
+    "results_k64/pairlatw64lab60fp64/seed0",
+    "results_k64/pairlatw64lab60fp64/seed1"
+  ],
+  "model": "so3c_message_set",
+  "experiment": "top_tagging_canonical",
+  "members": [
+    {
+      "seed": 0,
+      "auc": 0.9851047355243266,
+      "bg_rej_30": 1286.0764331210191,
+      "bg_rej_50": 343.9761499148211
+    },
+    {
+      "seed": 1,
+      "auc": 0.9849807378178006,
+      "bg_rej_30": 1286.0764331210191,
+      "bg_rej_50": 358.00354609929076
+    }
+  ],
+  "ensemble": {
+    "auc": 0.9854841886736854,
+    "bg_rej_30": 1402.1805555555557,
+    "bg_rej_50": 373.2236598890943
+  },
+  "mean_score_correlation": 0.9934662119474807
+}
