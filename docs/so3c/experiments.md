@@ -173,12 +173,19 @@ python -m benchmarks.run_top_tagging --cache-dir data --representation constitue
 # The pair-feature runs: the same 60-epoch command plus --pair-lab --keep-best
 # (notebooks/kaggle_k64_pairlab60_seeds01.ipynb, seeds 0 and 1 in one two-T4
 # kernel; the control without --pair-lab is notebooks/kaggle_k64_base60_seeds01.ipynb).
-# The current best models continue both to 120 epochs
+# Both were continued to 120 epochs (the best models from 2026-10-18 to 10-25)
 # (notebooks/kaggle_k64_pairlab120_seeds01.ipynb: --epochs 120 --resume on the epoch-60 checkpoints).
 # Their ensembles (two 120-epoch seeds; all four snapshots):
 #   python -m benchmarks.ensemble_scores --results-dir results_k64/pairlab120/seed0 results_k64/pairlab120/seed1
 #   python -m benchmarks.ensemble_scores --allow-shared-seed --results-dir results_k64/pairlab60/seed0 \
 #       results_k64/pairlab60/seed1 results_k64/pairlab120/seed0 results_k64/pairlab120/seed1
+# The combined model (the best AUC since 2026-11-08): the same 60-epoch command plus
+# --pair-latent 8 --act-hidden 64 --msg-dim 24 --scalar-dim 24 --pair-lab-fp64, in two kernels
+# (notebooks/kaggle_k64_pairlatw64lab60fp64_seeds01.ipynb, then ..._finish_seeds01.ipynb).
+# Its seven-model ensemble with the width and pair-latent runs:
+#   python -m benchmarks.ensemble_scores --allow-shared-seed --results-dir results_k64/pairlatw64lab60fp64/seed0 \
+#       results_k64/pairlatw64lab60fp64/seed1 results_k64/w64s24lab60/seed0 results_k64/w64s24lab60/seed1 \
+#       results_k64/pairlatlab60/seed0 results_k64/pairlatlab60/seed1 results_k64/pairlatlab60fp64/seed2
 # Ensembles of the committed runs: the three 30-epoch seeds, then four, then five models
 python -m benchmarks.ensemble_scores --results-dir results_message/beams_k64 results_k64/headline
 python -m benchmarks.ensemble_scores --allow-shared-seed \
@@ -409,8 +416,8 @@ directories were accepted); when seeds are shared, each member also records its
 
 Published split, full training set. ✗ marks the model that is not
 Lorentz-invariant once trained; bold marks the best configuration by AUC
-(mean over seeds; the best single run, a pair-latent seed, scored 0.98493 /
-1453 at 60 epochs) and the best ensembles by AUC and by rejection. GPU runs used float32 according to their
+(mean over seeds; the best single run, seed 0 of the combined model, scored
+0.98510 / 1286 at 60 epochs) and the best ensembles by AUC and by rejection. GPU runs used float32 according to their
 notebook commands; `results/` is not committed.
 
 | Model | Params | $K$ | Seeds | Epochs | AUC | Acc. | $1/\varepsilon_B$ @ 0.3 | $1/\varepsilon_B$ @ 0.5 | Hours / seed | Source |
@@ -434,7 +441,8 @@ notebook commands; `results/` is not committed.
 | the same two runs continued to 120 (warm restart) | 23,026 | 64 | 2 | 120 | 0.98460 ± 0.00029 | 0.9376 | 1302 ± 89 | 347 ± 19 | +8.46–8.48 GPU § | `results_k64/pairlab120/` |
 | `so3c_message_set` + beams, 8 channels, pair features **and the pair latent** (`--pair-lab --pair-latent 8`) | 26,738 | 64 | 2 | 60 | 0.98479 ± 0.00020 | 0.9380 | 1365 ± 124 | 352 ± 2 | 12.81–13.59 GPU § ¶ | `results_k64/pairlatlab60/` |
 | the same with a third seed (seed 2, `--pair-lab-fp64`) | 26,738 | 64 | 3 | 60 | 0.98482 ± 0.00015 | — | 1359 ± 88 | 347 ± 9 | 13.97 GPU § ¶ | + `results_k64/pairlatlab60fp64/` |
-| `so3c_message_set` + beams, 8 channels, pair features **and width** (`--pair-lab --act-hidden 64 --msg-dim 24 --scalar-dim 24`) | 61,602 | 64 | 2 | 60 | **0.98488 ± 0.00006** | 0.9382 | 1462 ± 112 | 344 ± 7 | 14.52–14.81 GPU § ¶ | `results_k64/w64s24lab60/` |
+| `so3c_message_set` + beams, 8 channels, pair features **and width** (`--pair-lab --act-hidden 64 --msg-dim 24 --scalar-dim 24`) | 61,602 | 64 | 2 | 60 | 0.98488 ± 0.00006 | 0.9382 | 1462 ± 112 | 344 ± 7 | 14.52–14.81 GPU § ¶ | `results_k64/w64s24lab60/` |
+| `so3c_message_set` + beams, 8 channels, pair features, **the pair latent and width** (`--pair-lab --pair-latent 8 --act-hidden 64 --msg-dim 24 --scalar-dim 24 --pair-lab-fp64`) | 67,874 | 64 | 2 | 60 | **0.98504 ± 0.00009** | 0.9386 | 1286 ± 0 | 351 ± 10 | 21.23–21.35 GPU § ¶ | `results_k64/pairlatw64lab60fp64/` |
 | seeds 0 and 1 at 30 epochs, scores averaged | — | 64 | 2 | 30 | 0.98373 | — | 1174 | 306 | — | `results_message/beams_k64/ensemble_seeds01.json` |
 | seeds 0, 1 and 2 at 30 epochs, scores averaged | — | 64 | 3 | 30 | 0.98378 | — | 1160 | 316 | — | `results_k64/headline/ensemble_seeds012.json` |
 | those three and the 60-epoch run, scores averaged | — | 64 | 4 | 30, 60 | 0.98396 | — | 1231 | 328 | — | `results_k64/headline60/ensemble_seeds012_plus_60ep.json` |
@@ -446,7 +454,11 @@ notebook commands; `results/` is not committed.
 | those two and the two 120-epoch pair-feature seeds, scores averaged ¶ | — | 64 | 4 | 60, 120 | 0.98543 | — | 1553 | 390 | — | `results_k64/pairlatlab60/ensemble_seeds01_plus_pairlab120.json` |
 | the three pair-latent seeds, scores averaged | — | 64 | 3 | 60 | 0.98543 | — | 1541 | 382 | — | `results_k64/pairlatlab60fp64/ensemble_pairlat_seeds012.json` |
 | the two width seeds, scores averaged | — | 64 | 2 | 60 | 0.98539 | — | **1683** | 371 | — | `results_k64/w64s24lab60/ensemble_seeds01.json` |
-| the two width and the three pair-latent seeds, scores averaged | — | 64 | 5 | 60 | **0.98564** | — | 1590 | 386 | — | `results_k64/w64s24lab60/ensemble_width01_pairlat012.json` |
+| the two width and the three pair-latent seeds, scores averaged | — | 64 | 5 | 60 | 0.98564 | — | 1590 | 386 | — | `results_k64/w64s24lab60/ensemble_width01_pairlat012.json` |
+| the two combined-model seeds, scores averaged | — | 64 | 2 | 60 | 0.98548 | — | 1402 | 373 | — | `results_k64/pairlatw64lab60fp64/ensemble_seeds01.json` |
+| those two and the two width seeds, scores averaged | — | 64 | 4 | 60 | 0.98568 | — | 1615 | 394 | — | `results_k64/pairlatw64lab60fp64/ensemble_seeds01_width01.json` |
+| those two and the three pair-latent seeds, scores averaged | — | 64 | 5 | 60 | 0.98569 | — | 1615 | 392 | — | `results_k64/pairlatw64lab60fp64/ensemble_seeds01_pairlat012.json` |
+| the two combined, two width and three pair-latent seeds, scores averaged | — | 64 | 7 | 60 | **0.98575** | — | 1553 | 385 | — | `results_k64/pairlatw64lab60fp64/ensemble_seeds01_width01_pairlat012.json` |
 | `relu_mlp` (Deep Sets, matched) | 9,053 | 32 | 1 | 30 | 0.7636 | 0.7129 | 8.5 | 5 | 4.24 CPU | `results_matched_canonical/` |
 | `gelu_mlp` (Deep Sets, matched) | 9,053 | 32 | 1 | 30 | 0.7633 | 0.7123 | 8.6 | 5 | 5.65 CPU | `results_matched_canonical/` |
 
@@ -472,8 +484,11 @@ clock; the quota charged was 14.20 h for both seeds. The four-model ensemble is
 the higher of the two combinations tried; adding the 60-epoch pair-feature seeds
 as well gave 0.98535 / 1507. The width runs and the pair latent's seed 2
 (2026-10-31) stopped at epochs 45 and 47 and were resumed together in one
-two-card queue kernel (6.86 h). The last three ensembles were the combinations
-fixed in advance.
+two-card queue kernel (6.86 h). The three ensembles of 2026-11-01 were the
+combinations fixed in advance. The combined model (2026-11-07/08) stopped at
+epochs 30 and 31 after 11.66 h and finished in a second two-card kernel
+(10.82 h, `--max-seconds 40500`); the quota charged was 22.48 h for both seeds.
+Its four ensembles were the combinations listed before the results were fetched.
 
 - At $K=32$ and about 9k parameters the exactly invariant covariant model
   matches the non-invariant one (0.9746 against 0.9744); the matched generic
@@ -495,7 +510,7 @@ fixed in advance.
   epochs reached 1147): +0.00037 AUC over the three-seed 30-epoch mean, 2.2 standard
   errors with three seeds to compare against, and a final validation loss of
   0.16276, below all three 30-epoch runs (0.16318 to 0.16455). One seed.
-- The lab-frame pair features give the best models. At 60 epochs: 0.98442 ±
+- The lab-frame pair features give the largest single gain. At 60 epochs: 0.98442 ±
   0.00035 over two seeds against 0.98342 ± 0.00021 for a same-stack control
   without them (+0.00100; two runs each, Welch t = 3.5 on ≈1.7 df, p ≈ 0.1,
   both pair-feature runs above both controls; it repeats +0.00051 on the probe
@@ -506,6 +521,16 @@ fixed in advance.
   train gap grows from 0.0048–0.0053 to 0.0067–0.0068), 0.98480 / 1364 for the
   better seed (picked on test AUC), 0.98515 / 1422 for the two 120-epoch seeds'
   ensemble and 0.98513 / 1474 for all four snapshots.
+- On top of them (60 epochs): width (`--act-hidden 64 --msg-dim 24
+  --scalar-dim 24`) gains +0.00046 over two seeds, confirmed by the reading fixed
+  before the run, and the pair latent (`--pair-latent 8`) +0.00039 over three,
+  unresolved by 0.00002; the two are tied (+0.00006). Together, with float64
+  pair features (67,874 parameters), they reach 0.98504 ± 0.00009: +0.00062 over
+  the pair-feature runs, three quarters of the two gains' sum (two runs per arm
+  cannot tell that from full additivity), and +0.00016 over width alone,
+  unresolved. Their rejection at $\varepsilon_S=0.3$ (1286 for both seeds) is
+  below width's (1462 ± 112), and both runs overfit as much as width's seed 1
+  (validation − train 0.0085).
 - Without them, continuing the 60-epoch run to 120 epochs (the cosine schedule re-anchored, a warm
   restart at learning rate 1.5e-3) gives 0.98392 / 1202:
   +0.00029 AUC and +61 rejection against its own epoch 60, final validation
@@ -764,15 +789,18 @@ Values checked against the source tables, from
 
 PELICAN at 1,000 parameters (0.9835 / 1145 ± 74) matches the 60-epoch
 beams-only SO3C model (22,834 parameters, 0.98363 / 1141) and is 0.0004 AUC
-below its 120-epoch continuation (0.98392 / 1202). The best single SO3C runs,
-with the lab-frame pair features and the pair latent (26,738 parameters, 0.98493
-/ 1453) or width (61,602 parameters, 0.98492 / 1541), 60 epochs, lie between
-PELICAN's 1,000- and 3,000-parameter models in AUC, just below the 3,000 one;
-PELICAN from 3,000 parameters up, LorentzNet, ParticleNet and L-GATr are ahead of
-them in AUC. The two-seed width ensemble (0.98539 / 1683, 2026-11-01) lies above
+below its 120-epoch continuation (0.98392 / 1202). The best single SO3C run,
+seed 0 of the combined model (lab-frame pair features, the pair latent and
+width; 67,874 parameters, 0.98510 / 1286, 60 epochs), is level with PELICAN's
+3,000-parameter model in AUC and below it in rejection; the pair-latent and width
+runs (26,738 parameters, 0.98493 / 1453; 61,602 parameters, 0.98492 / 1541) lie
+between PELICAN's 1,000- and 3,000-parameter models in AUC, just below the 3,000
+one. PELICAN from 11,000 parameters up, LorentzNet, ParticleNet and L-GATr are
+ahead of all of them in AUC. The two-seed width ensemble (0.98539 / 1683, 2026-11-01) lies above
 PELICAN's 3,000-parameter model on both metrics (0.9850 / 1494 ± 43) and below
 its 11,000-parameter model on both (0.9858 / 1879 ± 103); the ensemble of all
-five width and pair-latent runs reaches 0.98564 / 1590.
+seven combined, width and pair-latent runs reaches 0.98575 / 1553 (2026-11-08),
+0.00005 below that model in AUC.
 Before it, the pair-feature ensembles without the pair latent matched that model
 in AUC (0.98515 and 0.98513) and came within 72 and 20 of its rejection (1422
 and 1474).
@@ -938,13 +966,14 @@ predates the L-GATr row of the reference table.
 
 ## 8. Limitations and open issues
 
-1. **Not state of the art.** The best SO3C single runs (lab-frame pair
-   features with the pair latent or with width, 60 epochs) are 0.0021 AUC and a
-   factor of 1.46–1.55 in rejection behind PELICAN; the best two-seed ensemble
-   (width) is 0.0016 and 1.34 behind, and the five-model ensemble 0.0014 and
-   1.42. PELICAN's 3,000-parameter model is just ahead of the single runs in
-   AUC and behind the width ensemble on both metrics; its 11,000-parameter model
-   is ahead of everything here (table K).
+1. **Not state of the art.** The best SO3C single run (the combined model's
+   seed 0, 60 epochs) is 0.0019 AUC and a factor of 1.75 in rejection behind
+   PELICAN; the best two-seed ensembles are 0.0015 and 1.60 behind (combined) and
+   0.0016 and 1.34 (width), and the seven-model ensemble 0.0012 and 1.45.
+   PELICAN's 3,000-parameter model (0.9850 / 1494 ± 43) is level with the best
+   single run in AUC and ahead of it in rejection, and behind the width ensemble
+   on both metrics; its 11,000-parameter model is ahead of everything here
+   (table K), of the seven-model ensemble by 0.00005 AUC.
 2. **With beams, the output is not Lorentz-invariant**, by design: it is
    covariant together with the beams and invariant only under rotations about
    the beam axis ([theory.md §11](theory.md#11-beams-what-symmetry-survives)).
