@@ -576,9 +576,11 @@ def _lab_node_features(p4: torch.Tensor, P: torch.Tensor, beam_p4: torch.Tensor,
 # The lab-frame pair features in the order _lab_pair_features stacks them,
 # and the subsets pair_lab_set selects (the 2026-10-18 ablation): the three
 # lab-frame features, which need the beams to define y, phi and pT, and ln m^2,
-# a direct <p_a, p_b> that needs no beams.
+# a direct <p_a, p_b> that needs no beams. "delta_z" (2026-11-08) keeps only
+# the angle and the momentum share, with no momentum scale, so it can form
+# neither ln kT nor ln m^2.
 PAIR_LAB_FEATURES = ("ln_delta", "ln_kt", "ln_z", "ln_m2")
-PAIR_LAB_SETS = {"all": (0, 1, 2, 3), "frame": (0, 1, 2), "mass": (3,)}
+PAIR_LAB_SETS = {"all": (0, 1, 2, 3), "frame": (0, 1, 2), "mass": (3,), "delta_z": (0, 2)}
 
 
 def _lab_pair_features(p4: torch.Tensor, beam_p4: torch.Tensor,

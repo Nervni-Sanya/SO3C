@@ -1183,12 +1183,15 @@ def test_pair_lab_set_selects_features_and_keeps_all_identical() -> None:
     """The 2026-10-18 ablation: pair_lab_set="all" is the existing model
     bit for bit; "frame" (ln Delta, ln kT, ln z) and "mass" (ln m^2) feed 3
     and 1 of the four features, each reaches trainable weights, and the model
-    stays exactly covariant with the beams moved along."""
+    stays exactly covariant with the beams moved along. "delta_z" (ln Delta,
+    ln z; 2026-11-08) has no momentum scale, so it can form neither ln kT nor
+    ln m^2."""
     import pytest
     from benchmarks.so3c_models import (PAIR_LAB_FEATURES, PAIR_LAB_SETS,
                                          SO3CMessageSetClassifier)
     names = lambda key: tuple(PAIR_LAB_FEATURES[i] for i in PAIR_LAB_SETS[key])
     assert names("frame") == ("ln_delta", "ln_kt", "ln_z") and names("mass") == ("ln_m2",)
+    assert names("delta_z") == ("ln_delta", "ln_z")
     assert names("all") == PAIR_LAB_FEATURES
     p4, mask, _ = _lab_jets()
     x = torch.cat([p4, mask[..., None]], -1)
@@ -1206,7 +1209,7 @@ def test_pair_lab_set_selects_features_and_keeps_all_identical() -> None:
     assert torch.equal(old(x), new(x))
     base = _lab_model()
     L = _lorentz([0.6, -0.4, 0.9], angle_z=0.7)
-    for name, n_feat in (("frame", 3), ("mass", 1)):
+    for name, n_feat in (("frame", 3), ("mass", 1), ("delta_z", 2)):
         m = _lab_model(pair_lab=True, pair_lab_set=name)
         assert count(m) - count(base) == n_feat * 16 * 2, name     # act_hidden 16, 2 rounds
         out = m(x)

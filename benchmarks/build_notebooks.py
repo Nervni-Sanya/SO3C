@@ -3511,10 +3511,31 @@ PROBE_QUEUES = [
         for arm, flags in (("compile_pairlat_fp64", ["--pair-lab", "--pair-lab-fp64"]),
                            ("compile_pairlat_f32", ["--pair-lab"]))
     ], 2.6),
+    # 2026-11-08, the follow-up the 10-18 ablation left open (the user: spend
+    # 1-2 h of the week's rest on it): ln Delta + ln z only. Without a momentum
+    # scale it can form neither ln kT nor ln m^2, so it tells whether the
+    # frame trio's gain needs the scale. Float32 features, as in the 10-18 arms.
+    # Four seeds (the queue's third wave would otherwise leave a card idle),
+    # then a full --pair-lab run and a control at seed 4 as in-kernel anchors,
+    # started together in the last wave. Read by the 10-18 rule against every
+    # earlier float32 probe control and full --pair-lab run plus the anchors
+    # (_probe_references_all). Three waves of ~0.5 h: ~1.7-2.0 GPU-h. The 2.4 h
+    # budget is a cap, not a target: at 2.2 h the last wave's per-job cap
+    # (budget less 10 min) would sit within minutes of one run's time.
+    ("deltaz-pairlab", [
+        ("pairlab_delta_z", ["--pair-lab", "--pair-lab-set", "delta_z"], s) for s in (0, 1, 2, 3)
+    ] + [
+        ("pairlab_full", ["--pair-lab"], 4),
+        ("control", [], 4),
+    ], 2.4),
 ]
 
 # Which summary cell a probe queue prints (default "ablation").
 PROBE_QUEUE_SUMMARY = {"fp64-pairlab": "fp64"}
+
+# Which reference pool an "ablation" summary reads against (default
+# "ablation", the 10-18 pools: _probe_references).
+PROBE_QUEUE_REFS = {"deltaz-pairlab": "all"}
 
 # Reading of the float64 screen, fixed before the push: d = mean(pairlab_fp64)
 # - mean(pairlab_f32), three runs each in the same kernel. "pays" if
@@ -3559,6 +3580,33 @@ def _probe_references_fp64() -> dict:
                 rows.append(r["test_metrics"]["test_auc"])
         refs[name] = rows
     assert len(refs["pairlab"]) == 4 and len(refs["control"]) == 7, {k: len(v) for k, v in refs.items()}
+    return refs
+
+
+def _probe_references_all() -> dict:
+    """Every earlier float32 probe run the 2026-11-08 delta_z arm is read
+    against: the controls (10-05, base1010, the 10-18 anchor), the full
+    --pair-lab runs (10-10, the 10-18 anchor, the float32 arm of the 10-25
+    float64 screen), and the 10-18 subset arms for context. (AUC, rejection)
+    of each."""
+    refs = {}
+    for name, dirs in (("control", ["results_message/probe_screen/base", "results_message/repr_screen/base1010",
+                                    "results_message/repr_screen/ablation/control"]),
+                       ("pairlab", ["results_message/repr_screen/pairlab",
+                                    "results_message/repr_screen/ablation/pairlab_full",
+                                    "results_message/repr_screen/fp64/pairlab_f32"]),
+                       ("frame", ["results_message/repr_screen/ablation/pairlab_frame"]),
+                       ("mass", ["results_message/repr_screen/ablation/pairlab_mass"])):
+        rows = []
+        for sub in dirs:
+            for f in sorted((ROOT / sub).glob("seed*/*.json")):
+                r = json.loads(f.read_text())
+                assert r["env"]["torch"] == "2.11.0+cu128" and r["epochs_run"] == 20, f
+                assert not (r.get("so3c_kwargs") or {}).get("pair_lab_fp64"), f      # float32 features only
+                rows.append((r["test_metrics"]["test_auc"], r["test_metrics"]["bg_rej_30"]))
+        refs[name] = rows
+    counts = {k: len(v) for k, v in refs.items()}
+    assert counts == {"control": 7, "pairlab": 7, "frame": 3, "mass": 3}, counts
     return refs
 
 
@@ -3619,7 +3667,7 @@ assert not BAD, "jobs failed: %%s" %% BAD
 
 
 def build_probe_queue(blob: str, tag: str, jobs: list, budget_h: float,
-                      summary: str = "ablation") -> str:
+                      summary: str = "ablation", ref_pool: str = "ablation") -> str:
     """Probe-protocol runs (arm, flags, seed) drained by two T4s as a queue.
 
     The command is the 10-05 control's (build_probe_screen's `common`) plus
@@ -3627,9 +3675,11 @@ def build_probe_queue(blob: str, tag: str, jobs: list, budget_h: float,
     on both cards at once first; the queue then hands the next job to
     whichever card is free, and stops handing out jobs once less than one
     run's time is left of `budget_h`. With summary="ablation" the summary
-    reads each subset arm unpaired against the pooled probe controls and the
-    full --pair-lab runs; with "fp64" it reads the float64 pair features
-    against float32 by FP64_RULE.
+    reads each subset arm the queue runs unpaired against the pooled probe
+    controls and full --pair-lab runs (`ref_pool` "ablation": the 10-18
+    pools; "all": every earlier float32 probe run, _probe_references_all)
+    plus the queue's own anchors; with "fp64" it reads the float64 pair
+    features against float32 by FP64_RULE.
     """
     import hashlib
     bundle_sha = hashlib.sha256(blob.encode()).hexdigest()[:12]
@@ -3641,7 +3691,7 @@ def build_probe_queue(blob: str, tag: str, jobs: list, budget_h: float,
               "--models", "so3c_message_set", "--rounds", "3", "--beams",
               "--channels", "8", "--compile"]
     assert summary in ("ablation", "fp64"), summary
-    refs = _probe_references()
+    refs = {"ablation": _probe_references, "all": _probe_references_all}[ref_pool]()
     cells = [
         md("""
 # Probe-protocol queue, two cards: %s
@@ -3747,9 +3797,9 @@ print("failed:", BAD or "none", "| skipped:", SKIPPED or "none")
 print("kernel time %.2f h" % ((time.time() - T0) / 3600))
 """),
         code("""
-# Each subset arm unpaired against the pooled probe controls (10-05, base1010
-# and this kernel's control) and the full --pair-lab runs (10-10 and this
-# kernel's), with the reading rule fixed before the push:
+# Each subset arm this queue runs, unpaired against the pooled earlier probe
+# controls and full --pair-lab runs (REFS) together with this kernel's
+# anchors, with the reading rule fixed before the push:
 #   f = (arm - control) / (full - control), the fraction of the gain recovered;
 #   "carries the gain" if f >= 0.7 and the arm beats the control at p < 0.05,
 #   "carries none" if f <= 0.3 and the arm is below the full set at p < 0.05,
@@ -3779,7 +3829,8 @@ for name, new, old in (("full pair_lab", new_full, old_full), ("control", new_ct
 full, ctrl = old_full + new_full, old_ctrl + new_ctrl
 print("references: control %%d runs %%.5f +- %%.5f | full pair_lab %%d runs %%.5f +- %%.5f"
       %% (len(ctrl), st.mean(ctrl), st.stdev(ctrl), len(full), st.mean(full), st.stdev(full)))
-for arm in ("pairlab_mass", "pairlab_frame"):
+ARMS = [a for a in dict.fromkeys(j[0] for j in JOBS) if a not in ("pairlab_full", "control")]
+for arm in ARMS:
     a = load(arm)
     if len(a) < 2:
         print("  %%s: %%d complete runs, no reading" %% (arm, len(a))); continue
@@ -3796,6 +3847,16 @@ for arm in ("pairlab_mass", "pairlab_frame"):
         verdict = "unresolved"
     print("  %%s: mean %%.5f +- %%.5f | vs control %%+.5f (t %%.1f, df %%.1f, p %%.3f) | vs full %%+.5f (t %%.1f, df %%.1f, p %%.3f) | fraction of the gain %%.2f +- %%.2f -> %%s"
           %% (arm, A, st.stdev(a), d, t, df, pc, d2, t2, df2, pf, f, se, verdict))
+    # context, no verdict: this kernel's anchors alone, and the 10-18 arms
+    if new_full and new_ctrl and abs(st.mean(new_full) - st.mean(new_ctrl)) > 1e-9:
+        print("    against this kernel's anchors alone (one run each): fraction %%.2f"
+              %% ((A - st.mean(new_ctrl)) / (st.mean(new_full) - st.mean(new_ctrl))))
+    for name in ("frame", "mass"):
+        if name in REFS and arm != "pairlab_" + name:
+            other = [r[0] for r in REFS[name]]
+            d5, t5, df5, p5 = welch(a, other)
+            print("    against the 2026-10-18 %%s arm (%%d runs, %%.5f): %%+.5f (t %%.1f, df %%.1f, p %%.3f)"
+                  %% (name, len(other), st.mean(other), d5, t5, df5, p5))
 assert not BAD, "jobs failed: %%s" %% BAD
 """ % refs),
     ]
@@ -5138,7 +5199,8 @@ def _registry() -> dict:
     for tag, jobs, budget_h in PROBE_QUEUES:
         reg["probe_queue_%s" % tag.replace("-", "_")] = (
             lambda b, t=tag, j=jobs, h=budget_h: build_probe_queue(
-                b, t, j, h, summary=PROBE_QUEUE_SUMMARY.get(t, "ablation")))
+                b, t, j, h, summary=PROBE_QUEUE_SUMMARY.get(t, "ablation"),
+                ref_pool=PROBE_QUEUE_REFS.get(t, "ablation")))
     for src, tag, flags, seeds in K64_DUAL_CONTINUATIONS:
         reg["k64_%s_seeds%s" % (tag, "".join(str(s) for s in seeds))] = (
             lambda b, sr=src, t=tag, f=flags, s=seeds: build_k64_continuation_dual(b, sr, t, f, s))

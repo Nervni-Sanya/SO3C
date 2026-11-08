@@ -172,7 +172,7 @@ def main(argv: list[str] | None = None) -> int:
                    help="so3c_message_set with --beams, dense graph: ParT's pair "
                         "features (ln Delta, ln kT, ln z, ln m^2) on the edges, "
                         "in invariants of {p_a, p_b, beams}; beam pairs masked.")
-    p.add_argument("--pair-lab-set", choices=["all", "frame", "mass"], default=None,
+    p.add_argument("--pair-lab-set", choices=["all", "frame", "mass", "delta_z"], default=None,
                    help="with --pair-lab: which of its features feed the edges -- "
                         "all four (default), 'frame' (ln Delta, ln kT, ln z, "
                         "which need the beams' frame) or 'mass' (ln m^2 alone).")

@@ -214,6 +214,37 @@ def test_probe_queue_is_the_stored_control_command_plus_each_jobs_flags(nb_dir) 
     assert meta["id"] == "nsanya/so3c-probe-queue-ablation-pairlab"
 
 
+def test_deltaz_probe_queue_reads_against_every_float32_probe_reference(nb_dir) -> None:
+    """2026-11-08, the follow-up the 10-18 ablation left open: ln Delta + ln z
+    only, which can form neither ln kT nor ln m^2 (no momentum scale). The
+    committed probe control command plus --pair-lab --pair-lab-set delta_z at
+    seeds 0-3, then a full --pair-lab run and a control at seed 4 as in-kernel
+    anchors. The reading pools every earlier float32 probe control and full
+    --pair-lab run (seven each) with the anchors, and the summary reads the
+    arms this queue runs, not the 10-18 pair."""
+    import json
+    control = _assigned_list(ROOT / "notebooks" / "kaggle_probe_screen_base.ipynb", "BASE")
+    assert B.main(["--only", "probe_queue_deltaz_pairlab"]) == 0
+    nb = nb_dir / "kaggle_probe_queue_deltaz_pairlab.ipynb"
+    assert _assigned_list(nb, "BASE") == control
+    text = "".join("".join(c["source"]) for c in json.loads(nb.read_text(encoding="utf-8"))["cells"])
+    ((js, budget),) = [(j, h) for tag, j, h in B.PROBE_QUEUES if tag == "deltaz-pairlab"]
+    assert js == [("pairlab_delta_z", ["--pair-lab", "--pair-lab-set", "delta_z"], s) for s in (0, 1, 2, 3)] + [
+        ("pairlab_full", ["--pair-lab"], 4), ("control", [], 4)]
+    assert budget <= 2.5
+    refs = B._probe_references_all()
+    assert {k: len(v) for k, v in refs.items()} == {"control": 7, "pairlab": 7, "frame": 3, "mass": 3}
+    for rows in refs.values():
+        for auc, _ in rows:
+            assert repr(auc) in text
+    assert "ARMS = " in text and "carries the gain" in text
+    assert 'for arm in ("pairlab_mass", "pairlab_frame")' not in text
+    assert 'WANT = "2.11.0+cu128"' in text and "CUDA_VISIBLE_DEVICES" in text
+    meta = json.loads((nb_dir / "kernel-metadata-probe-queue-deltaz-pairlab.json").read_text())
+    assert meta["id"] == "nsanya/so3c-probe-queue-deltaz-pairlab"
+    assert meta["kernel_sources"] == ["nsanya/so3c-data-prep-k-128"]
+
+
 def test_long_two_card_arms_are_pairlab211_plus_their_flags(nb_dir) -> None:
     """Window 2026-10-24: the pair latent and w64s24 on top of --pair-lab at
     the K=32 long schedule are the committed pairlab211 command plus exactly
