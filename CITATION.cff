@@ -1,7 +1,7 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 title: "SO3C: Lorentz-covariant jet tagging with complexified-SO(3) geodesic flows"
-abstract: "Jet tagger built on the complexified rotation algebra so(3,C) ≅ so(3,1). Constituents are lifted to complex 3-vectors and moved along a closed-form geodesic flow with a learned covariant connection; the flow conserves z·z and uses a complex Rodrigues formula, so no ODE solver is involved. On the Kasieczka top-tagging reference dataset a 67,874-parameter model reaches AUC 0.9850 ± 0.0001 over two seeds (two-seed ensemble 0.98548 / 1402; with 61,602- and 26,738-parameter variants, a seven-model ensemble reaches 0.98575 / 1553, and the 61,602-parameter variant's two-seed ensemble the best rejection, 1683), below PELICAN (0.9870 / 2250). Includes benchmark harness, notebooks, result files and headline checkpoints."
+abstract: "We present SO3C, a jet tagger built on the isomorphism so(3,ℂ) ≅ so(3,1) between the complexified rotation algebra and the Lorentz algebra. Each constituent is lifted, through the bivector it forms with the jet momentum, to a complex 3-vector on which a Lorentz transformation acts as a complex rotation. A message-passing round forms the pair invariants z_a·z_b, builds a covariant connection from invariant-weighted neighbour states, and moves every state along it in closed form with a complex Rodrigues formula that conserves z·z; no ODE solver is involved. With the two beam directions as reference vectors, the output is covariant when jets and beams are transformed together and invariant under rotations about the beam axis, which we check numerically in float64. On the Kasieczka et al. top-tagging reference dataset (canonical split, 64 leading constituents) the best configuration, with 67,874 parameters, reaches AUC 0.98504 ± 0.00009 and 1/ε_B = 1286 at ε_S = 0.3 over two seeds. Averaging seven runs of three configurations gives 0.98575 / 1553, and the two-run ensemble of a wider configuration gives the best rejection, 1683. This is below PELICAN (0.9870 / 2250): the seven-run ensemble is 0.0012 AUC and a factor 1.45 in rejection behind it, and PELICAN's own 11,000-parameter model (0.9858 / 1879) is ahead of every single SO3C run. We do not claim state-of-the-art performance. The largest gains come from the beam reference vectors and from ParT-style pair features written in Minkowski products (+0.0010 AUC; on a short protocol, ln Δ and ln z alone carry them). Wider networks add +0.00046, a PELICAN-style rank-2 pair latent +0.00039, and their combination +0.00016 over width alone; of these three, only the width gain meets the pre-registered criterion. Code, per-jet scores, checkpoints and logs for every reported run are archived."
 authors:
   - family-names: "Panchenko"
     given-names: "Aleksandr A."
@@ -20,4 +20,6 @@ keywords:
   - "particle physics"
   - "Python"
 type: software
+version: "1.0.0"
+date-released: 2026-11-09
 doi: 10.5281/zenodo.23448864

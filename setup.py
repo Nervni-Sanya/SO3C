@@ -4,8 +4,8 @@ from setuptools import setup, find_packages
 
 setup(
     name="so3c",
-    # No release yet: there is no SO3C paper, tag or DOI (see CITATION.cff).
-    version="0.1.0.dev0",
+    # Keep in step with so3c.__version__ and the version in CITATION.cff.
+    version="1.0.0",
     description=(
         "SO3C: Lorentz-covariant jet tagging with complexified-SO(3) "
         "geodesic flows"

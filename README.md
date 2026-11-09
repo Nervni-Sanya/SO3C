@@ -447,8 +447,9 @@ built models, so for the flow models they check only the readout.
 
 ## License and citation
 
-MIT, see [LICENSE](LICENSE). There is no SO3C paper yet; the software's Zenodo
-DOI is 10.5281/zenodo.23448864 (see [`CITATION.cff`](CITATION.cff)). The Zenodo
+MIT, see [LICENSE](LICENSE). Cite the software by its Zenodo concept DOI,
+10.5281/zenodo.23448864, which resolves to the latest version (see
+[`CITATION.cff`](CITATION.cff)). The Zenodo
 DOI 10.5281/zenodo.19763339 belongs to the SO(3,3) software in the
 [so33 repository](https://github.com/Nervni-Sanya/so33), not to SO3C.
 
