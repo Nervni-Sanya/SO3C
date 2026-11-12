@@ -23,3 +23,15 @@ type: software
 version: "1.0.0"
 date-released: 2026-11-12
 doi: 10.5281/zenodo.23448864
+preferred-citation:
+  type: generic
+  title: "SO3C: Lorentz-covariant jet tagging with complexified-SO(3) geodesic flows"
+  authors:
+    - family-names: "Panchenko"
+      given-names: "Aleksandr A."
+      orcid: "https://orcid.org/0009-0009-9104-1214"
+  doi: 10.5281/zenodo.24165396
+  url: "https://doi.org/10.5281/zenodo.24165396"
+  date-published: 2026-11-12
+  license: CC-BY-4.0
+  notes: "Preprint describing SO3C 1.0.0 (Zenodo preprint record, all versions)."
